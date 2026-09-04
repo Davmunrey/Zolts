@@ -20,6 +20,9 @@ Regla de gobierno: cada fase tiene criterios de salida binarios. No se avanza de
 | Medición | Holdout determinista + tabla de outcomes | Asignación reproducible verificada con test |
 | Compliance | Policy engine v0 (ES, FR, UK, US) + supresión + horas silenciosas | 100% de acciones con `policy_decision` registrada |
 | Comercial | 3 design partners firmados, pilotos de pago 5 k€ / 3 meses | 15 k€ cobrados; carta de compromiso con criterios de éxito |
+| **Baseline** | Captura del gasto GTM previo y de las tasas de conversión de 90 días, congelada y firmada por tenant | 100% de tenants con baseline capturado en los primeros 7 días |
+
+**Requisito irreversible:** el baseline no se reconstruye retroactivamente. Sin él, la expansión al CFO del mes 9 ([17](17-secuencia-de-comprador.md)) se retrasa un ciclo completo. Coste de capturarlo ahora: ~10-15% de ingeniería; coste de omitirlo: 6-9 meses.
 
 **Riesgo de fase:** construir producto sin cliente. Mitigación: el día 1 arranca con la venta de los pilotos, no con la arquitectura. Ningún componente entra en el plan si no lo necesita un piloto firmado.
 
@@ -64,4 +67,4 @@ Regla de gobierno: cada fase tiene criterios de salida binarios. No se avanza de
 
 ## Fuera de alcance en 90 días (decisión explícita)
 
-Infra de email propia, dialer nativo, modelo de scoring entrenado por tenant (se usa heurística calibrada), blueprints 4-10, ISO 27001, marketplace público de terceros, app móvil. Documentado para evitar la negociación de alcance en cada sprint.
+Segunda tarifa o superficie orientada a CFO (ver prohibiciones en [17](17-secuencia-de-comprador.md)), infra de email propia, dialer nativo, modelo de scoring entrenado por tenant (se usa heurística calibrada), blueprints 4-10, ISO 27001, marketplace público de terceros, app móvil. Documentado para evitar la negociación de alcance en cada sprint.

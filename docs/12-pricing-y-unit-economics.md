@@ -61,6 +61,12 @@ Motor de expansión (por orden de contribución esperada a NRR): consumo de cré
 3. **Compliance**: sustituir un sistema aprobado por el DPO tiene un coste organizativo que nadie asume por un 15% de descuento.
 4. **Consolidación**: cada herramienta eliminada del stack (5-8 típicamente, entre 3-9 k€/mes) es presupuesto liberado que justifica el precio.
 
+## Acto 2: contrato de gobierno de gasto (mes 9+)
+
+Una vez acumulados baseline + lift medido + coste real por reunión, la cuenta existente se convierte de contrato de consumo a **contrato de plataforma con gobierno de gasto**, anclado a un porcentaje del gasto GTM bajo gestión (referencia: 3-6%), no al coste de la herramienta sustituida. ACV objetivo 3-5× el del Acto 1.
+
+Condición de activación, no negociable: la vista de CFO debe derivarse de datos ya generados por el operador, con cero input adicional del cliente. En cuanto exija configuración propia, es un segundo producto. Detalle en [17](17-secuencia-de-comprador.md).
+
 ## Guardarraíl de descuento
 
 Descuento máximo por AE: 10%. 10-20% requiere director. >20% solo por compromiso plurianual con pago anticipado. Regla dura: **jamás descontar la plataforma; descontar créditos** (elástico y con COGS variable) preserva el ancla de precio.

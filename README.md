@@ -31,6 +31,7 @@
 | 14 | [KPIs](docs/14-kpis.md) | Leading/lagging con objetivos |
 | 15 | [Riesgos y deuda](docs/15-riesgos-y-deuda.md) | Commoditización, mitigaciones |
 | 16 | [Equipo y operación](docs/16-equipo-y-operacion.md) | Org, burn, forward-deployed |
+| 17 | [Secuencia de comprador](docs/17-secuencia-de-comprador.md) | Operador y CFO: por qué ambos, en dos actos |
 
 ## Artefactos técnicos
 

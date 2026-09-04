@@ -31,6 +31,8 @@
 | NRR | Lagging | — | >115% |
 | CAC payback | Lagging | — | <12 m |
 | Días de implantación (mediana) | Leading | <5 | <2 |
+| % de tenants con baseline capturado en 7 días | Leading | 100% | 100% |
+| Cuentas con lift significativo acumulado (elegibles Acto 2) | Leading | — | >60% |
 | % de ingresos de servicios | Leading | <25% | <15% |
 | Ratio ingeniería dedicada a un solo cliente | Leading | <20% | <5% |
 
