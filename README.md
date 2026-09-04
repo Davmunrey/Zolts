@@ -32,6 +32,7 @@
 | 15 | [Riesgos y deuda](docs/15-riesgos-y-deuda.md) | Commoditización, mitigaciones |
 | 16 | [Equipo y operación](docs/16-equipo-y-operacion.md) | Org, burn, forward-deployed |
 | 17 | [Secuencia de comprador](docs/17-secuencia-de-comprador.md) | Operador y CFO: por qué ambos, en dos actos |
+| 18 | [Registro de decisiones](docs/18-registro-de-decisiones.md) | 136 decisiones con default; 12 bloqueantes |
 
 ## Artefactos técnicos
 
@@ -39,6 +40,10 @@
 - `examples/schema/zolts-program.schema.json` — JSON Schema del DSL
 - `examples/sql/schema.sql` — DDL del núcleo canónico
 - `scripts/validate.py` — valida los programas contra el esquema (`python3 scripts/validate.py`), ejecutado en CI
+
+## Estado de definición
+
+`docs/18` es el registro vivo: **124 decisiones tienen recomendación por defecto y se ejecutan salvo contradicción; 12 son bloqueantes** y dependen de hechos que solo el fundador conoce (red, capital, apetito de riesgo). Las decisiones ya cerradas en el resto de documentos no se reabren sin cambiar el registro.
 
 ## Supuestos declarados
 
