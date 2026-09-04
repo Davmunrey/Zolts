@@ -1,0 +1,86 @@
+# Declarative tests for the sales-led program. These run in CI: a change that
+# breaks a compliance expectation fails the build rather than reaching a
+# prospect. This file is the artefact an enterprise DPO is shown.
+apiVersion: zolts/v1
+kind: ProgramTest
+program: series-a-hiring-surge@2.1.0
+cases:
+  - name: German contact without consent receives no email
+    given:
+      account: {country: DE}
+      person: {country: DE, consent_state: {}}
+      channel: email
+    expect:
+      policy_decision: deny
+      rule: jurisdiction.DE.basis_required
+
+  - name: Spanish contact under legitimate interest is reachable by email
+    given:
+      account: {country: ES}
+      person: {country: ES, consent_state: {email: legitimate_interest}}
+      channel: email
+    expect:
+      policy_decision: allow
+
+  - name: an unsubscribed contact is unreachable even with valid consent
+    given:
+      person: {country: ES, consent_state: {email: consent}, unsubscribed_channels: [email]}
+      channel: email
+    expect:
+      policy_decision: deny
+      rule: suppression.unsubscribed
+
+  - name: an unmapped jurisdiction defaults to deny
+    given:
+      person: {country: ZZ, consent_state: {email: legitimate_interest}}
+      channel: email
+    expect:
+      policy_decision: deny
+
+  - name: the weekly frequency cap holds
+    given:
+      person: {country: ES, consent_state: {email: legitimate_interest}, touches_this_week: 3}
+      channel: email
+    expect:
+      policy_decision: deny
+      rule: frequency.cap_reached
+
+  - name: a funding signal past its half-life does not enrol
+    given:
+      signal: {type: funding.round, observed_at: "-90d", half_life_h: 720,
+               payload: {stage: series_a, amount_usd: 12000000}}
+    expect:
+      enrolled: false
+
+  - name: a fresh qualifying funding signal enrols
+    given:
+      signal: {type: funding.round, observed_at: "-3d", half_life_h: 720,
+               payload: {stage: series_a, amount_usd: 12000000}}
+    expect:
+      enrolled: true
+
+  - name: a seed round does not qualify
+    given:
+      signal: {type: funding.round, observed_at: "-3d", half_life_h: 720,
+               payload: {stage: seed, amount_usd: 12000000}}
+    expect:
+      enrolled: false
+
+  - name: a round below the amount floor does not qualify
+    given:
+      signal: {type: funding.round, observed_at: "-3d", half_life_h: 720,
+               payload: {stage: series_a, amount_usd: 900000}}
+    expect:
+      enrolled: false
+
+  - name: a high score routes to tier 1 and is never auto-sent
+    given: {score: 88}
+    expect: {tier: t1, auto_send: false}
+
+  - name: a mid score routes to tier 2
+    given: {score: 70}
+    expect: {tier: t2, auto_send: true}
+
+  - name: a score below the floor routes nowhere
+    given: {score: 40}
+    expect: {tier: null}

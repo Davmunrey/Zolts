@@ -1,0 +1,30 @@
+name: validate
+
+on:
+  push:
+    branches: [main]        # branch pushes are covered by pull_request; without
+  pull_request:             # this split every push ran the suite twice
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5        # v4 targets the deprecated Node 20
+      - uses: actions/setup-python@v6    # v5 targets the deprecated Node 20
+        with:
+          python-version: '3.11'
+      - run: pip install pyyaml jsonschema pytest
+      - name: Validate GTM programs against the JSON Schema
+        run: python3 scripts/validate.py
+      - name: Run the reference core test suite
+        run: python3 -m pytest tests/ -q
+        env:
+          PYTHONPATH: .
+      - name: Run declarative program tests
+        run: python3 scripts/run_program_tests.py
+        env:
+          PYTHONPATH: .
+      - name: Benchmark the waterfall optimiser
+        run: python3 scripts/benchmark_waterfall.py
+        env:
+          PYTHONPATH: .
