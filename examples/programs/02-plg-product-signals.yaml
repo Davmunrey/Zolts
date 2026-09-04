@@ -85,5 +85,5 @@ spec:
 
   exit:
     - {when: "workspace.plan_tier != 'free' and workspace.plan_tier != 'starter'", reason: converted}
-    - {when: "outcome.type = 'unsubscribe'", reason: opted_out, suppress: true}
+    - {when: "outcome.type == 'unsubscribe'", reason: opted_out, suppress: true}
     - {when: "days_in_program > 21", reason: exhausted}

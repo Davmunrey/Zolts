@@ -81,6 +81,6 @@ spec:
   budget: {monthly_credits: 8000, max_cost_per_person: 0.08, on_exceed: throttle}
 
   exit:
-    - {when: "outcome.type = 'purchase'", reason: converted}
-    - {when: "outcome.type = 'unsubscribe'", reason: opted_out, suppress: true}
+    - {when: "outcome.type == 'purchase'", reason: converted}
+    - {when: "outcome.type == 'unsubscribe'", reason: opted_out, suppress: true}
     - {when: "days_in_program > 18", reason: exhausted}

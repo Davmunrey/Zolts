@@ -6,10 +6,11 @@
 
 Building it changed the plan in four places. That is the point of building it.
 
-```
-PYTHONPATH=. python3 -m pytest tests/ -q      # 79 tests
-PYTHONPATH=. python3 scripts/benchmark_waterfall.py
-python3 scripts/validate.py
+```bash
+python3 scripts/validate.py                            # schema validation
+PYTHONPATH=. python3 -m pytest tests/ -q               # 118 tests
+PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
+PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
 
 ## Claim coverage
@@ -34,6 +35,8 @@ python3 scripts/validate.py
 | Tenants extend freely outside policy | [05](05-blueprints-and-adaptability.md) | `overlay.py` | **Proven.** Non-policy keys merge without restriction |
 | `on:` cannot silently reappear in the DSL | [04](04-gtm-program-dsl.md) | `dsl.py` | **Proven.** Boolean trigger keys fail with a named error |
 | Every shipped program declares a real holdout | [04](04-gtm-program-dsl.md) | `dsl.py` | **Proven** |
+| The DSL has no Turing-complete expressions | [04](04-gtm-program-dsl.md) | `expr.py` | **Proven.** AST allowlist; ten escape attempts rejected |
+| A program breaking compliance cannot be merged | [04](04-gtm-program-dsl.md) | `programtest.py` | **Proven.** Four deliberate breakages each fail the suite |
 
 ## What building it changed
 
@@ -48,12 +51,30 @@ python3 scripts/validate.py
 
 **4. A roadmap exit criterion was unmeasurable as written.** "≥30% cost reduction" did not say mean, median, or every cohort. Measured, one cohort lands at 29.7% while another reaches 72.4% — so the criterion would have been arguable in exactly the moment it mattered. It is now median ≥30% with a 20% floor on the worst cohort.
 
+## Second round: the expression layer and the test runner
+
+Implementing the restricted expression evaluator and the declarative test runner surfaced four more defects, three of them in artefacts already reviewed and shipped.
+
+**5. `outcome.type = 'unsubscribe'` shipped in four of four example programs.** A single `=` where a comparison was meant. It does not parse as an expression at all, so the exit rule could never have fired — meaning opt-outs would never have been recorded. This is the third time the same failure class has appeared in this repository, each time in a different disguise, each time found by execution rather than by reading. That pattern is now itself a finding.
+
+**6. `evaluate` crashed on absent fields while its own docstring promised the opposite.** An unresolved path became `None`, and `None >= 0.9` raises `TypeError` rather than evaluating false — a running program would have died mid-flight on any missing payload key. Absent fields now resolve to a sentinel whose comparisons all return False, including `!=`: an expression cannot conclude anything about a value it does not have.
+
+**7. Enrollment was gated on signal decay instead of the declared trigger window.** They answer different questions — the window decides whether an event is still in scope, decay weights how much it counts — and conflating them let a 90-day-old signal enrol under a 30-day window.
+
+**8. A tier can key off any scored field, not only `score`.** The ecommerce program routes tier 1 on LTV percentile. The runner passed only `score`, so it would have silently misrouted every B2C program.
+
 ## The finding that changes the pitch
 
 The optimiser's edge is **inversely proportional to how good cheap data coverage already is in a market**. Iberia, LATAM and Poland exceed 60%. DACH and the Nordics compress toward 30%, because there the premium provider is genuinely required.
 
 Commercially: the "we cut your data cost" argument is weakest precisely in DACH, a high-ACV target market. There, Zolts leads with governance, jurisdictional policy and incrementality. A single blended savings number would have hidden this entirely.
 
+## The pattern worth naming
+
+Eight defects so far. Every one was found by executing the artefacts, none by reading them — and three are the same failure in different clothing: **an opt-out path that silently does not work**. A missing `suppress` flag, then a second one, then an exit clause that cannot parse. Each looked correct in review.
+
+The plan already classifies the policy decision log and idempotency as unacceptable debt. This adds a third: **a suppression path with no test is unacceptable debt**, because it fails silently, it fails in the direction of contacting people who asked not to be contacted, and human review demonstrably does not catch it.
+
 ## Deliberately not implemented
 
-The durable runtime (Temporal), connectors, the agent layer and its eval harness, deliverability scheduling, and persistence. Those need infrastructure, not logic, and simulating them would prove nothing. Everything here is pure logic that either holds or does not.
+The durable runtime (Temporal), connectors, the agent layer and its eval harness, deliverability scheduling, the blueprint resolver, and persistence. Those need infrastructure, not logic, and simulating them would prove nothing. Everything here is pure logic that either holds or does not.

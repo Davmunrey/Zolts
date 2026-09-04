@@ -84,7 +84,11 @@ cases:
     expect: {tier: t1, play: exec-1to1, auto_send: false}
 ```
 
-These run in CI. A program change that breaks a compliance rule **cannot be merged**. That is the sales argument in front of an enterprise DPO.
+These run in CI via `scripts/run_program_tests.py`. A program change that breaks a compliance rule **cannot be merged** — and that is verified, not asserted: `tests/test_programtest.py` deliberately relaxes a tier threshold, enables auto-send on tier 1, widens the trigger window and drops a qualifying clause, and requires the suite to fail on each. A guarantee nothing tries to break is not a guarantee.
+
+Shipped suites live in `examples/tests/`. Each is required to contain at least one denial case: a suite that only asserts happy paths proves nothing about compliance, and that requirement is itself a test.
+
+This is the artefact an enterprise DPO is shown.
 
 ## DSL resources
 
@@ -97,5 +101,8 @@ Complete examples: [`examples/programs/`](../examples/programs/).
 
 - **`events:` and not `on:`** — YAML 1.1 coerces `on`/`off`/`yes`/`no` to booleans. Using `on:` as a key yields `True` in PyYAML parsers and breaks validation silently (the same bug GitHub Actions carries). All four example programs validate against the JSON Schema via `scripts/validate.py`.
 - **No Turing-complete expressions.** `where` and `when` are restricted boolean expressions (a CEL-like subset). An arbitrary executable DSL blocks static policy analysis and turns the engine into an unsafe interpreter.
+- **Expressions are a restricted subset**, enforced by AST allowlist in `zolts/expr.py`, not by pattern matching on source text (a substring blocklist is trivially bypassed). Dotted field paths are permitted, bounded to depth 3, rooted in a plain name, with underscore-prefixed attributes refused — which closes `x.__class__.__bases__` and every variant of it. Arithmetic is allowed because computed thresholds need it; exponentiation is not, because `2 ** 999999999` is an outage rather than a feature.
+- **An absent field makes a clause false, never an error.** A missing payload key resolves to a sentinel whose comparisons all return False, including `!=`. An expression cannot conclude anything about a value it does not have, and the safe conclusion is not to act.
+- **The trigger window governs enrollment; decay governs scoring.** They are different questions and conflating them lets an expired signal enrol.
 - **Semver carries meaning:** `major` changes the population or the legal basis (requires owner re-consent); `minor` adds steps or channels; `patch` covers copy and thresholds.
 - **Active enrollments are never cut on rollback**: they drain on the version they entered with. Cutting sequences mid-flight damages the prospect experience and corrupts the experiments.

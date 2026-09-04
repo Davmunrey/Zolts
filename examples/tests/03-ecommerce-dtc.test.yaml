@@ -1,0 +1,60 @@
+# B2C tests. The dominant constraint here is consent, not legitimate interest,
+# and the tier semantics differ from the B2B programs: t1 means high LTV, not
+# human-reviewed.
+apiVersion: zolts/v1
+kind: ProgramTest
+program: replenishment-winback@1.2.0
+cases:
+  - name: B2C email requires consent, not legitimate interest
+    given:
+      person: {country: ES, consent_state: {email: legitimate_interest}}
+      channel: email
+    expect:
+      policy_decision: allow   # ES pack permits legitimate interest for email
+
+  - name: WhatsApp always requires consent
+    given:
+      person: {country: ES, consent_state: {whatsapp: legitimate_interest}}
+      channel: whatsapp
+    expect:
+      policy_decision: deny
+      rule: jurisdiction.ES.basis_required
+
+  - name: WhatsApp with consent is permitted during business hours
+    given:
+      person: {country: ES, consent_state: {whatsapp: consent}}
+      channel: whatsapp
+      local_hour: 12
+    expect:
+      policy_decision: allow
+
+  - name: WhatsApp is blocked during quiet hours even with consent
+    given:
+      person: {country: ES, consent_state: {whatsapp: consent}}
+      channel: whatsapp
+      local_hour: 23
+    expect:
+      policy_decision: deny
+      rule: quiet_hours
+
+  - name: a high-LTV customer routes to the VIP tier
+    given: {score: 85, customer_ltv_percentile: 0.95}
+    expect: {tier: t1}
+
+  - name: a mid-LTV customer routes to the standard tier
+    given: {score: 85, customer_ltv_percentile: 0.4}
+    expect: {tier: t2}
+
+  - name: a replenishment signal inside its cycle enrols
+    given:
+      signal: {type: commerce.replenishment_due, observed_at: "-1d", half_life_h: 168,
+               payload: {days_since_purchase: 40, expected_cycle_days: 45}}
+    expect:
+      enrolled: true
+
+  - name: a replenishment signal too early in the cycle does not enrol
+    given:
+      signal: {type: commerce.replenishment_due, observed_at: "-1d", half_life_h: 168,
+               payload: {days_since_purchase: 10, expected_cycle_days: 45}}
+    expect:
+      enrolled: false
