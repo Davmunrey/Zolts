@@ -87,4 +87,5 @@ spec:
 
   exit:
     - {when: "outcome.type in ('meeting','opp_created')", reason: converted}
+    - {when: "outcome.type = 'unsubscribe'", reason: opted_out, suppress: true}
     - {when: "touch.count >= 6", reason: exhausted}

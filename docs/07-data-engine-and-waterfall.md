@@ -25,7 +25,24 @@ E[coverage] = 1 - Π_i (1 - h_i)
 
 The router solves for an ordering that **minimises E[cost] subject to E[coverage] ≥ target and weighted accuracy ≥ accuracy_sla**. Because `h_i` depends on the segment (country, size, sector, seniority), a hit-rate matrix is maintained per *cohort* and updated on every call.
 
-**Economic consequence:** in cohorts where a cheap provider hits 70% of the time, this saves roughly 40-60% against the static waterfall most teams configure by hand. That saving is simultaneously the value proposition and the gross margin.
+**Measured consequence.** `scripts/benchmark_waterfall.py` runs the optimiser against a static premium-first waterfall over 15 geography-and-size cohorts with four providers. Reproduce with `PYTHONPATH=. python3 scripts/benchmark_waterfall.py`.
+
+| Statistic | Saving on cost per verified contact |
+|---|---|
+| Mean | 51.6% |
+| Median | 49.8% |
+| Best cohort (`latam_smb`) | 72.4% |
+| Worst cohort (`de_ent`) | 29.7% |
+
+Coverage is identical in every cohort — reordering changes cost, never reach — so the entire saving is cost reduction, not a quality trade. That saving is simultaneously the value proposition and the gross margin.
+
+**These are model numbers, not measured provider performance.** Hit rates are plausible, deliberately conservative estimates from public coverage claims. The benchmark validates the algorithm and the mechanism; the magnitude is contingent on real per-cohort hit rates, which only accrue once volume is running. Phase 2 replaces every number in this table with measured ones.
+
+### The structural finding: where the pitch is weakest
+
+The optimiser's edge is **inversely proportional to how good cheap coverage already is in that market**. Where a low-cost provider covers 70%+ (Iberia, LATAM, Poland, Italy), savings exceed 60%. Where it covers barely 40% (DACH, Nordics), the premium provider is genuinely needed and the saving compresses toward 30%.
+
+Commercial consequence, and it is uncomfortable: **the "−X% on data cost" argument is weakest precisely in DACH**, one of the highest-ACV target markets ([01](01-market-and-positioning.md)). In those markets Zolts must lead with governance, jurisdictional policy and incrementality, not with cost. Leading with cost there invites a comparison the product loses.
 
 ## Savings layers (in order of impact)
 

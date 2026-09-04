@@ -34,7 +34,7 @@ Governance rule: every phase has binary exit criteria. No phase advances with cr
 
 | Workstream | Deliverable | Exit criterion |
 |---|---|---|
-| Waterfall router | Per-field abstraction, three or more providers, per-cohort hit-rate matrix, optimiser | At least 30% cost reduction per verified contact versus a static waterfall |
+| Waterfall router | Per-field abstraction, three or more providers, per-cohort hit-rate matrix, optimiser | Median cohort saving ≥30% on cost per verified contact versus a static waterfall, **and no cohort below 20%**. Stated per cohort because the model shows DACH compressing to ~30% while Iberia and LATAM exceed 60% — a single blended number would hide the market where the pitch is weakest |
 | Agents | Researcher, Copywriter and Qualifier with provenance verification and an eval harness | 90%+ of claims carry provenance; 200-case golden set in CI |
 | Deliverability | Domain and mailbox management, warm-up curves, Postmaster, circuit breakers | Zero burned domains; complaints under 0.1% across all pilots |
 | Channels | LinkedIn, ads (audiences), voice tasks | Two multichannel programs in production |

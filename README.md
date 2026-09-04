@@ -33,13 +33,25 @@
 | 16 | [Team and operations](docs/16-team-and-operations.md) | Org, burn, forward-deployed model |
 | 17 | [Buyer sequencing](docs/17-buyer-sequencing.md) | Operator and CFO: both, in two acts |
 | 18 | [Decision register](docs/18-decision-register.md) | 136 decisions with defaults; 12 blocking |
+| 19 | [Reference core](docs/19-reference-core.md) | Which claims are proven, and what building it changed |
 
 ## Technical artefacts
 
+- `zolts/` — reference implementation of the core primitives: overlay resolution, deterministic holdouts, signal decay and PIT-R scoring, the waterfall cost optimiser, the policy engine, and the DSL loader and linter
+- `tests/` — 79 tests, each backing a specific claim made in `docs/`
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
 - `examples/sql/schema.sql` — reference DDL for the canonical core
-- `scripts/validate.py` — validates programs against the schema (`python3 scripts/validate.py`), enforced in CI
+- `scripts/validate.py` — validates programs against the schema
+- `scripts/benchmark_waterfall.py` — measures optimiser savings against a static waterfall
+
+```bash
+python3 scripts/validate.py                            # schema validation
+PYTHONPATH=. python3 -m pytest tests/ -q               # 79 tests
+PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
+```
+
+The reference core exists to test the plan, not to be the product. Building it corrected three defects in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written. See [19](docs/19-reference-core.md).
 
 ## Definition status
 

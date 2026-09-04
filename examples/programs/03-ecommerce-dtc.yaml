@@ -59,6 +59,7 @@ spec:
     t2:
       template: standard-winback
       auto_send: true
+      auto_send_requires: {eval_score: 0.88}
       steps:
         - {step: email_1, channel: email, template: replenish, wait: 0d}
         - {step: email_2, channel: email, template: incentive-10, wait: 4d}

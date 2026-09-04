@@ -8,7 +8,8 @@
 | p95 signal-to-executed-action latency (tier A) | Leading | <60 min | <15 min |
 | Active programs per tenant | Leading | 3 | 8 |
 | Share of actions with a recorded policy decision | Leading | 100% | 100% |
-| Cost per verified contact | Leading | −30% versus static waterfall | −50% |
+| Cost per verified contact (median cohort) | Leading | −30% versus static waterfall | −50% |
+| Cost per verified contact (worst cohort) | Leading | −20% floor | −30% floor |
 | Email bounce rate | Leading | <2% | <1.2% |
 | Spam complaint rate | Leading | <0.1% | <0.05% |
 | Positive reply rate | Leading | >3% | >6% |
