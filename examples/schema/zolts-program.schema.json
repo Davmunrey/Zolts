@@ -140,7 +140,7 @@
             "inherit": { "type": "string" },
             "overrides": {
               "type": "object",
-              "description": "Solo se aceptan overrides MAS restrictivos que la politica del tenant.",
+              "description": "Only overrides stricter than the tenant policy are accepted.",
               "properties": {
                 "quiet_hours": { "type": "object" },
                 "max_touches_per_person_per_week": { "type": "integer", "minimum": 0 },

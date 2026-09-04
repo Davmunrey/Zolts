@@ -1,6 +1,7 @@
-# Arquetipo: Ecommerce / DTC (B2C) — demuestra que el mismo runtime sirve a B2C.
-# Aquí la "cuenta" es un hogar/cliente, la señal es comportamiento de compra,
-# y la restricción dominante es consentimiento (ePrivacy), no interés legítimo.
+# Archetype: Ecommerce / DTC (B2C) — shows the same runtime serves B2C.
+# Here the "account" is a household or customer, the signal is purchase
+# behaviour, and the dominant constraint is consent (ePrivacy), not
+# legitimate interest.
 apiVersion: zolts/v1
 kind: Program
 metadata:
@@ -24,13 +25,13 @@ spec:
       from person p
       join customer c on c.person_id = p.id
       where c.lifetime_orders >= 1
-        and c.marketing_consent_email = true       -- B2C: consentimiento obligatorio
+        and c.marketing_consent_email = true       -- B2C: consent is mandatory
         and c.predicted_churn_risk between 0.3 and 0.85
         and p.country in ('ES','PT','FR','IT')
 
   enrich:
     person:
-      require: []                                   # dato propio: coste de enriquecimiento cero
+      require: []                                   # first-party data: zero enrichment cost
       skip_if_known: true
 
   score:
@@ -73,7 +74,7 @@ spec:
   experiment:
     holdout_pct: 10
     unit: person
-    primary_metric: net_revenue_28d          # neto de descuento: evita canibalización
+    primary_metric: net_revenue_28d          # net of discount: avoids cannibalisation
     guardrail_metrics: [unsubscribe_rate, margin_per_order]
 
   budget: {monthly_credits: 8000, max_cost_per_person: 0.08, on_exceed: throttle}

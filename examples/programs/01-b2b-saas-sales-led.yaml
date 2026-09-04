@@ -1,14 +1,14 @@
-# Arquetipo: B2B SaaS sales-led · ACV 25-80k€ · ciclo 60-120d · UE+US
-# Tesis de la jugada: una ronda Serie A + contratación acelerada en el departamento
-# comprador es el predictor de timing más fiable en software B2B de ticket medio.
+# Archetype: B2B SaaS sales-led · ACV EUR 25-80k · 60-120 day cycle · EU+US
+# Play thesis: a recent Series A combined with accelerated hiring in the buying
+# department is the most reliable timing predictor in mid-ticket B2B software.
 apiVersion: zolts/v1
 kind: Program
 metadata:
   key: series-a-hiring-surge
   version: 2.1.0
-  owner: gtm-eng@empresa.com
+  owner: gtm-eng@company.com
   blueprint: b2b-saas-sales-led
-  description: Serie A reciente + apertura de roles en RevOps/Data => outbound multihilo
+  description: Recent Series A plus RevOps/Data roles opened => multithreaded outbound
 spec:
   trigger:
     events:
@@ -16,11 +16,11 @@ spec:
         where: "payload.stage in ('series_a','series_b') and payload.amount_usd >= 5000000"
       - signal: hiring.role_opened
         where: "payload.department in ('revops','data','growth') and payload.count >= 2"
-    combine: any_within        # cualquiera de las dos dentro de la ventana
+    combine: any_within        # either signal inside the window
     window: 30d
     dedupe:
       key: account_id
-      cooldown: 180d           # nunca reenrolar la misma cuenta antes de 6 meses
+      cooldown: 180d           # never re-enroll the same account within 6 months
 
   audience:
     sql: |
@@ -39,7 +39,7 @@ spec:
     person:
       buying_roles: [economic, champion, technical]
       require: [work_email, linkedin_urn, title]
-      accuracy_sla: 0.95            # el router elige waterfall para cumplirlo
+      accuracy_sla: 0.95            # the router picks a waterfall that meets this
       max_contacts_per_account: 4
       max_cost_per_contact: 0.60
 
@@ -47,13 +47,13 @@ spec:
     model: pit_r_v3                 # Fit x Intent x Timing x Reachability
     weights: {fit: 0.35, intent: 0.30, timing: 0.25, reachability: 0.10}
     explain: true
-    floor: 55                       # por debajo, no se enrola
+    floor: 55                       # below this, no enrollment
 
   route:
     tiers:
       - key: t1
         when: "score >= 80"
-        capacity_per_week: 25       # capacidad humana real del equipo
+        capacity_per_week: 25       # the team's real human capacity
       - key: t2
         when: "score >= 65"
         capacity_per_week: 200
@@ -64,7 +64,7 @@ spec:
   plays:
     t1:
       template: exec-1to1
-      auto_send: false              # revisión humana obligatoria en tier 1
+      auto_send: false              # human review mandatory on tier 1
       steps:
         - {step: research_brief, agent: researcher, output: account_dossier}
         - {step: task_ae, channel: task, sla_hours: 24}

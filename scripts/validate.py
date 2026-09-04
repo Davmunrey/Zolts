@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Valida los programas GTM contra el JSON Schema de Zolts.
+"""Validate GTM programs against the Zolts JSON Schema.
 
-Uso: python3 scripts/validate.py [ruta_glob]
-Requiere: pyyaml, jsonschema
+Usage: python3 scripts/validate.py [glob_path]
+Requires: pyyaml, jsonschema
 """
 import glob
 import json

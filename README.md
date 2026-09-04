@@ -1,50 +1,54 @@
 # Zolts — GTM Operating System
 
-**BLUF:** Zolts es el *sistema de ejecución* de Go-To-Market: una capa componible, nativa de warehouse y gobernada, que convierte **señales → decisiones → jugadas → ingresos medidos por incrementalidad**. No es otro CRM (sistema de registro) ni otro AI SDR (commodity). Es el runtime donde vive la lógica GTM de la compañía, versionada, testeable y auditable.
+**Bottom line:** Zolts is the *execution system* for go-to-market — a composable, warehouse-native, governed layer that turns **signals into decisions, decisions into plays, and plays into revenue measured by incrementality**. It is not another CRM (system of record) and not another AI SDR (commodity). It is the runtime where a company's GTM logic lives: versioned, testable, auditable.
 
-| Dimensión | Posición |
+| Dimension | Position |
 |---|---|
-| Categoría | GTM Operating System (runtime de ejecución + gobierno) |
-| Primitiva central | **GTM Program** = `señal → segmento → enriquecimiento → decisión → jugada → canal → medición` |
-| Adaptabilidad | **Blueprints** por arquetipo de empresa (config, no fork de código) |
-| Moat | Loop de outcomes propietario + capa de routing de datos + motor de políticas por jurisdicción |
-| Modelo económico | Plataforma + asientos + créditos (tarifa en tres partes), GM objetivo 75-80% |
+| Category | GTM Operating System (execution runtime + governance) |
+| Core primitive | **GTM Program** = `signal → segment → enrichment → decision → play → channel → measurement` |
+| Adaptability | **Blueprints** per company archetype (configuration, never a per-customer fork) |
+| Moat | Proprietary outcome loop + data routing layer + jurisdictional policy engine |
+| Business model | Platform + seats + credits (three-part tariff), target gross margin 75-80% |
 
-## Índice del plan
+## Plan index
 
-| # | Documento | Qué resuelve |
+| # | Document | What it settles |
 |---|---|---|
-| 00 | [Resumen ejecutivo](docs/00-resumen-ejecutivo.md) | Tesis, trade-offs, decisión |
-| 01 | [Mercado y posicionamiento](docs/01-mercado-y-posicionamiento.md) | Categoría, competencia, wedge, Build/Buy/Partner |
-| 02 | [Arquitectura de producto](docs/02-arquitectura.md) | Capas, runtime, stack, ADRs |
-| 03 | [Modelo de datos](docs/03-modelo-de-datos.md) | Entidades canónicas, identity graph, multi-tenancy |
-| 04 | [DSL de Programas GTM](docs/04-dsl-programas-gtm.md) | Config-as-code, versionado, testing |
-| 05 | [Blueprints y adaptabilidad](docs/05-blueprints-adaptabilidad.md) | 10 arquetipos de empresa, resolver, overlays |
-| 06 | [Librería de señales](docs/06-libreria-de-senales.md) | Catálogo, decay, SLA de time-to-touch |
-| 07 | [Motor de datos y waterfall](docs/07-motor-de-datos-waterfall.md) | Routing multi-proveedor, optimizador de coste |
-| 08 | [Capa de agentes IA](docs/08-capa-de-agentes-ia.md) | Roles, guardrails, evals, gating de auto-envío |
-| 09 | [Ejecución y deliverability](docs/09-ejecucion-y-deliverability.md) | Canales, capacidad de envío, reputación |
-| 10 | [Medición e incrementalidad](docs/10-medicion-e-incrementalidad.md) | Holdouts por defecto, P&L por jugada |
-| 11 | [Compliance y gobierno](docs/11-compliance-y-gobierno.md) | GDPR/ePrivacy/AI Act, policy engine |
-| 12 | [Pricing y unit economics](docs/12-pricing-y-unit-economics.md) | Tarifa, COGS, márgenes, expansión |
-| 13 | [Roadmap 90 días](docs/13-roadmap-90-dias.md) | 3 fases con criterios de salida |
-| 14 | [KPIs](docs/14-kpis.md) | Leading/lagging con objetivos |
-| 15 | [Riesgos y deuda](docs/15-riesgos-y-deuda.md) | Commoditización, mitigaciones |
-| 16 | [Equipo y operación](docs/16-equipo-y-operacion.md) | Org, burn, forward-deployed |
-| 17 | [Secuencia de comprador](docs/17-secuencia-de-comprador.md) | Operador y CFO: por qué ambos, en dos actos |
-| 18 | [Registro de decisiones](docs/18-registro-de-decisiones.md) | 136 decisiones con default; 12 bloqueantes |
+| 00 | [Executive summary](docs/00-executive-summary.md) | Thesis, trade-offs, decision |
+| 01 | [Market and positioning](docs/01-market-and-positioning.md) | Category, competition, wedge, Build/Buy/Partner |
+| 02 | [Architecture](docs/02-architecture.md) | Layers, runtime, stack, ADRs |
+| 03 | [Data model](docs/03-data-model.md) | Canonical entities, identity graph, multi-tenancy |
+| 04 | [GTM Program DSL](docs/04-gtm-program-dsl.md) | Config-as-code, versioning, testing |
+| 05 | [Blueprints and adaptability](docs/05-blueprints-and-adaptability.md) | 10 company archetypes, resolver, overlays |
+| 06 | [Signal library](docs/06-signal-library.md) | Catalogue, decay, time-to-touch SLA |
+| 07 | [Data engine and waterfall](docs/07-data-engine-and-waterfall.md) | Multi-provider routing, cost optimiser |
+| 08 | [AI agent layer](docs/08-ai-agent-layer.md) | Roles, guardrails, evals, auto-send gating |
+| 09 | [Execution and deliverability](docs/09-execution-and-deliverability.md) | Channels, sending capacity, reputation |
+| 10 | [Measurement and incrementality](docs/10-measurement-and-incrementality.md) | Holdouts by default, per-play P&L |
+| 11 | [Compliance and governance](docs/11-compliance-and-governance.md) | GDPR/ePrivacy/AI Act, policy engine |
+| 12 | [Pricing and unit economics](docs/12-pricing-and-unit-economics.md) | Tariff, COGS, margins, expansion |
+| 13 | [90-day roadmap](docs/13-90-day-roadmap.md) | Three phases with binary exit criteria |
+| 14 | [KPIs](docs/14-kpis.md) | Leading/lagging with targets |
+| 15 | [Risks and debt](docs/15-risks-and-debt.md) | Commoditisation, mitigations |
+| 16 | [Team and operations](docs/16-team-and-operations.md) | Org, burn, forward-deployed model |
+| 17 | [Buyer sequencing](docs/17-buyer-sequencing.md) | Operator and CFO: both, in two acts |
+| 18 | [Decision register](docs/18-decision-register.md) | 136 decisions with defaults; 12 blocking |
 
-## Artefactos técnicos
+## Technical artefacts
 
-- `examples/programs/*.yaml` — 4 programas reales (PLG, Enterprise, Ecommerce, Servicios locales)
-- `examples/schema/zolts-program.schema.json` — JSON Schema del DSL
-- `examples/sql/schema.sql` — DDL del núcleo canónico
-- `scripts/validate.py` — valida los programas contra el esquema (`python3 scripts/validate.py`), ejecutado en CI
+- `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
+- `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
+- `examples/sql/schema.sql` — reference DDL for the canonical core
+- `scripts/validate.py` — validates programs against the schema (`python3 scripts/validate.py`), enforced in CI
 
-## Estado de definición
+## Definition status
 
-`docs/18` es el registro vivo: **124 decisiones tienen recomendación por defecto y se ejecutan salvo contradicción; 12 son bloqueantes** y dependen de hechos que solo el fundador conoce (red, capital, apetito de riesgo). Las decisiones ya cerradas en el resto de documentos no se reabren sin cambiar el registro.
+`docs/18` is the living register: **124 decisions carry a default and execute unless contradicted; 12 are blocking** and depend on facts only the founder holds (network, capital, risk appetite). A decision settled elsewhere in these documents is not reopened without amending the register.
 
-## Supuestos declarados
+## Conventions
 
-Este plan asume: (1) equipo fundador con capacidad técnica sénior, (2) 6-9 meses de runway inicial (~€700k-1M), (3) mercado inicial Europa + LATAM con expansión US, (4) sin restricción de exclusividad con ningún proveedor de datos. Cambiar cualquiera de estos altera la fase 1 del roadmap, no la tesis.
+See [CLAUDE.md](CLAUDE.md). The repository is English-only — product, code, documentation, commits and pull requests.
+
+## Stated assumptions
+
+This plan assumes: (1) a founding team with senior engineering capability, (2) 6-9 months of initial runway (~€700k-1M), (3) an initial market of Europe plus LATAM with later US expansion, (4) no exclusivity commitment to any data provider. Changing any of these alters phase 1 of the roadmap, not the thesis.

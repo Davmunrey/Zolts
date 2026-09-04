@@ -15,5 +15,5 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install pyyaml jsonschema
-      - name: Validar programas GTM contra el JSON Schema
+      - name: Validate GTM programs against the JSON Schema
         run: python3 scripts/validate.py

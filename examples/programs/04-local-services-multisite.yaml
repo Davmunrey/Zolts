@@ -1,11 +1,11 @@
-# Arquetipo: servicios locales / franquicias multisede (clínicas, talleres, retail).
-# Tesis: la señal útil no es intent digital sino cambio operativo observable
-# (nueva sede, caída de reseñas, cambio de gestor). Territorio y capacidad
-# comercial local son la restricción real.
+# Archetype: local services / multi-site franchises (clinics, workshops, retail).
+# Thesis: the useful signal is not digital intent but observable operational
+# change (a new site, a drop in reviews, a change of manager). Territory and
+# local sales capacity are the real constraint.
 apiVersion: zolts/v1
 kind: Program
 metadata:
-  key: nueva-sede-y-reputacion
+  key: new-site-and-reputation
   version: 1.0.0
   blueprint: local-services-multisite
 spec:
@@ -47,7 +47,7 @@ spec:
     floor: 50
 
   route:
-    strategy: territory_round_robin       # respeta el reparto geográfico del equipo
+    strategy: territory_round_robin       # respects the team's geographic split
     tiers:
       - {key: t1, when: "score >= 70", capacity_per_week_per_rep: 15}
       - {key: t2, when: "score >= 50", capacity_per_week_per_rep: 60}
@@ -58,7 +58,7 @@ spec:
       auto_send: false
       steps:
         - {step: research_brief, agent: researcher, output: location_dossier}
-        - {step: call_task, channel: voice, sla_hours: 8}     # en local, el teléfono gana
+        - {step: call_task, channel: voice, sla_hours: 8}     # in local services, the phone wins
         - {step: whatsapp_followup, channel: whatsapp, wait: 1d}
         - {step: email_proposal, channel: email, wait: 3d}
     t2:
@@ -75,7 +75,7 @@ spec:
     overrides:
       quiet_hours: {start: "20:00", end: "09:00", tz: contact_local}
       channels_require_basis: {voice: legitimate_interest, whatsapp: consent}
-      lists_check: [robinson_list_es]      # exclusión publicitaria obligatoria en ES
+      lists_check: [robinson_list_es]      # mandatory advertising suppression list in ES
 
   experiment:
     holdout_pct: 10

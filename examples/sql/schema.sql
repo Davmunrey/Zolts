@@ -1,5 +1,5 @@
--- Zolts · núcleo canónico (extracto de referencia, Postgres 16)
--- Todas las tablas con RLS por tenant_id.
+-- Zolts · canonical core (reference extract, Postgres 16)
+-- Every table carries row-level security scoped by tenant_id.
 
 create extension if not exists "uuid-ossp";
 create extension if not exists vector;
@@ -8,7 +8,7 @@ create table tenant (
   id              uuid primary key default uuid_generate_v4(),
   name            text not null,
   region          text not null check (region in ('eu','us','apac')),
-  blueprint_id    text not null,                 -- arquetipo resuelto
+  blueprint_id    text not null,                 -- resolved company archetype
   compliance_tier text not null default 'standard',
   created_at      timestamptz not null default now()
 );
@@ -17,13 +17,13 @@ create table account (
   id            uuid primary key default uuid_generate_v4(),
   tenant_id     uuid not null references tenant(id),
   domain        text,
-  legal_id      text,                            -- VAT/CIF/EIN
+  legal_id      text,                            -- VAT / EIN / national tax id
   name          text not null,
-  country       text,                            -- ISO-3166, dirige el policy engine
+  country       text,                            -- ISO-3166; drives the policy engine
   employee_band text,
-  industry_code text,                            -- NACE/SIC/NAICS normalizado
+  industry_code text,                            -- normalised NACE/SIC/NAICS
   crm_id        text,
-  attributes    jsonb not null default '{}',     -- validado contra tenant_schema
+  attributes    jsonb not null default '{}',     -- validated against tenant_schema
   confidence    numeric(4,3) not null default 1.0,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
@@ -38,7 +38,7 @@ create table person (
   email_status   text check (email_status in ('verified','risky','invalid','unknown')),
   linkedin_urn   text,
   full_name      text,
-  country        text,                           -- jurisdicción efectiva del contacto
+  country        text,                           -- effective jurisdiction of the contact
   consent_state  jsonb not null default '{}',    -- {email:{basis,ts,source}, phone:{...}}
   attributes     jsonb not null default '{}',
   created_at     timestamptz not null default now()
@@ -55,7 +55,7 @@ create table membership (
   department  text,
   buying_role text,                              -- champion|economic|technical|user|blocker
   started_at  date,
-  ended_at    date,                              -- null = vigente; habilita job-change signals
+  ended_at    date,                              -- null = current; enables job-change signals
   unique (tenant_id, person_id, account_id, started_at)
 );
 
@@ -64,9 +64,9 @@ create table signal (
   tenant_id    uuid not null references tenant(id),
   entity_type  text not null check (entity_type in ('account','person')),
   entity_id    uuid not null,
-  type         text not null,                    -- ver docs/06
-  strength     numeric(4,3) not null,            -- 0..1 normalizado
-  half_life_h  int not null,                     -- decay del valor
+  type         text not null,                    -- see docs/06
+  strength     numeric(4,3) not null,            -- normalised 0..1
+  half_life_h  int not null,                     -- value decay
   source       text not null,
   legal_basis  text not null,                    -- legitimate_interest|consent|contract
   payload      jsonb not null default '{}',
@@ -81,7 +81,7 @@ create table program (
   tenant_id     uuid not null references tenant(id),
   key           text not null,
   version       text not null,                   -- semver
-  spec          jsonb not null,                  -- DSL compilado
+  spec          jsonb not null,                  -- compiled DSL
   spec_hash     text not null,
   status        text not null check (status in ('draft','staged','live','paused','archived')),
   created_by    text,
@@ -113,7 +113,7 @@ create table touch (
   direction       text not null default 'out',
   step_key        text,
   idempotency_key text not null,
-  content_ref     uuid,                           -- contenido generado + trazabilidad de modelo
+  content_ref     uuid,                           -- generated content plus model traceability
   provider        text,
   status          text not null,                  -- queued|sent|delivered|bounced|opened|replied|failed
   cost_micros     bigint not null default 0,
@@ -147,19 +147,19 @@ create table policy_decision (
 );
 
 create table cost_event (
-  id            uuid primary key default uuid_generate_v4(),
-  tenant_id     uuid not null references tenant(id),
-  program_id    uuid references program(id),
-  kind          text not null,                    -- enrichment|llm|send|ads|storage
-  provider      text,
-  units         numeric not null,
-  cost_micros   bigint not null,
+  id             uuid primary key default uuid_generate_v4(),
+  tenant_id      uuid not null references tenant(id),
+  program_id     uuid references program(id),
+  kind           text not null,                   -- enrichment|llm|send|ads|storage
+  provider       text,
+  units          numeric not null,
+  cost_micros    bigint not null,
   billed_credits numeric not null default 0,
-  occurred_at   timestamptz not null default now()
+  occurred_at    timestamptz not null default now()
 );
 create index on cost_event (tenant_id, program_id, occurred_at);
 
--- RLS (patrón aplicado a todas las tablas)
+-- Row-level security (pattern applied to every table)
 alter table account enable row level security;
 create policy tenant_isolation on account
   using (tenant_id = current_setting('zolts.tenant_id')::uuid);

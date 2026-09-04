@@ -1,6 +1,6 @@
-# Arquetipo: SaaS PLG con motion PLS (product-led sales)
-# Tesis: el mejor dato de intent es el uso del propio producto. La jugada no es
-# "vender", es interceptar el momento en que el equipo choca con un límite.
+# Archetype: PLG SaaS running a PLS (product-led sales) motion
+# Thesis: the best intent data is usage of your own product. The play is not
+# "sell", it is intercepting the moment a team hits a limit.
 apiVersion: zolts/v1
 kind: Program
 metadata:
@@ -30,12 +30,12 @@ spec:
 
   enrich:
     person:
-      # en PLG ya tenemos el usuario; falta el comprador económico
+      # in PLG the user is already known; the economic buyer is not
       buying_roles: [economic]
       require: [work_email, title]
       accuracy_sla: 0.92
       max_contacts_per_account: 2
-      skip_if_known: true            # nunca pagar por dato que ya está en el producto
+      skip_if_known: true            # never pay for data the product already holds
 
   score:
     formula: |
@@ -57,7 +57,7 @@ spec:
       auto_send: false
       steps:
         - {step: in_app_offer, channel: product, template: upgrade-consult}
-        - {step: task_ae, channel: task, sla_hours: 4}    # velocidad = todo en PLS
+        - {step: task_ae, channel: task, sla_hours: 4}    # in PLS, speed is everything
         - {step: email_champion, channel: email, wait: 1d, template: usage-evidence}
     t2:
       template: pls-automated
@@ -71,12 +71,12 @@ spec:
   policy:
     inherit: tenant_default
     overrides:
-      # usuarios de producto: base contractual, no interés legítimo
+      # product users: contractual basis, not legitimate interest
       channels_require_basis: {email: contract, product: contract}
       max_touches_per_person_per_week: 2
 
   experiment:
-    holdout_pct: 15                 # holdout alto: el PLG convierte solo, hay que probar el lift
+    holdout_pct: 15                 # high holdout: PLG converts on its own, the lift must be proven
     unit: account
     primary_metric: paid_conversion_30d
     guardrail_metrics: [product_churn_30d, unsubscribe_rate]
