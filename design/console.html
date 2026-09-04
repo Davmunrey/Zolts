@@ -1,0 +1,836 @@
+<title>Zolts Program Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;450;500&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+<style>
+/* Zolts product surface — implements DESIGN.md.
+   Single theme by design rule: "Don't ship a light-mode product surface."
+   Every colour is painted explicitly so the page holds on any host ground. */
+:root{
+  --canvas:#08090a; --surface-1:#0e1011; --surface-2:#141618; --surface-3:#1a1d1f; --surface-raised:#1f2325;
+  --hairline:#1f2226; --hairline-strong:#2b2f34; --hairline-focus:#4a5058;
+  --ink:#f2f4f5; --ink-muted:#c2c8cc; --ink-subtle:#8b9297; --ink-tertiary:#5c6367; --ink-inverse:#08090a;
+  --inverse-canvas:#ffffff; --inverse-hover:#e3e6e8;
+  --lift:#3ecf7e; --lift-dim:#153d28;
+  --control:#7d8590; --control-dim:#22262a;
+  --deny:#f4645a; --deny-dim:#3d1a18;
+  --review:#d9a441; --review-dim:#3a2c11;
+  --live:#3bc4d4; --live-dim:#0f3238;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r-xs:3px; --r-sm:5px; --r-md:7px; --r-lg:10px; --r-xl:14px;
+  --d-instant:90ms; --d-fast:150ms; --d-base:220ms; --d-slow:380ms;
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--canvas); color:var(--ink);
+  font-family:var(--sans); font-size:13px; line-height:1.55; letter-spacing:-.06px;
+  -webkit-font-smoothing:antialiased;
+}
+/* Every numeral in the product is mono and tabular. A figure that jitters
+   between rows is a figure the CFO stops trusting. */
+.num,.metric,.metric-xl,code,pre,.mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--hairline-focus); outline-offset:2px; border-radius:var(--r-xs)}
+button{font:inherit; color:inherit; background:none; border:0; cursor:pointer}
+
+/* ── shell ───────────────────────────────────────────────────────── */
+.app{display:grid; grid-template-columns:224px minmax(0,1fr); min-height:100vh}
+.sidebar{
+  border-right:1px solid var(--hairline); background:var(--canvas);
+  padding:14px 10px; display:flex; flex-direction:column; gap:22px;
+}
+.brand{display:flex; align-items:center; gap:9px; padding:2px 6px 0}
+.mark{width:18px;height:18px;flex:none}
+.wordmark{font-weight:600; font-size:14px; letter-spacing:-.4px; color:var(--ink)}
+.ws{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:6px 8px; border:1px solid var(--hairline); border-radius:var(--r-sm);
+  background:var(--surface-1); color:var(--ink-muted); font-size:12px; width:100%;
+  transition:background var(--d-instant) var(--ease), border-color var(--d-instant) var(--ease);
+}
+.ws:hover{background:var(--surface-2); border-color:var(--hairline-strong)}
+.nav{display:flex; flex-direction:column; gap:1px}
+.nav-label{
+  font-size:11px; font-weight:550; letter-spacing:.5px; text-transform:uppercase;
+  color:var(--ink-tertiary); padding:0 8px 6px;
+}
+.nav a{
+  display:flex; align-items:center; gap:9px; padding:6px 10px; height:28px;
+  border-radius:var(--r-sm); color:var(--ink-subtle); text-decoration:none; font-size:13px;
+  transition:background var(--d-instant) var(--ease), color var(--d-instant) var(--ease);
+}
+.nav a:hover{background:var(--surface-2); color:var(--ink-muted)}
+.nav a[aria-current="page"]{background:var(--surface-2); color:var(--ink)}
+.nav svg{width:14px;height:14px;flex:none;opacity:.85}
+.nav .count{margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--ink-tertiary)}
+.sidebar-foot{margin-top:auto; padding:0 8px}
+.kbd{
+  display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-tertiary);
+}
+.kbd b{
+  font:450 10px/1 var(--mono); color:var(--ink-subtle); background:var(--surface-2);
+  border:1px solid var(--hairline); border-bottom-width:2px; border-radius:var(--r-xs); padding:3px 5px;
+}
+
+.main{min-width:0; display:flex; flex-direction:column}
+
+/* ── top bar ─────────────────────────────────────────────────────── */
+.topbar{
+  border-bottom:1px solid var(--hairline); padding:14px 24px 0;
+  display:flex; flex-direction:column; gap:14px; background:var(--canvas);
+}
+.crumbs{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-tertiary)}
+.crumbs span{color:var(--ink-tertiary)}
+.title-row{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+h1{
+  margin:0; font-size:24px; font-weight:550; letter-spacing:-.6px; line-height:1.2;
+  color:var(--ink); text-wrap:balance;
+}
+.ver{font-family:var(--mono); font-size:12px; color:var(--ink-subtle); padding-top:4px}
+.spacer{flex:1}
+.pill{
+  display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border-radius:9999px;
+  background:var(--surface-3); color:var(--ink-muted); font-size:12px; font-weight:450;
+}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--lift);flex:none}
+.dot.live{background:var(--live); animation:pulse 2.4s var(--ease) infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.btn{
+  border-radius:var(--r-md); padding:7px 13px; font-size:13px; font-weight:500;
+  transition:background var(--d-instant) var(--ease), transform var(--d-instant) var(--ease);
+}
+.btn:active{transform:scale(.985)}
+.btn-primary{background:var(--inverse-canvas); color:var(--ink-inverse)}
+.btn-primary:hover{background:var(--inverse-hover)}
+.btn-secondary{background:var(--surface-2); color:var(--ink); border:1px solid var(--hairline)}
+.btn-secondary:hover{background:var(--surface-3); border-color:var(--hairline-strong)}
+.tabs{display:flex; gap:2px}
+.tab{
+  padding:8px 11px 11px; font-size:13px; color:var(--ink-subtle); position:relative;
+  transition:color var(--d-instant) var(--ease);
+}
+.tab:hover{color:var(--ink-muted)}
+.tab[aria-selected="true"]{color:var(--ink)}
+.tab[aria-selected="true"]::after{
+  content:""; position:absolute; left:0; right:0; bottom:-1px; height:1px; background:var(--ink);
+}
+
+/* ── content ─────────────────────────────────────────────────────── */
+.content{padding:22px 24px 56px; display:flex; flex-direction:column; gap:18px; max-width:1360px}
+.panel{
+  background:var(--surface-1); border:1px solid var(--hairline); border-radius:var(--r-lg); padding:20px;
+}
+.panel-head{display:flex; align-items:baseline; gap:10px; margin-bottom:16px}
+.panel-head h2{margin:0; font-size:14px; font-weight:550; letter-spacing:-.2px; color:var(--ink)}
+.panel-head p{margin:0; font-size:12px; color:var(--ink-tertiary)}
+.eyebrow{
+  font-size:11px; font-weight:550; letter-spacing:.5px; text-transform:uppercase; color:var(--ink-tertiary);
+}
+
+.metrics{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px}
+.tile{
+  background:var(--surface-1); border:1px solid var(--hairline); border-radius:var(--r-lg);
+  padding:16px 18px; display:flex; flex-direction:column; gap:9px; min-width:0;
+}
+.tile .val{font-family:var(--mono); font-size:26px; font-weight:450; letter-spacing:-1.1px; line-height:1.05}
+.tile .sub{font-size:12px; color:var(--ink-subtle); display:flex; align-items:center; gap:6px}
+.tile .sub .sep{color:var(--ink-tertiary)}
+
+/* ── verdict: the centrepiece ────────────────────────────────────── */
+.verdict{display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:0; overflow:hidden; padding:0}
+.verdict-left{padding:20px; border-right:1px solid var(--hairline); min-width:0}
+.verdict-right{padding:20px; background:var(--surface-2); min-width:0}
+.arm{display:flex; flex-direction:column; gap:7px; padding:13px 0}
+.arm + .arm{border-top:1px solid var(--hairline)}
+.arm-top{display:flex; align-items:baseline; gap:9px}
+.arm-name{font-size:13px; font-weight:500; color:var(--ink)}
+.arm-n{font-family:var(--mono); font-size:12px; color:var(--ink-tertiary)}
+.arm-rate{margin-left:auto; font-family:var(--mono); font-size:19px; letter-spacing:-.5px}
+.bar{height:6px; border-radius:9999px; background:var(--surface-3); overflow:hidden}
+.bar i{display:block; height:100%; border-radius:9999px; transition:width var(--d-slow) var(--ease)}
+.arm.treatment .bar i{background:var(--lift)}
+.arm.control .bar i{background:var(--control)}
+.arm.treatment .arm-rate{color:var(--lift)}
+.arm.control .arm-rate{color:var(--control)}
+
+.verdict-banner{
+  display:flex; align-items:flex-start; gap:11px; padding:13px 14px; border-radius:var(--r-md);
+  border:1px solid var(--hairline-strong); background:var(--surface-1); margin-top:14px;
+  transition:border-color var(--d-base) var(--ease), background var(--d-base) var(--ease);
+}
+.verdict-banner[data-state="pass"]{border-color:#245a3d; background:var(--lift-dim)}
+.verdict-banner[data-state="fail"]{border-color:#5c2b26; background:var(--deny-dim)}
+.vb-icon{width:16px;height:16px;flex:none;margin-top:1px}
+.verdict-banner[data-state="pass"] .vb-title{color:var(--lift)}
+.verdict-banner[data-state="fail"] .vb-title{color:var(--deny)}
+.vb-title{font-size:13px; font-weight:550; margin:0 0 3px}
+.vb-body{margin:0; font-size:12px; color:var(--ink-muted); line-height:1.5}
+
+.slider-row{display:flex; align-items:center; gap:12px; margin-top:4px}
+.slider-row label{font-size:12px; color:var(--ink-subtle); white-space:nowrap}
+input[type=range]{
+  -webkit-appearance:none; appearance:none; flex:1; height:20px; background:transparent; cursor:grab;
+}
+input[type=range]:active{cursor:grabbing}
+input[type=range]::-webkit-slider-runnable-track{height:3px; border-radius:9999px; background:var(--surface-3)}
+input[type=range]::-moz-range-track{height:3px; border-radius:9999px; background:var(--surface-3)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:13px; height:13px; margin-top:-5px; border-radius:50%;
+  background:var(--ink); border:2px solid var(--canvas);
+  transition:transform var(--d-instant) var(--ease);
+}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
+input[type=range]::-moz-range-thumb{
+  width:13px;height:13px;border-radius:50%;background:var(--ink);border:2px solid var(--canvas);
+}
+.stat-grid{display:grid; grid-template-columns:1fr auto; gap:9px 16px; margin-top:15px; font-size:12px}
+.stat-grid dt{color:var(--ink-subtle); min-width:0}
+.stat-grid dd{margin:0; font-family:var(--mono); color:var(--ink-muted); text-align:right; white-space:nowrap}
+.stat-grid dd.hi{color:var(--ink)}
+
+/* ── tables ──────────────────────────────────────────────────────── */
+.two-col{display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:18px}
+.scroll{overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:13px}
+th{
+  text-align:left; font-size:11px; font-weight:550; letter-spacing:.5px; text-transform:uppercase;
+  color:var(--ink-tertiary); padding:0 12px 8px; white-space:nowrap; border-bottom:1px solid var(--hairline);
+}
+th.r,td.r{text-align:right}
+td{
+  padding:0 12px; height:34px; color:var(--ink-muted); border-bottom:1px solid var(--hairline);
+  white-space:nowrap;
+}
+tbody tr{transition:background var(--d-instant) var(--ease)}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:0}
+tr.total td{color:var(--ink); font-weight:500; border-top:1px solid var(--hairline-strong); border-bottom:0}
+td.n{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink)}
+td.dim{color:var(--ink-tertiary)}
+.trace-rule{font-family:var(--mono); font-size:11.5px; color:var(--ink-tertiary)}
+.chip{
+  display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:var(--r-sm);
+  font-size:11.5px; font-weight:450; white-space:nowrap;
+}
+.chip.allow{background:var(--surface-3); color:var(--ink-subtle)}
+.chip.deny{background:var(--deny-dim); color:var(--deny)}
+.chip.review{background:var(--review-dim); color:var(--review)}
+.chip svg{width:10px;height:10px;flex:none}
+
+.seg{display:inline-flex; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-md); padding:2px; gap:2px}
+.seg button{
+  padding:4px 9px; border-radius:var(--r-sm); font-size:12px; color:var(--ink-subtle);
+  font-family:var(--mono); transition:background var(--d-instant) var(--ease), color var(--d-instant) var(--ease);
+}
+.seg button:hover{color:var(--ink-muted)}
+.seg button[aria-pressed="true"]{background:var(--surface-raised); color:var(--ink)}
+
+pre{
+  margin:0; background:var(--canvas); border:1px solid var(--hairline); border-radius:var(--r-md);
+  padding:16px; font-size:12.5px; line-height:1.6; color:var(--ink-muted); overflow-x:auto;
+}
+.k{color:var(--ink-subtle)} .s{color:var(--lift)} .n2{color:var(--live)} .c{color:var(--ink-tertiary)}
+
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* Panels lay out identically; `hidden` wins over the layout rule so the tab
+   handler only has to toggle the attribute. */
+[role="tabpanel"]{display:flex; flex-direction:column; gap:18px}
+[role="tabpanel"][hidden],[hidden]{display:none !important}
+
+/* enter with movement; exit without */
+.rise{animation:rise var(--d-base) var(--ease) both}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+@media (max-width:1180px){
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .two-col{grid-template-columns:minmax(0,1fr)}
+  .verdict{grid-template-columns:minmax(0,1fr)}
+  .verdict-left{border-right:0; border-bottom:1px solid var(--hairline)}
+}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .content{padding:18px 16px 48px}
+  .topbar{padding:14px 16px 0}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:0ms !important; animation-iteration-count:1 !important; transition-duration:0ms !important}
+  .rise{animation:none}
+}
+</style>
+
+<div class="app">
+  <aside class="sidebar">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <path d="M3 3h12L3 15h12" stroke="#f2f4f5" stroke-width="1.9" stroke-linecap="square"/>
+        </svg>
+        <span class="wordmark">Zolts</span>
+      </div>
+      <button class="ws">
+        <span>Northbeam GmbH</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+          <path d="M2.5 4L5 6.5 7.5 4" stroke="#8b9297" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <nav class="nav" aria-label="Primary">
+      <p class="nav-label">Run</p>
+      <a href="#" aria-current="page">
+        <svg viewBox="0 0 14 14" fill="none"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 7h5M7 4.5v5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Programs <span class="count">7</span>
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M1.5 9.5l3-4 3 2.5 5-6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Signals <span class="count">15</span>
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.2"/><path d="M7 4v3.2l2 1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Queue <span class="count">42</span>
+      </a>
+      <p class="nav-label" style="padding-top:16px">Prove</p>
+      <a href="#">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M2 12V6M6 12V2M10 12V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Experiments
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M2.5 11.5h9M4 9V5.5M7 9V3M10 9V6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Spend
+      </a>
+      <p class="nav-label" style="padding-top:16px">Govern</p>
+      <a href="#">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M7 1.8l4.5 2v3.4c0 2.6-1.9 4.4-4.5 5.1-2.6-.7-4.5-2.5-4.5-5.1V3.8l4.5-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        Policy
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M3 2.5h8v9H3z" stroke="currentColor" stroke-width="1.2"/><path d="M5 5.5h4M5 8h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Audit log
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <span class="kbd"><b>⌘</b><b>K</b> Command</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumbs">
+        <span>Programs</span>
+        <svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true"><path d="M3.4 1.8L6 4.5 3.4 7.2" stroke="#5c6367" stroke-width="1.1" stroke-linecap="round"/></svg>
+        <span>Sales-led</span>
+      </div>
+      <div class="title-row">
+        <h1>Series A hiring surge</h1>
+        <span class="ver">v2.1.0 · a4f9c21e</span>
+        <span class="pill"><span class="dot"></span>Live</span>
+        <span class="pill"><span class="dot live"></span>p95 41 min</span>
+        <span class="spacer"></span>
+        <button class="btn btn-secondary">Open in editor</button>
+        <button class="btn btn-primary">Publish 2.2.0</button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Program views">
+        <button class="tab" role="tab" aria-selected="true" aria-controls="p-overview" id="t-overview">Evidence</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="p-program" id="t-program">Program</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="p-trace" id="t-trace">Policy trace</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ── EVIDENCE ─────────────────────────────────────────── -->
+      <section id="p-overview" role="tabpanel" aria-labelledby="t-overview">
+
+        <div class="metrics">
+          <div class="tile rise" style="animation-delay:0ms">
+            <span class="eyebrow">Incremental pipeline</span>
+            <span class="val" data-count="1247000" data-prefix="€" data-format="thousands">€0</span>
+            <span class="sub">Attributable to holdout lift <span class="sep">·</span> 90 d</span>
+          </div>
+          <div class="tile rise" style="animation-delay:24ms">
+            <span class="eyebrow">Cost per incremental meeting</span>
+            <span class="val" data-count="147" data-prefix="€">€0</span>
+            <span class="sub">Data, AI, sends, human time</span>
+          </div>
+          <div class="tile rise" style="animation-delay:48ms">
+            <span class="eyebrow">Accounts enrolled</span>
+            <span class="val" data-count="1284">0</span>
+            <span class="sub"><span id="m-split">1156 treatment · 128 control</span></span>
+          </div>
+          <div class="tile rise" style="animation-delay:72ms">
+            <span class="eyebrow">Signal → action, p95</span>
+            <span class="val" data-count="41" data-suffix=" min">0 min</span>
+            <span class="sub">Tier A SLA 60 min <span class="sep">·</span> <span style="color:var(--live)">within</span></span>
+          </div>
+        </div>
+
+        <section class="panel verdict rise" style="animation-delay:96ms" aria-labelledby="v-h">
+          <div class="verdict-left">
+            <div class="panel-head">
+              <h2 id="v-h">Treatment against control</h2>
+              <p>Opportunities created within 90 days</p>
+            </div>
+
+            <div class="arm treatment">
+              <div class="arm-top">
+                <span class="arm-name">Treatment</span>
+                <span class="arm-n" id="a-nt">n = 1156</span>
+                <span class="arm-rate">8.40%</span>
+              </div>
+              <div class="bar"><i style="width:0%" data-w="84"></i></div>
+            </div>
+
+            <div class="arm control">
+              <div class="arm-top">
+                <span class="arm-name">Control</span>
+                <span class="arm-n" id="a-nc">n = 128 · held out</span>
+                <span class="arm-rate">3.60%</span>
+              </div>
+              <div class="bar"><i style="width:0%" data-w="36"></i></div>
+            </div>
+
+            <div class="verdict-banner" id="banner" data-state="fail">
+              <svg class="vb-icon" id="vb-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.3"/>
+                <path d="M8 4.8v3.6M8 10.8v.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+              <div>
+                <p class="vb-title" id="vb-title">Not significant at this holdout</p>
+                <p class="vb-body" id="vb-body">
+                  The observed <span class="mono">+4.80 pp</span> lift sits below the
+                  <span class="mono">4.86 pp</span> this design can detect. Zolts will not report it
+                  as incremental. Raise the holdout to <span class="mono">15%</span> or run another
+                  <span class="mono">3</span> weeks.
+                </p>
+              </div>
+            </div>
+
+            <dl class="stat-grid" style="margin-top:16px">
+              <dt>Guardrail · spam complaint rate</dt><dd class="hi">0.031%</dd>
+              <dt>Guardrail · unsubscribe rate</dt><dd class="hi">0.42%</dd>
+              <dt>Assignment</dt><dd>sha256 · salt <span style="color:var(--ink-subtle)">series-a-2026q1</span></dd>
+              <dt>Cross-program contamination</dt><dd>0 accounts</dd>
+            </dl>
+          </div>
+
+          <div class="verdict-right">
+            <div class="panel-head" style="margin-bottom:12px">
+              <h2>Detectable effect</h2>
+              <p>Two-proportion test, α 0.05, power 0.80</p>
+            </div>
+
+            <div class="slider-row">
+              <label for="holdout">Holdout</label>
+              <input type="range" id="holdout" min="5" max="25" step="1" value="10"
+                     aria-describedby="holdout-val">
+              <span class="mono" id="holdout-val" style="color:var(--ink);min-width:34px;text-align:right">10%</span>
+            </div>
+
+            <dl class="stat-grid">
+              <dt>Control group</dt><dd id="s-nc">128 accounts</dd>
+              <dt>Treatment group</dt><dd id="s-nt">1156 accounts</dd>
+              <dt>Baseline rate (control)</dt><dd>3.60%</dd>
+              <dt>Minimum detectable effect</dt><dd class="hi" id="s-mde">4.86 pp</dd>
+              <dt>Observed absolute lift</dt><dd class="hi">4.80 pp</dd>
+              <dt>Observed relative lift</dt><dd>2.33× control rate</dd>
+              <dt>Accounts held back</dt><dd id="s-cost">128 accounts</dd>
+            </dl>
+
+            <p style="margin:15px 0 0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">
+              Every program declares a holdout. A waiver below 5% requires a written reason,
+              stored with the program version.
+            </p>
+          </div>
+        </section>
+
+        <div class="two-col">
+          <section class="panel rise" style="animation-delay:120ms" aria-labelledby="pl-h">
+            <div class="panel-head">
+              <h2 id="pl-h">Program P&amp;L</h2>
+              <p>Quarter to date</p>
+            </div>
+            <div class="scroll">
+              <table>
+                <thead>
+                  <tr><th>Line</th><th class="r">Units</th><th class="r">Cost</th><th class="r">Share</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Enrichment</td><td class="n r">3,208</td><td class="n r">€412.30</td><td class="n r dim">12.0%</td></tr>
+                  <tr><td>AI generation</td><td class="n r">4,624</td><td class="n r">€96.14</td><td class="n r dim">2.8%</td></tr>
+                  <tr><td>Sends</td><td class="n r">9,470</td><td class="n r">€37.88</td><td class="n r dim">1.1%</td></tr>
+                  <tr><td>Human time · AE</td><td class="n r">48 h</td><td class="n r">€2,880.00</td><td class="n r dim">84.1%</td></tr>
+                  <tr class="total"><td>Total cost</td><td class="n r dim">—</td><td class="n r">€3,426.32</td><td class="n r dim">100%</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="margin:14px 0 0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">
+              Human time is 84% of this program. Data cost optimisation cannot move a P&amp;L
+              this shape — tier routing can.
+            </p>
+          </section>
+
+          <section class="panel rise" style="animation-delay:144ms" aria-labelledby="sig-h">
+            <div class="panel-head">
+              <h2 id="sig-h">Signal contribution</h2>
+              <p>Lift measured per triggering signal</p>
+            </div>
+            <div class="scroll">
+              <table>
+                <thead>
+                  <tr><th>Signal</th><th class="r">Enrolled</th><th class="r">Lift</th><th class="r">Status</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="mono" style="font-size:12px">funding.round</td><td class="n r">612</td><td class="n r" style="color:var(--lift)">+6.10 pp</td><td class="r"><span class="chip allow">Active</span></td></tr>
+                  <tr><td class="mono" style="font-size:12px">hiring.role_opened</td><td class="n r">498</td><td class="n r" style="color:var(--lift)">+4.20 pp</td><td class="r"><span class="chip allow">Active</span></td></tr>
+                  <tr><td class="mono" style="font-size:12px">people.job_change</td><td class="n r">124</td><td class="n r" style="color:var(--control)">+0.40 pp</td><td class="r"><span class="chip review">Advisory</span></td></tr>
+                  <tr><td class="mono" style="font-size:12px">intent.topic_surge</td><td class="n r">50</td><td class="n r" style="color:var(--deny)">−1.10 pp</td><td class="r"><span class="chip deny">Demoted</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="margin:14px 0 0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">
+              A paid signal that does not beat baseline over 90 days is demoted automatically
+              and stops triggering programs. The catalogue prunes itself.
+            </p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ── PROGRAM ──────────────────────────────────────────── -->
+      <section id="p-program" role="tabpanel" aria-labelledby="t-program" hidden>
+        <div class="two-col">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>series-a-hiring-surge.yaml</h2>
+              <p>v2.1.0 · published 4 Sep by gtm-eng@</p>
+            </div>
+<pre><span class="c"># Either signal inside the window; the window governs enrollment,</span>
+<span class="c"># decay weights the score. They are different questions.</span>
+<span class="k">trigger</span>:
+  <span class="k">events</span>:
+    - <span class="k">signal</span>: <span class="s">funding.round</span>
+      <span class="k">where</span>: <span class="s">"payload.stage in ('series_a','series_b')
+               and payload.amount_usd &gt;= 5000000"</span>
+    - <span class="k">signal</span>: <span class="s">hiring.role_opened</span>
+      <span class="k">where</span>: <span class="s">"payload.department in ('revops','data')
+               and payload.count &gt;= 2"</span>
+  <span class="k">combine</span>: <span class="s">any_within</span>
+  <span class="k">window</span>: <span class="n2">30d</span>
+  <span class="k">dedupe</span>: {<span class="k">key</span>: <span class="s">account_id</span>, <span class="k">cooldown</span>: <span class="n2">180d</span>}
+
+<span class="k">route</span>:
+  <span class="k">tiers</span>:
+    - {<span class="k">key</span>: <span class="s">t1</span>, <span class="k">when</span>: <span class="s">"score &gt;= 80"</span>, <span class="k">capacity_per_week</span>: <span class="n2">25</span>}
+    - {<span class="k">key</span>: <span class="s">t2</span>, <span class="k">when</span>: <span class="s">"score &gt;= 65"</span>, <span class="k">capacity_per_week</span>: <span class="n2">200</span>}
+
+<span class="k">experiment</span>:
+  <span class="k">holdout_pct</span>: <span class="n2">10</span>
+  <span class="k">unit</span>: <span class="s">account</span>
+  <span class="k">primary_metric</span>: <span class="s">opportunity_created_90d</span>
+  <span class="k">guardrail_metrics</span>: [<span class="s">spam_complaint_rate</span>, <span class="s">unsubscribe_rate</span>]</pre>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Checks on this version</h2>
+              <p>Run on every publish</p>
+            </div>
+            <div class="scroll">
+              <table>
+                <thead><tr><th>Check</th><th class="r">Cases</th><th class="r">Result</th></tr></thead>
+                <tbody>
+                  <tr><td>Schema validation</td><td class="n r">1</td><td class="r"><span class="chip allow">Pass</span></td></tr>
+                  <tr><td>Static lint</td><td class="n r">9</td><td class="r"><span class="chip allow">Pass</span></td></tr>
+                  <tr><td>Expression safety</td><td class="n r">6</td><td class="r"><span class="chip allow">Pass</span></td></tr>
+                  <tr><td>Compliance cases</td><td class="n r">12</td><td class="r"><span class="chip allow">Pass</span></td></tr>
+                  <tr><td>Holdout declared</td><td class="n r">1</td><td class="r"><span class="chip allow">Pass</span></td></tr>
+                  <tr><td>Tier 1 human-reviewed</td><td class="n r">1</td><td class="r"><span class="chip allow">Pass</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="margin:16px 0 0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">
+              A change that breaks a compliance case cannot be published. The suite is
+              versioned beside the program, and every suite must contain at least one
+              denial case.
+            </p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ── TRACE ────────────────────────────────────────────── -->
+      <section id="p-trace" role="tabpanel" aria-labelledby="t-trace" hidden>
+        <div class="metrics">
+          <div class="tile">
+            <span class="eyebrow">Decisions evaluated</span>
+            <span class="val" id="tr-total">0</span>
+            <span class="sub">Last 60 minutes</span>
+          </div>
+          <div class="tile">
+            <span class="eyebrow">Allowed</span>
+            <span class="val" id="tr-allow">0</span>
+            <span class="sub" id="tr-allow-pct">—</span>
+          </div>
+          <div class="tile">
+            <span class="eyebrow">Denied</span>
+            <span class="val" id="tr-deny" style="color:var(--deny)">0</span>
+            <span class="sub">Recorded, with a reason, for 24 months</span>
+          </div>
+          <div class="tile">
+            <span class="eyebrow">Leading denial rule</span>
+            <span class="val mono" id="tr-top" style="font-size:14px;letter-spacing:0;line-height:1.4;white-space:normal;word-break:break-word">—</span>
+            <span class="sub" id="tr-top-n">—</span>
+          </div>
+        </div>
+        <section class="panel">
+          <div class="panel-head" style="align-items:center">
+            <h2>Policy decisions</h2>
+            <p>Last 60 minutes · every action, allowed or not</p>
+            <span class="spacer"></span>
+            <div class="seg" id="jur" role="group" aria-label="Jurisdiction">
+              <button aria-pressed="true" data-j="ES">ES</button>
+              <button aria-pressed="false" data-j="DE">DE</button>
+              <button aria-pressed="false" data-j="GB">GB</button>
+              <button aria-pressed="false" data-j="ZZ">ZZ</button>
+            </div>
+          </div>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>Time</th><th>Account</th><th>Channel</th><th>Decision</th><th>Rule</th><th>Rationale</th></tr>
+              </thead>
+              <tbody id="trace-body"></tbody>
+            </table>
+          </div>
+          <p style="margin:16px 0 0;font-size:12px;color:var(--ink-tertiary);line-height:1.5;max-width:72ch">
+            Every decision carries a rule key and a rationale. A DPO answers
+            “why did this person receive this message?” with a query, not an investigation.
+            Denials are recorded for 24 months.
+          </p>
+        </section>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ── numbers count up; they never crossfade ───────────────────── */
+  function fmt(el, v){
+    var pre = el.dataset.prefix || "", suf = el.dataset.suffix || "";
+    var n = el.dataset.format === "thousands"
+      ? Math.round(v).toLocaleString("en-US")
+      : Math.round(v).toLocaleString("en-US");
+    return pre + n + suf;
+  }
+  document.querySelectorAll("[data-count]").forEach(function(el){
+    var target = parseFloat(el.dataset.count);
+    if (reduce) { el.textContent = fmt(el, target); return; }
+    var start = performance.now(), dur = 380;
+    (function step(now){
+      var t = Math.min(1, (now - start) / dur);
+      var e = 1 - Math.pow(1 - t, 3);
+      el.textContent = fmt(el, target * e);
+      if (t < 1) requestAnimationFrame(step);
+    })(start);
+  });
+  requestAnimationFrame(function(){
+    document.querySelectorAll(".bar i").forEach(function(b){ b.style.width = b.dataset.w + "%"; });
+  });
+
+  /* ── tabs ─────────────────────────────────────────────────────── */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  tabs.forEach(function(tab){
+    tab.addEventListener("click", function(){
+      tabs.forEach(function(t){
+        var on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+      });
+    });
+    tab.addEventListener("keydown", function(e){
+      var i = tabs.indexOf(tab), n = null;
+      if (e.key === "ArrowRight") n = tabs[(i + 1) % tabs.length];
+      if (e.key === "ArrowLeft")  n = tabs[(i - 1 + tabs.length) % tabs.length];
+      if (n) { n.focus(); n.click(); e.preventDefault(); }
+    });
+  });
+
+  /* ── minimum detectable effect ────────────────────────────────────
+     Two-proportion test at alpha 0.05, power 0.80. This is the same
+     formula the runtime uses; the point of exposing it is that the
+     product refuses to report a lift it cannot resolve.              */
+  var N = 1284, BASELINE = 0.036, OBSERVED = 0.048;
+  var Z_ALPHA = 1.959963985, Z_BETA = 0.8416212336;
+
+  function mde(nt, nc){
+    if (nt <= 0 || nc <= 0) return Infinity;
+    return (Z_ALPHA + Z_BETA) * Math.sqrt(BASELINE * (1 - BASELINE) * (1 / nt + 1 / nc));
+  }
+  function requiredHoldout(){
+    for (var p = 5; p <= 25; p++){
+      var nc = Math.round(N * p / 100);
+      if (OBSERVED > mde(N - nc, nc)) return p;
+    }
+    return null;
+  }
+
+  var slider = document.getElementById("holdout"),
+      out    = document.getElementById("holdout-val"),
+      sNc    = document.getElementById("s-nc"),
+      sNt    = document.getElementById("s-nt"),
+      sMde   = document.getElementById("s-mde"),
+      sCost  = document.getElementById("s-cost"),
+      aNt    = document.getElementById("a-nt"),
+      aNc    = document.getElementById("a-nc"),
+      mSplit = document.getElementById("m-split"),
+      banner = document.getElementById("banner"),
+      vbT    = document.getElementById("vb-title"),
+      vbB    = document.getElementById("vb-body"),
+      vbI    = document.getElementById("vb-icon"),
+      needed = requiredHoldout();
+
+  var ICON_FAIL = '<circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.3"/>'
+                + '<path d="M8 4.8v3.6M8 10.8v.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>';
+  var ICON_PASS = '<circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.3"/>'
+                + '<path d="M5.3 8.2l1.9 1.9 3.5-4" stroke="currentColor" stroke-width="1.4" '
+                + 'stroke-linecap="round" stroke-linejoin="round"/>';
+
+  function render(){
+    var pct = parseInt(slider.value, 10),
+        nc  = Math.round(N * pct / 100),
+        nt  = N - nc,
+        m   = mde(nt, nc),
+        ok  = OBSERVED > m;
+
+    out.textContent    = pct + "%";
+    sNc.textContent    = nc.toLocaleString("en-US") + " accounts";
+    sNt.textContent    = nt.toLocaleString("en-US") + " accounts";
+    sMde.textContent   = (m * 100).toFixed(2) + " pp";
+    sCost.textContent  = nc.toLocaleString("en-US") + " accounts";
+    aNt.textContent    = "n = " + nt.toLocaleString("en-US");
+    aNc.textContent    = "n = " + nc.toLocaleString("en-US") + " · held out";
+    mSplit.textContent = nt.toLocaleString("en-US") + " treatment · "
+                       + nc.toLocaleString("en-US") + " control";
+
+    banner.dataset.state = ok ? "pass" : "fail";
+    vbI.innerHTML = ok ? ICON_PASS : ICON_FAIL;
+
+    if (ok){
+      vbT.textContent = "Significant · reported as incremental";
+      vbB.innerHTML = 'The observed <span class="mono">+4.80 pp</span> lift clears the '
+        + '<span class="mono">' + (m * 100).toFixed(2) + ' pp</span> this design can detect. '
+        + '<span class="mono">€1,247,000</span> of pipeline is reported as incremental, '
+        + 'against a concurrent control.';
+    } else {
+      vbT.textContent = "Not significant at this holdout";
+      vbB.innerHTML = 'The observed <span class="mono">+4.80 pp</span> lift sits below the '
+        + '<span class="mono">' + (m * 100).toFixed(2) + ' pp</span> this design can detect. '
+        + 'Zolts will not report it as incremental. Raise the holdout to '
+        + '<span class="mono">' + (needed || 25) + '%</span> or run another '
+        + '<span class="mono">3</span> weeks.';
+    }
+  }
+  slider.addEventListener("input", render);
+  render();
+
+  /* ── policy trace ─────────────────────────────────────────────────
+     Decisions come from the jurisdiction pack, so switching the
+     jurisdiction changes what the same actions are allowed to do.    */
+  var PACK = {
+    ES: { email:"legitimate_interest", linkedin:"legitimate_interest", voice:"legitimate_interest",
+          whatsapp:"consent", lists:["robinson_list_es"], blocked:[] },
+    DE: { email:"consent", linkedin:"legitimate_interest", whatsapp:"consent",
+          lists:[], blocked:["voice"] },
+    GB: { email:"legitimate_interest", linkedin:"legitimate_interest", voice:"legitimate_interest",
+          whatsapp:"consent", lists:["tps","ctps"], blocked:[] },
+    ZZ: { lists:[], blocked:[] }   // unmapped: consent required, default deny
+  };
+  var STRENGTH = { legitimate_interest:0, contract:1, consent:2 };
+
+  var ACTIONS = [
+    { t:"14:02:11", acct:"Vireo Labs",      ch:"email",    held:"legitimate_interest", sup:[], unsub:false, hour:14, touches:1 },
+    { t:"14:02:09", acct:"Kestrel Data",    ch:"email",    held:null,                  sup:[], unsub:false, hour:14, touches:0 },
+    { t:"14:01:58", acct:"Harbour Systems", ch:"linkedin", held:"legitimate_interest", sup:[], unsub:false, hour:14, touches:2 },
+    { t:"14:01:44", acct:"Ternary AG",      ch:"email",    held:"consent",             sup:[], unsub:true,  hour:14, touches:0 },
+    { t:"14:01:30", acct:"Nordwind BV",     ch:"voice",    held:"legitimate_interest", sup:[], unsub:false, hour:14, touches:1 },
+    { t:"14:01:12", acct:"Almacen Sur",     ch:"voice",    held:"legitimate_interest", sup:["robinson_list_es"], unsub:false, hour:14, touches:1 },
+    { t:"14:00:51", acct:"Pallas Retail",   ch:"whatsapp", held:"legitimate_interest", sup:[], unsub:false, hour:14, touches:1 },
+    { t:"14:00:37", acct:"Orbit Freight",   ch:"email",    held:"legitimate_interest", sup:[], unsub:false, hour:14, touches:3 },
+    { t:"14:00:20", acct:"Cobalt Health",   ch:"whatsapp", held:"consent",             sup:[], unsub:false, hour:22, touches:0 }
+  ];
+
+  function decide(a, j){
+    var rule = PACK[j] || PACK.ZZ;
+    if (a.unsub)
+      return { d:"deny", k:"suppression.unsubscribed", why:"contact opted out of " + a.ch };
+    for (var i = 0; i < rule.lists.length; i++)
+      if (a.sup.indexOf(rule.lists[i]) !== -1)
+        return { d:"deny", k:"suppression." + rule.lists[i], why:"contact present on " + rule.lists[i] };
+    if (rule.blocked.indexOf(a.ch) !== -1)
+      return { d:"deny", k:"jurisdiction." + j + ".channel_blocked",
+               why:a.ch + " is blocked by default in " + j };
+    var required = (rule[a.ch] || "consent");
+    var ok = a.held && (a.held === required
+      || (required === "legitimate_interest" && STRENGTH[a.held] > STRENGTH.legitimate_interest));
+    if (!ok)
+      return { d:"deny", k:"jurisdiction." + j + ".basis_required",
+               why:a.ch + " requires " + required + ", contact holds " + (a.held || "none") };
+    if (a.touches >= 3)
+      return { d:"deny", k:"frequency.cap_reached", why:a.touches + " touches already this week (cap 3)" };
+    if (a.hour >= 20 && ["voice","sms","whatsapp"].indexOf(a.ch) !== -1)
+      return { d:"deny", k:"quiet_hours", why:"local hour " + a.hour + " falls in quiet hours" };
+    return { d:"allow", k:"ok", why:"all checks passed" };
+  }
+
+  var body = document.getElementById("trace-body");
+  function paint(j){
+    body.innerHTML = "";
+    var allowed = 0, byRule = {};
+    ACTIONS.forEach(function(a, i){
+      var r = decide(a, j);
+      if (r.d === "allow") allowed++; else byRule[r.k] = (byRule[r.k] || 0) + 1;
+      var tr = document.createElement("tr");
+      if (!reduce && i < 8) {
+        tr.className = "rise";
+        tr.style.animationDelay = (i * 24) + "ms";
+      }
+      tr.innerHTML =
+          '<td class="n dim" style="font-size:12px">' + a.t + "</td>"
+        + "<td>" + a.acct + "</td>"
+        + '<td class="mono dim" style="font-size:12px">' + a.ch + "</td>"
+        + '<td><span class="chip ' + r.d + '">' + (r.d === "allow" ? "Allow" : "Deny") + "</span></td>"
+        + '<td class="trace-rule">' + r.k + "</td>"
+        + '<td class="dim" style="white-space:normal">' + r.why + "</td>";
+      body.appendChild(tr);
+    });
+
+    var total = ACTIONS.length, denied = total - allowed;
+    var top = Object.keys(byRule).sort(function(a, b){ return byRule[b] - byRule[a]; })[0];
+    document.getElementById("tr-total").textContent = total;
+    document.getElementById("tr-allow").textContent = allowed;
+    document.getElementById("tr-deny").textContent = denied;
+    document.getElementById("tr-allow-pct").textContent =
+      Math.round(allowed / total * 100) + "% of evaluated actions";
+    document.getElementById("tr-top").textContent = top || "none";
+    document.getElementById("tr-top-n").textContent =
+      top ? byRule[top] + " of " + denied + " denials" : "no denials in this window";
+  }
+  var seg = document.getElementById("jur");
+  seg.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-j]");
+    if (!b) return;
+    seg.querySelectorAll("button").forEach(function(x){
+      x.setAttribute("aria-pressed", String(x === b));
+    });
+    paint(b.dataset.j);
+  });
+  paint("ES");
+})();
+</script>

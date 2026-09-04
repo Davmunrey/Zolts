@@ -59,6 +59,15 @@ The reference core exists to test the plan, not to be the product. Building it h
 
 `docs/18` is the living register: **124 decisions carry a default and execute unless contradicted; 12 are blocking** and depend on facts only the founder holds (network, capital, risk appetite). A decision settled elsewhere in these documents is not reopened without amending the register.
 
+## Design
+
+- [`DESIGN.md`](DESIGN.md) — the design system, in the [DESIGN.md](https://github.com/VoltAgent/awesome-design-md) format that design agents read directly.
+- `design/console.html` — the reference product surface implementing it: a program's evidence, P&L and policy trace.
+
+Its governing rule is that **Zolts ships no brand accent colour**. Colour is spent only on measurement semantics — verified lift, experimental control, policy denial, review, live latency. In a product whose thesis is that measurement is the only truth in GTM, an interface that spends green on a Save button has spent the signal it needs when a number is genuinely, verifiably up.
+
+That is also positioning. The category's most visible product renders warm cream, claymation illustration and five saturated card colours; reading as its opposite communicates *audited* before a word is read.
+
 ## Conventions
 
 See [CLAUDE.md](CLAUDE.md). The repository is English-only — product, code, documentation, commits and pull requests.
