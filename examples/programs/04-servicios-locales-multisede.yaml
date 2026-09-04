@@ -1,0 +1,90 @@
+# Arquetipo: servicios locales / franquicias multisede (clínicas, talleres, retail).
+# Tesis: la señal útil no es intent digital sino cambio operativo observable
+# (nueva sede, caída de reseñas, cambio de gestor). Territorio y capacidad
+# comercial local son la restricción real.
+apiVersion: zolts/v1
+kind: Program
+metadata:
+  key: nueva-sede-y-reputacion
+  version: 1.0.0
+  blueprint: local-services-multisite
+spec:
+  trigger:
+    events:
+      - signal: local.new_location_detected
+      - signal: local.review_velocity_drop
+        where: "payload.pct_change_30d <= -0.35 and payload.review_count_baseline >= 20"
+      - signal: local.ads_activity_started
+    combine: any_within
+    window: 21d
+    dedupe: {key: account_id, cooldown: 120d}
+
+  audience:
+    sql: |
+      select a.id as account_id
+      from account a
+      where a.industry_code_group in ('healthcare_clinics','auto_services','fitness')
+        and a.location_count between 2 and 40
+        and a.country = 'ES'
+        and a.territory_id is not null
+
+  enrich:
+    account:
+      require: [owner_contact, location_list, google_rating, website_tech]
+      max_cost_per_account: 0.25
+    person:
+      buying_roles: [economic]
+      require: [phone_mobile, work_email]
+      accuracy_sla: 0.90
+      max_contacts_per_account: 2
+
+  score:
+    formula: |
+      0.35 * signal_strength
+      + 0.25 * location_count_normalized
+      + 0.25 * territory_capacity_available
+      + 0.15 * data_completeness
+    floor: 50
+
+  route:
+    strategy: territory_round_robin       # respeta el reparto geográfico del equipo
+    tiers:
+      - {key: t1, when: "score >= 70", capacity_per_week_per_rep: 15}
+      - {key: t2, when: "score >= 50", capacity_per_week_per_rep: 60}
+
+  plays:
+    t1:
+      template: local-highvalue
+      auto_send: false
+      steps:
+        - {step: research_brief, agent: researcher, output: location_dossier}
+        - {step: call_task, channel: voice, sla_hours: 8}     # en local, el teléfono gana
+        - {step: whatsapp_followup, channel: whatsapp, wait: 1d}
+        - {step: email_proposal, channel: email, wait: 3d}
+    t2:
+      template: local-standard
+      auto_send: true
+      auto_send_requires: {eval_score: 0.85}
+      steps:
+        - {step: email_1, channel: email, template: local-signal, wait: 0d}
+        - {step: call_task, channel: voice, wait: 3d}
+        - {step: email_2, channel: email, wait: 7d}
+
+  policy:
+    inherit: tenant_default
+    overrides:
+      quiet_hours: {start: "20:00", end: "09:00", tz: contact_local}
+      channels_require_basis: {voice: legitimate_interest, whatsapp: consent}
+      lists_check: [robinson_list_es]      # exclusión publicitaria obligatoria en ES
+
+  experiment:
+    holdout_pct: 10
+    unit: account
+    primary_metric: signed_contract_60d
+    guardrail_metrics: [complaint_rate, rep_time_per_lead]
+
+  budget: {monthly_credits: 6000, max_cost_per_account: 1.10, on_exceed: pause_and_alert}
+
+  exit:
+    - {when: "outcome.type in ('meeting','opp_created')", reason: converted}
+    - {when: "touch.count >= 6", reason: exhausted}

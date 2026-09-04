@@ -1,0 +1,88 @@
+# Arquetipo: SaaS PLG con motion PLS (product-led sales)
+# Tesis: el mejor dato de intent es el uso del propio producto. La jugada no es
+# "vender", es interceptar el momento en que el equipo choca con un límite.
+apiVersion: zolts/v1
+kind: Program
+metadata:
+  key: workspace-expansion-trigger
+  version: 1.4.0
+  blueprint: b2b-saas-plg
+spec:
+  trigger:
+    events:
+      - signal: product.limit_hit
+        where: "payload.limit in ('seats','api_rate','storage') and payload.pct >= 0.8"
+      - signal: product.multi_user_signup
+        where: "payload.distinct_users_same_domain >= 3 and payload.window_days <= 14"
+    combine: any_within
+    window: 7d
+    dedupe: {key: account_id, cooldown: 60d}
+
+  audience:
+    sql: |
+      select a.id as account_id
+      from account a
+      join workspace w on w.account_id = a.id
+      where w.plan_tier in ('free','starter')
+        and w.weekly_active_users >= 3
+        and w.activation_score >= 0.6
+        and a.employee_band not in ('1-10')
+
+  enrich:
+    person:
+      # en PLG ya tenemos el usuario; falta el comprador económico
+      buying_roles: [economic]
+      require: [work_email, title]
+      accuracy_sla: 0.92
+      max_contacts_per_account: 2
+      skip_if_known: true            # nunca pagar por dato que ya está en el producto
+
+  score:
+    formula: |
+      0.45 * product_engagement_percentile
+      + 0.25 * account_fit
+      + 0.20 * expansion_headroom
+      + 0.10 * champion_seniority
+    explain: true
+    floor: 60
+
+  route:
+    tiers:
+      - {key: t1, when: "score >= 82 and expansion_headroom_eur >= 15000", capacity_per_week: 40}
+      - {key: t2, when: "score >= 60", capacity_per_week: 500}
+
+  plays:
+    t1:
+      template: pls-human
+      auto_send: false
+      steps:
+        - {step: in_app_offer, channel: product, template: upgrade-consult}
+        - {step: task_ae, channel: task, sla_hours: 4}    # velocidad = todo en PLS
+        - {step: email_champion, channel: email, wait: 1d, template: usage-evidence}
+    t2:
+      template: pls-automated
+      auto_send: true
+      auto_send_requires: {eval_score: 0.88}
+      steps:
+        - {step: in_app_nudge, channel: product, template: limit-approaching}
+        - {step: email_1, channel: email, wait: 2d, template: value-of-upgrade}
+        - {step: email_2, channel: email, wait: 7d, template: case-study-peer}
+
+  policy:
+    inherit: tenant_default
+    overrides:
+      # usuarios de producto: base contractual, no interés legítimo
+      channels_require_basis: {email: contract, product: contract}
+      max_touches_per_person_per_week: 2
+
+  experiment:
+    holdout_pct: 15                 # holdout alto: el PLG convierte solo, hay que probar el lift
+    unit: account
+    primary_metric: paid_conversion_30d
+    guardrail_metrics: [product_churn_30d, unsubscribe_rate]
+
+  budget: {monthly_credits: 12000, max_cost_per_account: 1.20, on_exceed: pause_and_alert}
+
+  exit:
+    - {when: "workspace.plan_tier != 'free' and workspace.plan_tier != 'starter'", reason: converted}
+    - {when: "days_in_program > 21", reason: exhausted}

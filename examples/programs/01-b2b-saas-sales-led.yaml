@@ -1,0 +1,115 @@
+# Arquetipo: B2B SaaS sales-led · ACV 25-80k€ · ciclo 60-120d · UE+US
+# Tesis de la jugada: una ronda Serie A + contratación acelerada en el departamento
+# comprador es el predictor de timing más fiable en software B2B de ticket medio.
+apiVersion: zolts/v1
+kind: Program
+metadata:
+  key: series-a-hiring-surge
+  version: 2.1.0
+  owner: gtm-eng@empresa.com
+  blueprint: b2b-saas-sales-led
+  description: Serie A reciente + apertura de roles en RevOps/Data => outbound multihilo
+spec:
+  trigger:
+    events:
+      - signal: funding.round
+        where: "payload.stage in ('series_a','series_b') and payload.amount_usd >= 5000000"
+      - signal: hiring.role_opened
+        where: "payload.department in ('revops','data','growth') and payload.count >= 2"
+    combine: any_within        # cualquiera de las dos dentro de la ventana
+    window: 30d
+    dedupe:
+      key: account_id
+      cooldown: 180d           # nunca reenrolar la misma cuenta antes de 6 meses
+
+  audience:
+    sql: |
+      select a.id as account_id
+      from account a
+      where a.employee_band in ('51-200','201-500')
+        and a.industry_code_group = 'software'
+        and a.country in ('ES','FR','DE','NL','GB','US')
+        and not exists (select 1 from suppression s where s.account_id = a.id)
+        and not exists (select 1 from opportunity o where o.account_id = a.id and o.state = 'open')
+
+  enrich:
+    account:
+      require: [tech_stack, headcount_by_dept, funding_history]
+      max_cost_per_account: 0.35    # EUR
+    person:
+      buying_roles: [economic, champion, technical]
+      require: [work_email, linkedin_urn, title]
+      accuracy_sla: 0.95            # el router elige waterfall para cumplirlo
+      max_contacts_per_account: 4
+      max_cost_per_contact: 0.60
+
+  score:
+    model: pit_r_v3                 # Fit x Intent x Timing x Reachability
+    weights: {fit: 0.35, intent: 0.30, timing: 0.25, reachability: 0.10}
+    explain: true
+    floor: 55                       # por debajo, no se enrola
+
+  route:
+    tiers:
+      - key: t1
+        when: "score >= 80"
+        capacity_per_week: 25       # capacidad humana real del equipo
+      - key: t2
+        when: "score >= 65"
+        capacity_per_week: 200
+      - key: t3
+        when: "score >= 55"
+        capacity_per_week: 2000
+
+  plays:
+    t1:
+      template: exec-1to1
+      auto_send: false              # revisión humana obligatoria en tier 1
+      steps:
+        - {step: research_brief, agent: researcher, output: account_dossier}
+        - {step: task_ae, channel: task, sla_hours: 24}
+        - {step: linkedin_connect, channel: linkedin, wait: 0d}
+        - {step: email_1, channel: email, wait: 2d, template: t1-thesis}
+        - {step: exec_touch, channel: task, wait: 4d, assignee: cro}
+    t2:
+      template: agent-assisted-1tofew
+      auto_send: true
+      auto_send_requires: {eval_score: 0.85, policy: allow}
+      steps:
+        - {step: email_1, channel: email, wait: 0d, template: signal-led}
+        - {step: linkedin_view, channel: linkedin, wait: 1d}
+        - {step: email_2, channel: email, wait: 4d, template: proof-point}
+        - {step: linkedin_dm, channel: linkedin, wait: 3d}
+        - {step: email_3, channel: email, wait: 6d, template: breakup}
+    t3:
+      template: nurture-ads
+      steps:
+        - {step: ads_audience, channel: ads, platform: linkedin, duration: 30d}
+        - {step: newsletter_add, channel: email, list: signal_nurture}
+
+  policy:
+    inherit: tenant_default
+    overrides:
+      quiet_hours: {start: "19:00", end: "08:00", tz: contact_local}
+      max_touches_per_person_per_week: 3
+      channels_require_basis:
+        email: legitimate_interest
+        linkedin: legitimate_interest
+
+  experiment:
+    holdout_pct: 10
+    unit: account
+    salt: series-a-2026q1
+    primary_metric: opportunity_created_90d
+    guardrail_metrics: [spam_complaint_rate, unsubscribe_rate]
+
+  budget:
+    monthly_credits: 40000
+    max_cost_per_account: 4.50
+    max_cost_per_meeting: 180
+    on_exceed: pause_and_alert
+
+  exit:
+    - {when: "outcome.type in ('reply_positive','meeting','opp_created')", reason: converted}
+    - {when: "outcome.type = 'unsubscribe'", reason: opted_out, suppress: true}
+    - {when: "days_in_program > 45", reason: exhausted}

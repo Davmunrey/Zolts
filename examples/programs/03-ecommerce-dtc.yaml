@@ -1,0 +1,84 @@
+# Arquetipo: Ecommerce / DTC (B2C) — demuestra que el mismo runtime sirve a B2C.
+# Aquí la "cuenta" es un hogar/cliente, la señal es comportamiento de compra,
+# y la restricción dominante es consentimiento (ePrivacy), no interés legítimo.
+apiVersion: zolts/v1
+kind: Program
+metadata:
+  key: replenishment-winback
+  version: 1.2.0
+  blueprint: ecommerce-dtc
+spec:
+  trigger:
+    events:
+      - signal: commerce.replenishment_due
+        where: "payload.days_since_purchase >= payload.expected_cycle_days * 0.85"
+      - signal: commerce.cart_abandoned
+        where: "payload.value_eur >= 45"
+    combine: any_within
+    window: 3d
+    dedupe: {key: person_id, cooldown: 21d}
+
+  audience:
+    sql: |
+      select p.id as person_id
+      from person p
+      join customer c on c.person_id = p.id
+      where c.lifetime_orders >= 1
+        and c.marketing_consent_email = true       -- B2C: consentimiento obligatorio
+        and c.predicted_churn_risk between 0.3 and 0.85
+        and p.country in ('ES','PT','FR','IT')
+
+  enrich:
+    person:
+      require: []                                   # dato propio: coste de enriquecimiento cero
+      skip_if_known: true
+
+  score:
+    formula: |
+      0.40 * predicted_repurchase_probability
+      + 0.30 * customer_ltv_percentile
+      + 0.20 * margin_of_recommended_sku
+      + 0.10 * recency_decay
+    floor: 40
+
+  route:
+    tiers:
+      - {key: t1, when: "customer_ltv_percentile >= 0.9", capacity_per_week: 5000}
+      - {key: t2, when: "score >= 40", capacity_per_week: 100000}
+
+  plays:
+    t1:
+      template: vip-winback
+      auto_send: true
+      auto_send_requires: {eval_score: 0.90}
+      steps:
+        - {step: email_1, channel: email, template: vip-personal, wait: 0d}
+        - {step: whatsapp, channel: whatsapp, wait: 2d, template: vip-reminder}
+        - {step: ads_exclusion, channel: ads, action: exclude_from_prospecting}
+    t2:
+      template: standard-winback
+      auto_send: true
+      steps:
+        - {step: email_1, channel: email, template: replenish, wait: 0d}
+        - {step: email_2, channel: email, template: incentive-10, wait: 4d}
+        - {step: ads_retarget, channel: ads, platform: meta, duration: 14d}
+
+  policy:
+    inherit: tenant_default
+    overrides:
+      channels_require_basis: {email: consent, whatsapp: consent, ads: consent}
+      max_touches_per_person_per_week: 2
+      discount_authority: {max_pct: 15, requires_approval_above: 20}
+
+  experiment:
+    holdout_pct: 10
+    unit: person
+    primary_metric: net_revenue_28d          # neto de descuento: evita canibalización
+    guardrail_metrics: [unsubscribe_rate, margin_per_order]
+
+  budget: {monthly_credits: 8000, max_cost_per_person: 0.08, on_exceed: throttle}
+
+  exit:
+    - {when: "outcome.type = 'purchase'", reason: converted}
+    - {when: "outcome.type = 'unsubscribe'", reason: opted_out, suppress: true}
+    - {when: "days_in_program > 18", reason: exhausted}
