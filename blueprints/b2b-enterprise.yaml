@@ -1,0 +1,61 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: b2b-enterprise
+  name: B2B enterprise
+  description: >
+    Named accounts, a buying committee, and a cycle long enough that the
+    primary metric has to be a leading one. Orchestration beats volume.
+spec:
+  matches:
+    sector: [software, services, manufacturing, logistics, retail, energy]
+    motion: [slg, abm]
+    acv_band: ["50-250k", ">250k"]
+    cycle_length: ["3-9m", ">9m"]
+    customer_type: [b2b]
+    icp_breadth: [niche]
+    geography: ["*"]
+    data_maturity: [warehouse, lakehouse]
+    crm: [salesforce, hubspot]
+    sales_team: ["5-25", ">25"]
+    product_type: [software, services]
+    compliance_tier: [standard, regulated]
+    channels: [email, linkedin, ads, voice]
+  weights:
+    sector: 1.5
+    acv_band: 3.0
+    customer_type: 3.0
+    cycle_length: 2.5
+    icp_breadth: 2.5
+    motion: 2.0
+    sales_team: 2.0
+    compliance_tier: 1.0
+    product_type: 1.0
+    data_maturity: 1.0
+    crm: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - intent.topic_surge
+    - people.exec_hired
+    - corp.m_and_a
+    - event.booth_scan
+    - hiring.role_opened
+    - partner.shared_customer
+    - review.competitor_page_view
+  scoring:
+    model: pit_r_v3
+    weights: {fit: 0.45, intent: 0.25, timing: 0.20, reachability: 0.10}
+    floor: 70
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      email: legitimate_interest
+      linkedin: legitimate_interest
+    lists_check: [global_suppression, named_account_list]
+  programs:
+    - committee-orchestration
+    - exec-change-entry
+    - partner-warm-intro
+  north_star: pipeline_per_target_account
+  default_holdout_pct: 10

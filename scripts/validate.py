@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Validate GTM programs against the Zolts JSON Schema.
+"""Validate GTM programs and blueprints against their JSON Schemas.
 
-Usage: python3 scripts/validate.py [glob_path]
+Usage: python3 scripts/validate.py
 Requires: pyyaml, jsonschema
 """
 import glob
@@ -11,11 +11,14 @@ import sys
 import jsonschema
 import yaml
 
-SCHEMA = "examples/schema/zolts-program.schema.json"
+TARGETS = (
+    ("examples/schema/zolts-program.schema.json", "examples/programs/*.yaml"),
+    ("examples/schema/zolts-blueprint.schema.json", "blueprints/*.yaml"),
+)
 
 
-def main(pattern: str = "examples/programs/*.yaml") -> int:
-    validator = jsonschema.Draft202012Validator(json.load(open(SCHEMA)))
+def _validate(schema_path: str, pattern: str) -> int:
+    validator = jsonschema.Draft202012Validator(json.load(open(schema_path)))
     failed = 0
     for path in sorted(glob.glob(pattern)):
         errors = sorted(validator.iter_errors(yaml.safe_load(open(path))), key=lambda e: list(e.path))
@@ -26,5 +29,9 @@ def main(pattern: str = "examples/programs/*.yaml") -> int:
     return failed
 
 
+def main() -> int:
+    return max(_validate(schema, pattern) for schema, pattern in TARGETS)
+
+
 if __name__ == "__main__":
-    sys.exit(main(*sys.argv[1:]))
+    sys.exit(main())

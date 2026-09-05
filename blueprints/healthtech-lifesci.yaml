@@ -1,0 +1,63 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: healthtech-lifesci
+  name: Health tech and life sciences
+  description: >
+    Long accounts with many stakeholders and special-category data nearby.
+    The engine's hard rule against inferring health data binds absolutely here.
+spec:
+  matches:
+    sector: [healthcare, life_sciences, pharma]
+    motion: [slg, abm]
+    acv_band: ["50-250k", ">250k"]
+    cycle_length: [">9m", "3-9m"]
+    customer_type: [b2b]
+    icp_breadth: [niche]
+    geography: ["*"]
+    data_maturity: [warehouse, lakehouse]
+    crm: [salesforce]
+    sales_team: ["5-25", ">25"]
+    product_type: [software, services, physical]
+    compliance_tier: [regulated]
+    channels: [email, linkedin, voice]
+  weights:
+    sector: 3.5
+    compliance_tier: 4.0
+    customer_type: 3.0
+    cycle_length: 2.5
+    icp_breadth: 2.0
+    acv_band: 2.0
+    motion: 1.5
+    sales_team: 1.5
+    product_type: 1.0
+    crm: 0.5
+    data_maturity: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - public.tender_published
+    - research.trial_registered
+    - hiring.role_opened
+    - people.exec_hired
+    - funding.round
+    - event.booth_scan
+  scoring:
+    model: pit_r_v3
+    weights: {fit: 0.50, intent: 0.15, timing: 0.25, reachability: 0.10}
+    floor: 70
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      email: legitimate_interest
+      linkedin: legitimate_interest
+      voice: legitimate_interest
+    lists_check: [global_suppression, clinical_optout]
+    copy_approval_required: true
+    special_category_inference: forbidden
+  programs:
+    - tender-response
+    - trial-site-activation
+    - committee-orchestration
+  north_star: account_activated
+  default_holdout_pct: 10

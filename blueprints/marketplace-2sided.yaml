@@ -1,0 +1,60 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: marketplace-2sided
+  name: Two-sided marketplace
+  description: >
+    The target is never "more customers", it is whichever side is scarce in a
+    given geography this week. Liquidity per geo is the only metric that matters.
+spec:
+  matches:
+    sector: [marketplace, logistics, hospitality, services]
+    motion: [self_serve, plg, mixed]
+    acv_band: ["<1k", "1-10k"]
+    cycle_length: ["<7d", "1-3m"]
+    customer_type: [b2b2c, b2c, b2b]
+    icp_breadth: [mass]
+    geography: ["*"]
+    data_maturity: [warehouse, lakehouse]
+    crm: [hubspot, attio, none]
+    sales_team: ["0", "1-5", "5-25"]
+    product_type: [marketplace]
+    compliance_tier: [standard]
+    channels: [email, ads, whatsapp, sms]
+  weights:
+    sector: 2.5
+    product_type: 4.0
+    icp_breadth: 2.5
+    customer_type: 2.0
+    motion: 2.0
+    acv_band: 1.5
+    cycle_length: 1.5
+    data_maturity: 1.0
+    compliance_tier: 1.0
+    sales_team: 0.5
+    crm: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - marketplace.supply_shortfall_by_geo
+    - marketplace.demand_unmet
+    - marketplace.provider_churn_risk
+    - commerce.first_purchase
+    - cs.usage_decline
+  scoring:
+    formula: liquidity_gap
+    weights: {fit: 0.25, intent: 0.30, timing: 0.35, reachability: 0.10}
+    floor: 45
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      email: consent
+      whatsapp: consent
+      ads: consent
+    lists_check: [global_suppression]
+  programs:
+    - scarce-side-acquisition
+    - provider-reactivation
+    - geo-liquidity-rebalance
+  north_star: liquidity_per_geo
+  default_holdout_pct: 10

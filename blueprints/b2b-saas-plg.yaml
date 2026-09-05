@@ -1,0 +1,61 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: b2b-saas-plg
+  name: B2B SaaS, product-led
+  description: >
+    Users arrive before buyers. The best intent data is the product's own
+    telemetry, so the play is interception at a friction moment, not prospecting.
+spec:
+  matches:
+    sector: [software, services, retail, education, marketplace]
+    motion: [plg, pls]
+    acv_band: ["<1k", "1-10k", "10-50k"]
+    cycle_length: ["<7d", "1-3m"]
+    customer_type: [b2b, b2b2c]
+    icp_breadth: [mid, mass]
+    geography: ["*"]
+    data_maturity: [warehouse, lakehouse]
+    crm: [hubspot, attio, none]
+    sales_team: ["0", "1-5", "5-25"]
+    product_type: [software]
+    compliance_tier: [standard]
+    channels: [email, product, ads]
+  weights:
+    sector: 1.5
+    motion: 3.0
+    customer_type: 3.0
+    product_type: 2.5
+    acv_band: 2.0
+    cycle_length: 1.5
+    data_maturity: 1.5
+    sales_team: 1.0
+    icp_breadth: 1.0
+    compliance_tier: 1.0
+    crm: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - product.limit_hit
+    - product.multi_user_signup
+    - product.activation_milestone
+    - web.docs_or_api_visit
+    - web.pricing_page_visit
+    - cs.usage_decline
+    - cs.expansion_headroom
+  scoring:
+    formula: product_led
+    weights: {fit: 0.25, intent: 0.45, timing: 0.20, reachability: 0.10}
+    floor: 60
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      email: contract
+      product: contract
+    lists_check: [global_suppression]
+  programs:
+    - workspace-expansion-trigger
+    - activation-stall-recovery
+    - trial-ending-consult
+  north_star: paid_conversion_30d
+  default_holdout_pct: 15

@@ -1,0 +1,58 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: public-sector
+  name: Public sector and government
+  description: >
+    Procurement is published, so the pipeline is largely a matter of reading
+    gazettes early. Outbound outside a tender window is mostly wasted.
+spec:
+  matches:
+    sector: [public, government, education]
+    motion: [slg, channel]
+    acv_band: ["50-250k", ">250k"]
+    cycle_length: [">9m"]
+    customer_type: [public]
+    icp_breadth: [niche]
+    geography: ["*"]
+    data_maturity: [none, warehouse]
+    crm: [salesforce, hubspot, none]
+    sales_team: ["1-5", "5-25", ">25"]
+    product_type: [software, services, physical]
+    compliance_tier: [public_sector, regulated]
+    channels: [email, voice]
+  weights:
+    sector: 2.5
+    customer_type: 4.0
+    compliance_tier: 3.5
+    cycle_length: 2.5
+    acv_band: 2.0
+    icp_breadth: 1.5
+    motion: 1.5
+    product_type: 1.0
+    sales_team: 1.0
+    crm: 0.5
+    data_maturity: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - public.tender_published
+    - public.budget_allocated
+    - public.framework_renewal
+    - people.exec_hired
+  scoring:
+    model: pit_r_v3
+    weights: {fit: 0.45, intent: 0.10, timing: 0.35, reachability: 0.10}
+    floor: 60
+  policy:
+    max_touches_per_person_per_week: 1
+    channels_require_basis:
+      email: legitimate_interest
+      voice: legitimate_interest
+    lists_check: [global_suppression]
+    copy_approval_required: true
+  programs:
+    - tender-response
+    - framework-renewal-watch
+  north_star: tender_submitted
+  default_holdout_pct: 10

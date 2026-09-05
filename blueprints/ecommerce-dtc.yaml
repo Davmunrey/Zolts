@@ -1,0 +1,62 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: ecommerce-dtc
+  name: Ecommerce and direct-to-consumer
+  description: >
+    First-party purchase behaviour is the whole signal set, so enrichment cost
+    is near zero and consent, not legitimate interest, is the binding constraint.
+spec:
+  matches:
+    sector: [retail, consumer_goods, hospitality]
+    motion: [self_serve, plg]
+    acv_band: ["<1k"]
+    cycle_length: ["<7d"]
+    customer_type: [b2c]
+    icp_breadth: [mass]
+    geography: ["*"]
+    data_maturity: [warehouse, lakehouse, none]
+    crm: [hubspot, none]
+    sales_team: ["0", "1-5"]
+    product_type: [physical, software]
+    compliance_tier: [standard]
+    channels: [email, whatsapp, ads, sms]
+  weights:
+    sector: 2.0
+    customer_type: 4.0
+    acv_band: 2.5
+    cycle_length: 2.5
+    icp_breadth: 2.0
+    motion: 2.0
+    product_type: 1.0
+    compliance_tier: 1.0
+    sales_team: 1.0
+    crm: 0.5
+    data_maturity: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - commerce.replenishment_due
+    - commerce.cart_abandoned
+    - commerce.first_purchase
+    - commerce.browse_no_purchase
+    - cs.usage_decline
+  scoring:
+    formula: rfm_weighted
+    weights: {fit: 0.20, intent: 0.40, timing: 0.30, reachability: 0.10}
+    floor: 40
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      email: consent
+      whatsapp: consent
+      sms: consent
+      ads: consent
+    lists_check: [global_suppression]
+    discount_authority: {max_pct: 15}
+  programs:
+    - replenishment-winback
+    - first-purchase-nurture
+    - vip-retention
+  north_star: net_revenue_28d
+  default_holdout_pct: 10

@@ -13,7 +13,7 @@ Blueprint (archetype)  →  Industry Pack  →  Tenant  →  Program
 
 Each level may **add** or **restrict**, never relax policy. Resolution is deterministic and the effective result is inspectable (`zolts explain program X --resolved`). It is the kustomize model applied to GTM: blueprint improvements flow to every customer without breaking their customisations.
 
-## Profiling: 12 dimensions
+## Profiling: 13 dimensions
 
 Onboarding resolves the blueprint from a profile, not from an open interview:
 
@@ -31,10 +31,15 @@ Onboarding resolves the blueprint from a profile, not from an open interview:
 | 10 | Product | software / services / physical / marketplace | Available product signals |
 | 11 | Compliance | standard / regulated / public sector | Approvals, retention, residency |
 | 12 | Permitted channels | email / LinkedIn / voice / WhatsApp / ads | Available play templates |
+| 13 | Sector | software / financial services / healthcare / manufacturing / public / retail / … | Separates archetypes whose policy packs differ but whose other twelve answers coincide |
+
+**Dimension 13 was added under test, not designed in.** With twelve, a regulated fintech and a regulated life-sciences company produced identical profiles: same motion, ACV band, cycle length, compliance tier, CRM and team size. Their canonical profiles scored exactly equal, and one of them resolved to the generic enterprise archetype. Twelve dimensions could not distinguish two archetypes whose legal and approval requirements differ materially. Sector is deliberately coarse — it exists to separate policy packs, not to be a taxonomy.
 
 The resolver is a **deterministic decision table** (auditable) with LLM-assisted refinement for copy and initial prioritisation only — never for policy.
 
-## The ten output archetypes
+Implemented in `zolts/blueprint.py`, with the archetypes as configuration in `blueprints/` and a JSON Schema in `examples/schema/zolts-blueprint.schema.json`. Two dimensions are **hard**: a mismatch on `customer_type` or `compliance_tier` disqualifies an archetype outright rather than merely costing it points, because getting either wrong means the wrong legal basis and the wrong policy pack — a compliance failure, not a poor fit. Ties break on blueprint key alphabetically: an arbitrary but stable rule beats a subtle one, because the same profile must always land on the same policy pack. A profile matching nothing on the hard dimensions still resolves, flagged for human review, rather than being turned away at onboarding.
+
+## The eleven output archetypes
 
 | Blueprint | Primary signal | Dominant play | North-star KPI | Compliance |
 |---|---|---|---|---|
@@ -48,6 +53,7 @@ The resolver is a **deterministic decision table** (auditable) with LLM-assisted
 | `marketplace-2sided` | Supply/demand imbalance by geo | Acquisition of the scarce side by territory | Liquidity per geo | Mixed |
 | `industrial-b2b` | Tenders, plant expansion, imports | Distributor plus long technical sale | Quotes issued | Standard |
 | `local-services-multisite` | New site, reviews, ad activity | Phone plus WhatsApp by territory | Contracts signed 60d | Suppression lists |
+| `public-sector` | Published tenders, budget allocation, framework renewal | Tender response within the published window | Tenders submitted | Public sector |
 
 Each blueprint ships with three to six programs, eight to fifteen configured signals, a pre-calibrated scoring model, a policy pack, a dashboard and a set of declarative tests.
 

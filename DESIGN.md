@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Zolts-design-system
-description: "An evidence-grade dark product surface for a GTM execution runtime. Anchors on a near-black canvas (#08090a) with a four-step surface ladder and hairline borders, in the tradition of dense technical software. Its defining rule is chromatic abstinence: Zolts ships NO brand accent colour. Buttons are inverse white-on-black, the wordmark is ink, focus rings are ink. Colour is reserved exclusively for measurement semantics — verified lift, experimental control, policy denial, review, and live latency — because in a product whose thesis is that measurement is the only truth, spending colour on decoration spends the one signal the interface has. Numerals are always tabular mono: a P&L that jitters between rows is a P&L nobody trusts."
+description: "An evidence-grade dark product surface for a GTM execution runtime. Anchors on a near-black canvas (#08090a) with a four-step surface ladder and hairline borders, in the tradition of dense technical software. A single violet accent (#7d4bf5) carries brand and interaction — mark, primary action, focus ring, active navigation — and is confined to chrome. Five separate colours carry measurement semantics: verified lift, experimental control, policy denial, review, and live latency. The accent sits in violet precisely because no data series would ever occupy that hue, so brand and evidence never collide on a dense screen. Numerals are always tabular mono: a P&L that jitters between rows is a P&L nobody trusts."
 
 colors:
   canvas: "#08090a"
@@ -16,7 +16,12 @@ colors:
   ink-muted: "#c2c8cc"
   ink-subtle: "#8b9297"
   ink-tertiary: "#5c6367"
-  ink-inverse: "#08090a"
+  ink-inverse: "#ffffff"
+  accent: "#7d4bf5"
+  accent-hover: "#9670f7"
+  accent-pressed: "#6a3ce0"
+  accent-dim: "#1e1435"
+  accent-ring: "#8f66f7"
   inverse-canvas: "#ffffff"
   inverse-hover: "#e3e6e8"
   data-lift: "#3ecf7e"
@@ -135,7 +140,7 @@ motion:
 
 components:
   button-primary:
-    backgroundColor: "{colors.inverse-canvas}"
+    backgroundColor: "{colors.accent}"
     textColor: "{colors.ink-inverse}"
     typography: "{typography.button}"
     rounded: "{rounded.md}"
@@ -206,9 +211,9 @@ components:
 
 ## The one rule that generates the rest
 
-**Zolts has no brand accent colour.** Not lavender, not cyan, not a gradient. The wordmark is ink, the primary button is inverse white, the focus ring is ink at 40% opacity.
+**The accent is violet, and it never enters a data region.**
 
-Colour appears in exactly five roles, all of them semantic:
+Zolts ships a brand accent — `{colors.accent}` `#7d4bf5` — on the mark, the primary action, the focus ring, active navigation and link emphasis. Alongside it, five colours carry measurement semantics and nothing else:
 
 | Token | Means | Never used for |
 |---|---|---|
@@ -218,9 +223,11 @@ Colour appears in exactly five roles, all of them semantic:
 | `{colors.data-review}` | Held for human review | Warnings in general |
 | `{colors.data-live}` | Live signal latency, under SLA | Links, info, decoration |
 
-The reasoning is not aesthetic. The product's entire thesis is that measurement is the only truth in GTM. An interface that spends green on a "Save" button has spent the signal it needs when a number is genuinely, verifiably up. Scarcity is what makes `{colors.data-lift}` legible across a dense screen at a glance.
+**Why violet specifically.** Green, red, amber, cyan and neutral grey are spoken for by the five semantics. An accent in any of those hues would collide with evidence on a dense screen — a violet accent cannot be mistaken for a lift figure, a denial or a control row, because nothing in a chart legend is violet unless someone chose it. The hue is not a preference; it is the only band left once measurement has taken its five.
 
-This is also positioning. The category's most visible product renders warm cream, claymation illustration and five saturated card colours. Reading as its opposite — near-black, hairline, tabular, unornamented — communicates *audited* before a word is read.
+**Where the accent is forbidden.** Inside any data region: metric values, deltas, chart marks, decision chips, table cells, sparklines. The accent lives in chrome. This boundary is the discipline that keeps the screen scannable — without it, the decision to ship an accent degrades into colour everywhere, which is the failure mode it exists to avoid.
+
+This is also positioning. The category's most visible product renders warm cream, claymation illustration and five saturated card colours across every surface. A near-black ground with one violet and five reserved data hues reads as *instrument* against that, and communicates audited before a word is read.
 
 ## Foundations
 
@@ -277,8 +284,9 @@ Rules:
 
 ## Components
 
-**`button-primary`** — Inverse white. There is exactly one on any screen.
-- `{colors.inverse-canvas}` background, `{colors.ink-inverse}` text, `{rounded.md}`, padding 7px 13px. Hover shifts to `{colors.inverse-hover}`; active scales to `0.985`.
+**`button-primary`** — Violet accent. There is exactly one on any screen.
+- `{colors.accent}` background, white text, `{rounded.md}`, padding 7px 13px. Hover shifts to `{colors.accent-hover}`, pressed to `{colors.accent-pressed}`; active scales to `0.985`.
+- One primary per view still holds. An accent does not license three of them.
 
 **`button-secondary`** — `{colors.surface-2}` with a 1px `{colors.hairline}` border. Everything that is not the single primary action.
 
@@ -298,7 +306,7 @@ Rules:
 
 - Body text holds ≥ 7:1 against its surface; `{colors.ink-subtle}` holds ≥ 4.5:1 and is never used below 12px.
 - **No status is conveyed by colour alone.** Every `decision-chip` carries a text label; every lift figure carries a sign; every control row carries the word "control".
-- Focus is a 2px `{colors.hairline-focus}` ring at 2px offset, on every interactive element, never removed on mouse input.
+- Focus is a 2px `{colors.accent-ring}` ring at 2px offset, on every interactive element, never removed on mouse input. The accent earns its keep here: a focus ring must be unmistakable, and violet against near-black is the most legible ring in this palette.
 - Touch targets ≥ 40px on coarse pointers even though density targets 34px on fine pointers.
 
 ## Do's and Don'ts
@@ -310,11 +318,13 @@ Rules:
 - Put the rule key beside every policy decision.
 - Show the control group next to the treatment, always, even when the lift is negative.
 - Use the surface ladder for hierarchy before reaching for a border.
-- Let the primary button be the only white element in a view.
+- Let the primary button be the only accent-filled element in a view.
+- Use `{colors.accent-dim}` for the accent's own tinted surfaces (active nav, selected row), never a semantic dim.
 
 ### Don't
 
-- Don't introduce a brand accent. The absence is the brand.
+- Don't put the accent inside a data region: no violet metrics, deltas, chart marks or decision chips.
+- Don't introduce a second accent hue. One violet, five semantics, and nothing else.
 - Don't ship a light-mode product surface. Marketing pages may differ; the product does not.
 - Don't use `{colors.data-lift}` for a successful save, a healthy status or an enabled toggle.
 - Don't add gradients, glows or spotlight cards.
@@ -338,7 +348,7 @@ The P&L table is the exception: below 1024px it keeps its own `overflow-x: auto`
 
 1. Name the component by its `components:` token before changing it.
 2. Decide the surface level first, then the border, then never the shadow.
-3. If a new colour is proposed, identify which of the five measurement semantics it serves. If none, it is not approved.
+3. If a new colour is proposed, identify which of the five measurement semantics it serves, or show that it is the existing accent. If neither, it is not approved.
 4. Default body to `{typography.body-sm}` 13px in product surfaces, `{typography.body}` 14px in marketing.
 5. Every new metric ships with its control comparison in the same commit.
 
@@ -346,4 +356,5 @@ The P&L table is the exception: below 1024px it keeps its own `overflow-x: auto`
 
 - The display, text and mono families are specified as a superfamily. The shipped substitute is **IBM Plex Sans** (display and text, weights 450-600) with **IBM Plex Mono** (all numerals, tabular). Plex was drawn as an engineering typeface rather than a product-marketing one, which is the register this system wants; it is also not one of the two faces every AI-generated interface currently reaches for.
 - Light mode is undefined and intentionally so.
-- Data-visualisation palettes beyond the five semantics (multi-series charts) are unspecified and should extend the ladder in luminance, not hue.
+- Data-visualisation palettes beyond the five semantics (multi-series charts) are unspecified and should extend the ladder in luminance, not hue — and must avoid the accent's violet band so a series is never mistaken for chrome.
+- This system originally shipped with no brand accent at all, reserving colour entirely for measurement. That was overridden by decision O1 in the decision register: an accent buys the thirty-second first impression in a side-by-side comparison, at the cost of the argument that colour in this product always means something measured. The forbidden-in-data-regions rule is what preserves as much of that argument as an accent allows.

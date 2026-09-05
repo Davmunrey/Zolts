@@ -56,7 +56,16 @@ Expansion engine, in expected order of NRR contribution: credit consumption → 
 
 ## Act 2: spend governance contract (month 9+)
 
-Once baseline, measured lift and real cost per meeting have accumulated, the existing account converts from a consumption contract to a **platform contract with spend governance**, anchored to a percentage of GTM spend under management (reference: 3-6%), not to the cost of the tool it replaced. Target ACV: 3-5× that of Act 1.
+Once baseline, measured lift and real cost per meeting have accumulated, the existing account converts from a consumption contract to a **platform contract with spend governance**, anchored to a percentage of GTM spend under management, not to the cost of the tool it replaced. Target ACV: 3-5× that of Act 1.
+
+**Settled structure (decision I10): a hybrid.** A floor of 3-6% of governed GTM spend, plus a bonus on holdout-verified lift.
+
+| Component | Share of Act 2 ACV | Why it is there |
+|---|---|---|
+| Floor on governed spend | ~70% | Predictable, forecastable, survives a quarter where the customer's own demand softens |
+| Bonus on verified lift | ~30% | Puts Zolts on the same side of the table as the CFO, and is only payable against a concurrent control |
+
+The pure alternatives were rejected for structural reasons, not commercial ones. Anchoring only to governed spend gives Zolts an incentive for that spend not to fall — the opposite of what the CFO is buying. Anchoring only to incremental pipeline ties revenue to the volatility of the customer's business and reopens the attribution negotiation every quarter. The hybrid costs a longer contract negotiation and buys alignment without the volatility.
 
 Non-negotiable activation condition: the CFO view must be derived from data the operator already generates, with zero additional customer input. The moment it requires its own configuration, it is a second product. Detail in [17](17-buyer-sequencing.md).
 

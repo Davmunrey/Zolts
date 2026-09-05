@@ -1,0 +1,61 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: industrial-b2b
+  name: Industrial and manufacturing B2B
+  description: >
+    Buying is triggered by physical events — a plant expansion, an import
+    licence, a tender — and the deal usually runs through a distributor.
+spec:
+  matches:
+    sector: [manufacturing, logistics, energy, construction]
+    motion: [slg, channel]
+    acv_band: ["50-250k", ">250k", "10-50k"]
+    cycle_length: ["3-9m", ">9m"]
+    customer_type: [b2b]
+    icp_breadth: [niche, mid]
+    geography: ["*"]
+    data_maturity: [none, warehouse]
+    crm: [salesforce, hubspot, pipedrive, none]
+    sales_team: ["1-5", "5-25", ">25"]
+    product_type: [physical]
+    compliance_tier: [standard]
+    channels: [email, voice, linkedin]
+  weights:
+    sector: 2.5
+    product_type: 4.0
+    customer_type: 3.0
+    cycle_length: 2.0
+    acv_band: 1.5
+    motion: 1.5
+    sales_team: 1.0
+    icp_breadth: 1.0
+    compliance_tier: 1.0
+    crm: 0.5
+    data_maturity: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - public.tender_published
+    - industrial.plant_expansion
+    - industrial.import_licence
+    - hiring.role_opened
+    - corp.m_and_a
+    - partner.shared_customer
+  scoring:
+    model: pit_r_v3
+    weights: {fit: 0.40, intent: 0.15, timing: 0.35, reachability: 0.10}
+    floor: 55
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      email: legitimate_interest
+      voice: legitimate_interest
+      linkedin: legitimate_interest
+    lists_check: [global_suppression]
+  programs:
+    - tender-response
+    - plant-expansion-entry
+    - distributor-coordination
+  north_star: quote_issued
+  default_holdout_pct: 10

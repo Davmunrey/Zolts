@@ -1,0 +1,60 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: local-services-multisite
+  name: Local services, multi-site
+  description: >
+    The useful signal is observable operational change, not digital intent, and
+    the binding constraint is a rep's territory rather than a lead count.
+spec:
+  matches:
+    sector: [healthcare, automotive, fitness, hospitality, retail]
+    motion: [slg, mixed]
+    acv_band: ["1-10k", "10-50k"]
+    cycle_length: ["<7d", "1-3m"]
+    customer_type: [b2b]
+    icp_breadth: [mid, mass]
+    geography: ["*"]
+    data_maturity: [none, warehouse]
+    crm: [pipedrive, hubspot, none]
+    sales_team: ["1-5", "5-25"]
+    product_type: [services]
+    compliance_tier: [standard]
+    channels: [voice, whatsapp, email]
+  weights:
+    sector: 2.0
+    product_type: 2.5
+    customer_type: 2.5
+    acv_band: 2.0
+    cycle_length: 2.0
+    motion: 1.5
+    channels: 1.5
+    icp_breadth: 1.0
+    compliance_tier: 1.0
+    sales_team: 1.0
+    crm: 0.5
+    data_maturity: 0.5
+    geography: 0.5
+  signals:
+    - local.new_location_detected
+    - local.review_velocity_drop
+    - local.ads_activity_started
+    - hiring.role_opened
+    - local.licence_renewed
+  scoring:
+    formula: territory_weighted
+    weights: {fit: 0.30, intent: 0.20, timing: 0.35, reachability: 0.15}
+    floor: 50
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      voice: legitimate_interest
+      whatsapp: consent
+      email: legitimate_interest
+    lists_check: [global_suppression, robinson_list_es]
+  programs:
+    - new-site-and-reputation
+    - review-recovery
+    - territory-coverage-sweep
+  north_star: signed_contract_60d
+  default_holdout_pct: 10
