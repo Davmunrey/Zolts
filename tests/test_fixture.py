@@ -116,3 +116,20 @@ def test_program_names_come_from_the_yaml_not_the_console():
     source = CONSOLE.read_text()
     for p in FIXTURE["programs"]:
         assert p["name"] not in source, f"'{p['name']}' is hard-coded in the console"
+
+
+def test_the_build_is_deterministic():
+    """This output is committed and CI verifies it matches a fresh build, so a
+    single moving field turns the staleness guard permanently red. A wall-clock
+    timestamp did exactly that once; this is the guard against its return."""
+    import json
+
+    assert json.dumps(build(), sort_keys=True) == json.dumps(build(), sort_keys=True)
+
+
+def test_the_fixture_carries_no_wall_clock_field():
+    import json
+
+    blob = json.dumps(build())
+    assert "generatedAt" not in blob
+    assert not re.search(r"20\d\d-\d\d-\d\dT\d\d:", blob), "a timestamp leaked into the fixture"
