@@ -257,9 +257,31 @@ Display weights sit at 550–560, never 700. Negative tracking is applied aggres
 
 ### Density
 
-This is a professional tool used for hours. Rows are 32–36px, not 52px. Sidebar items are 28px. The default table is comfortable at 13px, not 16px.
+This is a professional tool used for hours. Rows are 32–36px, not 52px. Rail items are 26px. The default table is comfortable at 13px, not 16px.
 
 Density is not the absence of space — it is space spent on separation between *groups* rather than padding inside every element.
+
+## Layout: the list is the page
+
+A product surface is scanned and operated, not read top to bottom, and the fastest way to make one read as a generic template is to compose it from widgets. Four rules keep it from happening.
+
+**No metric-tile row.** A row of large numbers across the top is the single most recognisable signature of a generated dashboard, and it puts the least actionable information in the most valuable position. Totals belong in a status strip at the foot of the list, where they summarise what is above them.
+
+**Not everything is a card.** Content sits directly on `{colors.canvas}` separated by hairlines. Border, fill, radius and shadow each say "separate object" and are spent by role: the command palette floats, so it is lifted; a table is not an object on the page, it *is* the page.
+
+**No section heading with a subtitle.** `<h2>Title</h2><p>Explanatory sentence</p>` on every block is documentation furniture. Product surfaces use an uppercase label at `{typography.eyebrow}` and nothing else; the context comes from the bar above.
+
+**Three panes: rail, list, detail.** Navigation on the left, the working set in the middle at full bleed, properties on the right as a label/value list. The detail pane is a property list, never a stack of small cards.
+
+## Keyboard
+
+A tool people live in is driven from the keyboard, and the affordances have to be visible or they do not exist.
+
+- `⌘K` opens the command palette: jump to any object, run any command. It is the only element permitted a drop shadow.
+- `J` / `K` move the selection; arrow keys do the same for anyone who does not know the convention.
+- `Enter` opens, `Esc` closes.
+- Shortcut hints sit permanently at the foot of the rail, set in `kbd` at 10px.
+- Selection is a 2px `{colors.accent}` left rail plus a surface lift — never a filled row, which would compete with the data.
 
 ## Motion
 
