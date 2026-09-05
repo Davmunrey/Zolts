@@ -345,6 +345,33 @@ Custom curves only. `cubic-bezier(.23, 1, .32, 1)` for ease-out and `cubic-bezie
 
 **`data-row`** — 34px, transparent, hairline bottom rule. Hover lifts to `{colors.surface-2}` at 90ms. Selection is a 2px `{colors.ink}` left border, never a fill.
 
+## Interaction contracts
+
+Visual language is the easy half. The half that decides whether a keyboard or screen-reader user can operate the product at all is a set of contracts, and every one of them is invisible when correct. These follow the Radix Primitives model; the vanilla implementation in `design/console.html` is the reference.
+
+### Lists
+
+A selectable list is a `listbox` whose **options are not interactive widgets**. `role="option"` on a `<button>` is invalid — an option cannot itself be a control, and making every row focusable produces one tab stop per row, which turns a 200-row list into a keyboard trap.
+
+The correct shape is **active descendant**: the container is the single tab stop, holds `role="listbox"` and `tabindex="0"`, and names the current option through `aria-activedescendant`. Rows are plain elements carrying `role="option"`, a stable `id` and `aria-selected`. Arrow keys and `J`/`K` move the pointer; focus never leaves the container.
+
+### The command palette
+
+It is a `dialog` containing a `combobox`, and both halves have obligations.
+
+| Contract | Why it is not optional |
+|---|---|
+| `aria-labelledby` and `aria-describedby` on the dialog | A dialog with no accessible name is announced as "dialog", which tells the user nothing. Both targets are visually hidden. |
+| Input carries `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"` | Without them the results are an unannounced div; the user types into a box and hears nothing change. |
+| Input's `aria-activedescendant` points at the highlighted result | This is what makes arrow keys legible to a screen reader while focus stays in the input. |
+| Focus trapped in the input, `Tab` intercepted | Focus escaping to the page behind an open modal is the most common overlay bug there is. |
+| Focus returned to the trigger on close | Losing focus to `<body>` strands a keyboard user at the top of the document. |
+| `inert` and `aria-hidden` on the background | Otherwise the content behind the modal stays reachable and readable. |
+| Scroll lock on `<body>` | The page scrolling behind an open dialog breaks the sense that it is modal. |
+| `data-state="open" \| "closed"` on the dialog | State belongs in an attribute, not an ad-hoc class, so styling and testing read the same source. |
+
+None of these change a single pixel. That is the point: they are the difference between a surface that looks operable and one that is.
+
 ## Accessibility
 
 - Body text holds ≥ 7:1 against its surface; `{colors.ink-subtle}` holds ≥ 4.5:1 and is never used below 12px.
