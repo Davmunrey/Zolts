@@ -133,10 +133,9 @@ motion:
   duration-fast: 150ms
   duration-base: 220ms
   duration-slow: 380ms
-  ease-out: cubic-bezier(0.22, 1, 0.36, 1)
-  ease-in-out: cubic-bezier(0.65, 0, 0.35, 1)
-  spring-gentle: linear(0, 0.35, 0.79, 0.96, 1.02, 1.01, 1)
-  stagger-row: 24ms
+  ease-out: cubic-bezier(0.23, 1, 0.32, 1)
+  ease-in-out: cubic-bezier(0.77, 0, 0.175, 1)
+  press-scale: 0.97
 
 components:
   button-primary:
@@ -287,22 +286,44 @@ A tool people live in is driven from the keyboard, and the affordances have to b
 
 Motion exists to explain a state change. If a viewer cannot say what a transition told them, it should not ship.
 
-| Situation | Duration | Easing |
+### The first question is whether to animate at all
+
+Frequency decides, not taste. An animation the operator sees a hundred times a day is a hundred small delays.
+
+| How often it is seen | Decision |
+|---|---|
+| 100+ times a day — the command palette, selection movement, keyboard shortcuts | **No animation. Ever.** |
+| Tens of times a day — hover, filter toggles | Reduce to 90ms, colour only |
+| Occasional — a drawer, a confirmation, a published version | Standard animation |
+| Rare — onboarding, a first successful program | Delight is affordable |
+
+**Keyboard-initiated actions are never animated.** `⌘K` opens the palette instantly, with no fade and no scale. This is the single rule most often broken by interfaces that feel slow despite being fast: the animation is charged to the user on every repetition, and the palette is the most repeated action in the product.
+
+### Durations and curves
+
+| Situation | Duration | Curve |
 |---|---|---|
-| Hover, focus, colour shift | `{motion.duration-instant}` 90ms | `{motion.ease-out}` |
-| Popover, tooltip, chip appear | `{motion.duration-fast}` 150ms | `{motion.ease-out}` |
-| Panel, drawer, tab content | `{motion.duration-base}` 220ms | `{motion.ease-out}` |
-| Number counting to a new value | `{motion.duration-slow}` 380ms | `{motion.ease-out}` |
-| Drawer and sheet gestures | — | `{motion.spring-gentle}` |
+| Hover, focus, colour shift | 90ms | `{motion.ease-out}` |
+| Press feedback | 160ms | `{motion.ease-out}` |
+| Popover, chip appear | 150ms | `{motion.ease-out}` |
+| Panel, drawer, tab content | 220ms | `{motion.ease-out}` |
+| A value moving to a new position | 380ms | `{motion.ease-out}` |
+| Something moving across the screen | 300ms | `{motion.ease-in-out}` |
 
-Rules:
+Custom curves only. `cubic-bezier(.23, 1, .32, 1)` for ease-out and `cubic-bezier(.77, 0, .175, 1)` for ease-in-out; the built-in CSS keywords are too weak to read as intentional.
 
-- **Enter with movement, exit without.** Entering elements translate 4–8px and fade in; exiting elements fade only. An exit that animates position makes the interface feel slow, because the user has already decided.
-- **Stagger lists at `{motion.stagger-row}` 24ms**, capped at eight rows. Beyond eight it stops reading as choreography and starts reading as lag.
-- **Never animate `width`, `height`, `top` or `left`.** `transform` and `opacity` only.
-- **Numbers count up; they never crossfade.** A metric changing from 1.4× to 2.1× interpolates through the values, because the movement is the information.
-- **Honour `prefers-reduced-motion`**: all durations collapse to 0ms and transforms are removed. Never merely shortened.
-- The only continuous animation permitted is the live-latency pulse, and it is a 2px dot at `{colors.data-live}`, nothing more.
+**Never `ease-in` on UI.** It delays the first movement — the exact moment the user is watching hardest — so a 300ms `ease-in` dropdown *feels* slower than a 300ms `ease-out` one.
+
+### Rules
+
+- **Enter with movement, exit without.** Entering elements translate 4–8px and fade; exiting elements fade only. The user has already decided, so an animated exit only costs them time.
+- **Only `transform` and `opacity`.** Both skip layout and paint and run on the GPU. A progress bar animates `transform: scaleX()` with `transform-origin: left`, never `width`.
+- **Every pressable element scales to `0.97` on `:active`.** Without it the surface never confirms it heard the click.
+- **Never animate from `scale(0)`.** Nothing in the real world appears from nothing; start at `0.95` with opacity.
+- **Transitions, not keyframes, for anything triggered rapidly.** Transitions retarget from their current position; keyframes restart from zero.
+- **Gate every hover behind `@media (hover: hover) and (pointer: fine)`.** Touch devices fire hover on tap and the state sticks after the finger lifts.
+- **`prefers-reduced-motion` means fewer and gentler, not none.** Colour and opacity transitions aid comprehension and stay. Movement is what causes sickness, so only movement is removed.
+- The only continuous animation permitted is the live-latency pulse, and it is a 2px dot at `{colors.data-live}`.
 
 ## Components
 
