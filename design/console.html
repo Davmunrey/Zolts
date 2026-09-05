@@ -5,11 +5,17 @@
 <style>
 /* Zolts product surface — implements DESIGN.md.
    Single theme by design rule: "Don't ship a light-mode product surface."
+   The violet accent is confined to chrome — mark, primary action, focus ring,
+   active navigation. It never enters a data region, because a violet metric
+   would be indistinguishable from brand at a glance, and the five measurement
+   colours are what make a dense screen scannable.
    Every colour is painted explicitly so the page holds on any host ground. */
 :root{
   --canvas:#08090a; --surface-1:#0e1011; --surface-2:#141618; --surface-3:#1a1d1f; --surface-raised:#1f2325;
   --hairline:#1f2226; --hairline-strong:#2b2f34; --hairline-focus:#4a5058;
-  --ink:#f2f4f5; --ink-muted:#c2c8cc; --ink-subtle:#8b9297; --ink-tertiary:#5c6367; --ink-inverse:#08090a;
+  --ink:#f2f4f5; --ink-muted:#c2c8cc; --ink-subtle:#8b9297; --ink-tertiary:#5c6367; --ink-inverse:#ffffff;
+  --accent:#7d4bf5; --accent-hover:#9670f7; --accent-pressed:#6a3ce0;
+  --accent-dim:#1e1435; --accent-ring:#8f66f7;
   --inverse-canvas:#ffffff; --inverse-hover:#e3e6e8;
   --lift:#3ecf7e; --lift-dim:#153d28;
   --control:#7d8590; --control-dim:#22262a;
@@ -32,7 +38,7 @@ body{
 /* Every numeral in the product is mono and tabular. A figure that jitters
    between rows is a figure the CFO stops trusting. */
 .num,.metric,.metric-xl,code,pre,.mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
-:focus-visible{outline:2px solid var(--hairline-focus); outline-offset:2px; border-radius:var(--r-xs)}
+:focus-visible{outline:2px solid var(--accent-ring); outline-offset:2px; border-radius:var(--r-xs)}
 button{font:inherit; color:inherit; background:none; border:0; cursor:pointer}
 
 /* ── shell ───────────────────────────────────────────────────────── */
@@ -62,7 +68,11 @@ button{font:inherit; color:inherit; background:none; border:0; cursor:pointer}
   transition:background var(--d-instant) var(--ease), color var(--d-instant) var(--ease);
 }
 .nav a:hover{background:var(--surface-2); color:var(--ink-muted)}
-.nav a[aria-current="page"]{background:var(--surface-2); color:var(--ink)}
+.nav a[aria-current="page"]{background:var(--accent-dim); color:var(--ink); position:relative}
+.nav a[aria-current="page"]::before{
+  content:""; position:absolute; left:-10px; top:6px; bottom:6px; width:2px;
+  border-radius:9999px; background:var(--accent);
+}
 .nav svg{width:14px;height:14px;flex:none;opacity:.85}
 .nav .count{margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--ink-tertiary)}
 .sidebar-foot{margin-top:auto; padding:0 8px}
@@ -102,8 +112,9 @@ h1{
   transition:background var(--d-instant) var(--ease), transform var(--d-instant) var(--ease);
 }
 .btn:active{transform:scale(.985)}
-.btn-primary{background:var(--inverse-canvas); color:var(--ink-inverse)}
-.btn-primary:hover{background:var(--inverse-hover)}
+.btn-primary{background:var(--accent); color:var(--ink-inverse)}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-pressed)}
 .btn-secondary{background:var(--surface-2); color:var(--ink); border:1px solid var(--hairline)}
 .btn-secondary:hover{background:var(--surface-3); border-color:var(--hairline-strong)}
 .tabs{display:flex; gap:2px}
@@ -114,7 +125,7 @@ h1{
 .tab:hover{color:var(--ink-muted)}
 .tab[aria-selected="true"]{color:var(--ink)}
 .tab[aria-selected="true"]::after{
-  content:""; position:absolute; left:0; right:0; bottom:-1px; height:1px; background:var(--ink);
+  content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--accent);
 }
 
 /* ── content ─────────────────────────────────────────────────────── */
@@ -178,12 +189,12 @@ input[type=range]::-webkit-slider-runnable-track{height:3px; border-radius:9999p
 input[type=range]::-moz-range-track{height:3px; border-radius:9999px; background:var(--surface-3)}
 input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none; width:13px; height:13px; margin-top:-5px; border-radius:50%;
-  background:var(--ink); border:2px solid var(--canvas);
+  background:var(--accent); border:2px solid var(--canvas);
   transition:transform var(--d-instant) var(--ease);
 }
 input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 input[type=range]::-moz-range-thumb{
-  width:13px;height:13px;border-radius:50%;background:var(--ink);border:2px solid var(--canvas);
+  width:13px;height:13px;border-radius:50%;background:var(--accent);border:2px solid var(--canvas);
 }
 .stat-grid{display:grid; grid-template-columns:1fr auto; gap:9px 16px; margin-top:15px; font-size:12px}
 .stat-grid dt{color:var(--ink-subtle); min-width:0}
@@ -266,7 +277,7 @@ pre{
     <div style="display:flex;flex-direction:column;gap:12px">
       <div class="brand">
         <svg class="mark" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <path d="M3 3h12L3 15h12" stroke="#f2f4f5" stroke-width="1.9" stroke-linecap="square"/>
+          <path d="M3 3h12L3 15h12" stroke="#7d4bf5" stroke-width="1.9" stroke-linecap="square"/>
         </svg>
         <span class="wordmark">Zolts</span>
       </div>

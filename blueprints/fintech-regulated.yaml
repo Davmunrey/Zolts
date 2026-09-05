@@ -1,0 +1,62 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: fintech-regulated
+  name: Regulated financial services
+  description: >
+    Every outbound claim is a regulated statement. Copy approval is a workflow
+    stage, not a preference, and the licence register is a first-class signal.
+spec:
+  matches:
+    sector: [financial_services, insurance]
+    motion: [slg, mixed]
+    acv_band: ["10-50k", "50-250k", ">250k"]
+    cycle_length: ["3-9m", ">9m"]
+    customer_type: [b2b]
+    icp_breadth: [niche, mid]
+    geography: ["*"]
+    data_maturity: [warehouse, lakehouse]
+    crm: [salesforce, hubspot]
+    sales_team: ["5-25", ">25"]
+    product_type: [software, services]
+    compliance_tier: [regulated]
+    channels: [email, linkedin, voice]
+  weights:
+    sector: 3.5
+    compliance_tier: 4.0
+    customer_type: 3.0
+    cycle_length: 2.0
+    acv_band: 1.5
+    motion: 1.5
+    sales_team: 1.5
+    product_type: 1.0
+    icp_breadth: 1.0
+    crm: 0.5
+    data_maturity: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - regulatory.licence_granted
+    - regulatory.sanction_published
+    - funding.round
+    - people.exec_hired
+    - hiring.role_opened
+    - corp.m_and_a
+  scoring:
+    model: pit_r_v3
+    weights: {fit: 0.45, intent: 0.20, timing: 0.25, reachability: 0.10}
+    floor: 65
+  policy:
+    max_touches_per_person_per_week: 2
+    channels_require_basis:
+      email: legitimate_interest
+      linkedin: legitimate_interest
+      voice: legitimate_interest
+    lists_check: [global_suppression, regulator_watchlist]
+    copy_approval_required: true
+  programs:
+    - licence-granted-entry
+    - regulatory-deadline-play
+    - exec-change-entry
+  north_star: qualified_opportunity_90d
+  default_holdout_pct: 10

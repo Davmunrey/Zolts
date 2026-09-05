@@ -8,7 +8,7 @@ Building it changed the plan in four places. That is the point of building it.
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 118 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 184 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
@@ -37,6 +37,8 @@ PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 | Every shipped program declares a real holdout | [04](04-gtm-program-dsl.md) | `dsl.py` | **Proven** |
 | The DSL has no Turing-complete expressions | [04](04-gtm-program-dsl.md) | `expr.py` | **Proven.** AST allowlist; ten escape attempts rejected |
 | A program breaking compliance cannot be merged | [04](04-gtm-program-dsl.md) | `programtest.py` | **Proven.** Four deliberate breakages each fail the suite |
+| A company profile resolves to an archetype deterministically | [05](05-blueprints-and-adaptability.md) | `blueprint.py` | **Proven** for all 11 archetypes — after the profile needed a 13th dimension |
+| A B2C profile can never land on a B2B archetype | [05](05-blueprints-and-adaptability.md) | `blueprint.py` | **Proven.** `customer_type` and `compliance_tier` disqualify rather than deduct |
 
 ## What building it changed
 
@@ -69,12 +71,20 @@ The optimiser's edge is **inversely proportional to how good cheap data coverage
 
 Commercially: the "we cut your data cost" argument is weakest precisely in DACH, a high-ACV target market. There, Zolts leads with governance, jurisdictional policy and incrementality. A single blended savings number would have hidden this entirely.
 
+## Third round: the blueprint resolver
+
+**9. Twelve profile dimensions could not resolve eleven archetypes.** A regulated fintech and a regulated life-sciences company produced byte-identical profiles across all twelve — same motion, ACV band, cycle length, compliance tier, CRM, team size. Their canonical profiles tied at exactly equal scores, and healthtech's resolved to the generic enterprise archetype instead of its own.
+
+The tempting fix was to nudge weights until the test passed. That would have hidden the defect rather than fixed it: the model genuinely lacked the information needed to tell the two apart. `sector` was added as the thirteenth dimension, and `docs/05` corrected.
+
+This is the first finding that changed the *specification* rather than an implementation of it. It is also the clearest case so far of a document reading as complete because nothing had tried to execute it.
+
 ## The pattern worth naming
 
-Eight defects so far. Every one was found by executing the artefacts, none by reading them — and three are the same failure in different clothing: **an opt-out path that silently does not work**. A missing `suppress` flag, then a second one, then an exit clause that cannot parse. Each looked correct in review.
+Nine defects so far. Every one was found by executing the artefacts, none by reading them — and three are the same failure in different clothing: **an opt-out path that silently does not work**. A missing `suppress` flag, then a second one, then an exit clause that cannot parse. Each looked correct in review.
 
 The plan already classifies the policy decision log and idempotency as unacceptable debt. This adds a third: **a suppression path with no test is unacceptable debt**, because it fails silently, it fails in the direction of contacting people who asked not to be contacted, and human review demonstrably does not catch it.
 
 ## Deliberately not implemented
 
-The durable runtime (Temporal), connectors, the agent layer and its eval harness, deliverability scheduling, the blueprint resolver, and persistence. Those need infrastructure, not logic, and simulating them would prove nothing. Everything here is pure logic that either holds or does not.
+The durable runtime (Temporal), connectors, the agent layer and its eval harness, deliverability scheduling, and persistence. Those need infrastructure, not logic, and simulating them would prove nothing. Everything here is pure logic that either holds or does not.

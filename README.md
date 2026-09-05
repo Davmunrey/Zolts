@@ -38,7 +38,8 @@
 ## Technical artefacts
 
 - `zolts/` — reference implementation of the core primitives: overlay resolution, deterministic holdouts, signal decay and PIT-R scoring, the waterfall cost optimiser, the policy engine, and the DSL loader and linter
-- `tests/` — 118 tests, each backing a specific claim made in `docs/`
+- `zolts/blueprint.py` plus `blueprints/` — the archetype resolver and 11 blueprints as configuration
+- `tests/` — 184 tests, each backing a specific claim made in `docs/`
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -48,12 +49,12 @@
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 118 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 184 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
 
-The reference core exists to test the plan, not to be the product. Building it has corrected eight defects so far — five in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written. Three of the eight were the same failure in different clothing: an opt-out path that silently did not work. See [19](docs/19-reference-core.md).
+The reference core exists to test the plan, not to be the product. Building it has corrected nine defects so far — five in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written. Three of the eight were the same failure in different clothing: an opt-out path that silently did not work. See [19](docs/19-reference-core.md).
 
 ## Definition status
 
@@ -64,7 +65,7 @@ The reference core exists to test the plan, not to be the product. Building it h
 - [`DESIGN.md`](DESIGN.md) — the design system, in the [DESIGN.md](https://github.com/VoltAgent/awesome-design-md) format that design agents read directly.
 - `design/console.html` — the reference product surface implementing it: a program's evidence, P&L and policy trace.
 
-Its governing rule is that **Zolts ships no brand accent colour**. Colour is spent only on measurement semantics — verified lift, experimental control, policy denial, review, live latency. In a product whose thesis is that measurement is the only truth in GTM, an interface that spends green on a Save button has spent the signal it needs when a number is genuinely, verifiably up.
+Its governing rule is that **the violet accent never enters a data region**. Brand and interaction live in chrome; five separate colours carry measurement semantics — verified lift, experimental control, policy denial, review, live latency. Violet is the only hue left once measurement has taken its five, so brand and evidence can never collide on a dense screen.
 
 That is also positioning. The category's most visible product renders warm cream, claymation illustration and five saturated card colours; reading as its opposite communicates *audited* before a word is read.
 

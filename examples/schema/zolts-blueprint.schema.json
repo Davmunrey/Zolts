@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zolts.dev/schema/blueprint/v1.json",
+  "title": "Zolts Blueprint",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "zolts/v1" },
+    "kind": { "const": "Blueprint" },
+    "metadata": {
+      "type": "object",
+      "required": ["key", "name", "description"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$" },
+        "name": { "type": "string" },
+        "description": { "type": "string", "minLength": 20 }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["matches", "weights", "signals", "scoring", "policy", "programs", "north_star", "default_holdout_pct"],
+      "properties": {
+        "matches": {
+          "type": "object",
+          "description": "Accepted values per profile dimension. All thirteen must be present.",
+          "required": ["motion", "acv_band", "cycle_length", "customer_type", "icp_breadth", "geography", "data_maturity", "crm", "sales_team", "product_type", "compliance_tier", "channels", "sector"],
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            ]
+          }
+        },
+        "weights": {
+          "type": "object",
+          "required": ["motion", "acv_band", "cycle_length", "customer_type", "icp_breadth", "geography", "data_maturity", "crm", "sales_team", "product_type", "compliance_tier", "channels", "sector"],
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 5 }
+        },
+        "signals": { "type": "array", "items": { "type": "string" }, "minItems": 3 },
+        "scoring": {
+          "type": "object",
+          "required": ["weights", "floor"],
+          "properties": {
+            "model": { "type": "string" },
+            "formula": { "type": "string" },
+            "weights": {
+              "type": "object",
+              "required": ["fit", "intent", "timing", "reachability"],
+              "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "floor": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "policy": {
+          "type": "object",
+          "required": ["max_touches_per_person_per_week", "channels_require_basis", "lists_check"],
+          "properties": {
+            "max_touches_per_person_per_week": { "type": "integer", "minimum": 1, "maximum": 7 },
+            "channels_require_basis": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": { "enum": ["consent", "legitimate_interest", "contract"] }
+            },
+            "lists_check": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "contains": { "const": "global_suppression" }
+            },
+            "copy_approval_required": { "type": "boolean" },
+            "special_category_inference": { "enum": ["forbidden"] },
+            "discount_authority": { "type": "object" }
+          }
+        },
+        "programs": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
+        "north_star": { "type": "string" },
+        "default_holdout_pct": { "type": "number", "minimum": 5, "maximum": 50 }
+      }
+    }
+  }
+}

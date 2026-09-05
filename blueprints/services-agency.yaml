@@ -1,0 +1,60 @@
+apiVersion: zolts/v1
+kind: Blueprint
+metadata:
+  key: services-agency
+  name: Agencies and professional services
+  description: >
+    Capacity is the product, so timing beats targeting: the signal is a client
+    who has just lost, outgrown or started looking for a provider.
+spec:
+  matches:
+    sector: [services, software, retail, marketing]
+    motion: [slg, mixed]
+    acv_band: ["10-50k", "50-250k"]
+    cycle_length: ["1-3m", "3-9m"]
+    customer_type: [b2b]
+    icp_breadth: [mid, mass]
+    geography: ["*"]
+    data_maturity: [none, warehouse]
+    crm: [hubspot, pipedrive, attio, none]
+    sales_team: ["1-5", "5-25"]
+    product_type: [services]
+    compliance_tier: [standard]
+    channels: [email, linkedin, voice]
+  weights:
+    sector: 2.0
+    product_type: 3.0
+    customer_type: 3.0
+    motion: 2.0
+    acv_band: 1.5
+    cycle_length: 1.5
+    sales_team: 1.5
+    icp_breadth: 1.0
+    compliance_tier: 1.0
+    crm: 0.5
+    data_maturity: 0.5
+    geography: 0.5
+    channels: 0.5
+  signals:
+    - hiring.role_opened
+    - public.tender_published
+    - corp.agency_change_detected
+    - funding.round
+    - content.engagement
+    - tech.install_detected
+  scoring:
+    model: pit_r_v3
+    weights: {fit: 0.30, intent: 0.25, timing: 0.35, reachability: 0.10}
+    floor: 50
+  policy:
+    max_touches_per_person_per_week: 3
+    channels_require_basis:
+      email: legitimate_interest
+      linkedin: legitimate_interest
+    lists_check: [global_suppression]
+  programs:
+    - rfp-window
+    - in-house-team-build
+    - proof-of-work-outbound
+  north_star: qualified_meeting_30d
+  default_holdout_pct: 10

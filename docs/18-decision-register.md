@@ -2,7 +2,7 @@
 
 ## How to use this document
 
-136 decisions. **124 already carry a default recommendation: unless you contradict them, they execute as written.** The 12 marked 🔴 are blocking and only the founder can answer them — they depend on facts (your network, your capital, your risk appetite) that no analysis can substitute.
+140 decisions. **124 carry a default recommendation: unless you contradict them, they execute as written.** Three of the blocking twelve are now closed (B4, I10, and the design rule in block O); the remaining 🔴 are blocking and only the founder can answer them — they depend on facts (your network, your capital, your risk appetite) that no analysis can substitute.
 
 Usage rule: do not answer everything. Answer the 🔴, strike through the defaults you disagree with, and the rest is settled. An unrecorded decision reopens every six weeks and costs more than a mediocre recorded one.
 
@@ -27,7 +27,7 @@ Usage rule: do not answer everything. Answer the 🔴, strike through the defaul
 | B1 🔴 | Initial geography | Depends on where your network is. Proposed: **Iberia plus LATAM** for design speed, **UK/NL/DACH** for ACV | Selling outside your network in phase 0 doubles CAC and cycle |
 | B2 | Product language | **English UI by default, Spanish available.** Docs in English | A Spanish-only product closes 80% of the market and the funding round |
 | B3 | Target company size | **50-500 employees** | Under 50 lacks budget and pain; over 500 brings a nine-month procurement cycle |
-| B4 🔴 | Entry vertical | Proposed: **B2B SaaS plus agencies and professional services** — unless you hold an unfair advantage elsewhere | Unfair advantage beats market logic every time in phase 0 |
+| B4 ✅ | Entry vertical | **DECIDED: B2B SaaS, 50-500 employees.** Agencies remain a design-partner target for template extraction, not an entry segment | Fixes the entry blueprint, the signal set and the phase 1 policy pack |
 | B5 | Greenfield or rip-and-replace? | **Target those who already have a stack and suffer it** | The budget already exists; educating a greenfield costs 3× |
 | B6 🔴 | Do you have three companies that will sign a paid pilot within 30 days? Names | — | If not, phase 1 starts by finding them, not by building |
 | B7 | Free or paid pilot? | **Always paid.** €5k for three months | A free pilot produces polite, useless feedback |
@@ -144,7 +144,7 @@ Usage rule: do not answer everything. Answer the 🔴, strike through the defaul
 | I7 | Seats or unlimited? | **Operator seats; viewers free** | Charging to view reduces internal spread, your best salesperson |
 | I8 | Design partner discount? | **50% for life in exchange for a public reference and case study, contractually** | An undocumented discount is never collected on |
 | I9 | Euros or dollars? | **Both, local pricing, no conversion** | — |
-| I10 🔴 | Act 2: anchored to governed spend or to incremental pipeline? | Proposed: **hybrid — a floor on governed spend plus a bonus on verified lift** | Defines whether you are infrastructure or a risk partner: two different companies |
+| I10 ✅ | Act 2: anchored to governed spend or to incremental pipeline? | **DECIDED: hybrid.** A floor of 3-6% of governed GTM spend plus a bonus on holdout-verified lift. Predictable revenue with the incentive aligned, at the cost of a contract that takes longer to negotiate | Zolts is infrastructure with skin in the game, not a pure risk partner |
 | I11 | Charge for implementation? | **Always** | What is free is neither implemented nor used |
 | I12 | When do you raise prices? | **Customer 15: +30%, with 12-month grandfathering** | Raising late anchors every future cohort to a low price |
 
@@ -203,6 +203,15 @@ Usage rule: do not answer everything. Answer the 🔴, strike through the defaul
 | M5 | DSL IP open or closed? | See A7: **DSL open, runtime closed** | — |
 | M6 | Who owns the code? | **The company, with IP assignment signed by everyone including freelancers** | Without it, funding due diligence collapses |
 
+## O · Design
+
+| # | Question | Decision | Consequence |
+|---|---|---|---|
+| O1 ✅ | Does the "no brand accent" rule hold everywhere? | **DECIDED: no. A brand accent ships in the product as well as in marketing.** This overrides the recommendation in the original `DESIGN.md`, which reserved colour entirely for measurement semantics | Buys the 30-second first impression in a side-by-side comparison; costs the argument that colour in this product always means something measured |
+| O2 | Which hue may the accent occupy? | **Violet only.** Green, red, amber, cyan and neutral grey are spoken for by the five measurement semantics, so the accent must sit in a band no data series would occupy | Without this constraint the accent collides with lift or denial and the dense screens stop being scannable |
+| O3 | Where is the accent forbidden? | **Inside any data region**: metric values, deltas, chart marks, decision chips, table cells. It lives in chrome — brand mark, primary action, focus ring, active navigation, link emphasis | This is the discipline that replaces scarcity. Without it the decision degrades into colour everywhere |
+| O4 | Does the surface system change? | **No.** Near-black canvas, four-step surface ladder, hairlines, density, mono tabular numerals and no shadows all stand | Only the accent rule changed; the rest of the system was never contingent on it |
+
 ## N · Risk and horizon
 
 | # | Question | Default recommendation | Consequence |
@@ -224,13 +233,13 @@ Usage rule: do not answer everything. Answer the 🔴, strike through the defaul
 | 2 | **K1** technical co-founder | Determines whether phase 1 is building or recruiting |
 | 3 | **L1** capital and runway | Fixes team size and plan aggressiveness |
 | 4 | **B6** three named design partners | Without them phase 1 does not start; with them it self-funds |
-| 5 | **B4/B1** entry vertical and geography | Your unfair advantage beats any market analysis |
+| 5 | ~~**B4** entry vertical~~ | **Closed: B2B SaaS 50-500.** B1 geography still open |
 | 6 | **A1** product versus services | Defines the multiple and the cost structure |
 | 7 | **A5** independent versus acquisition | Redirects where engineering is invested |
 | 8 | **A6** the founding "no" | Without it, the first large customer redefines you |
 | 9 | **H1** processor versus joint controller | Existential; requires counsel before the first contract |
 | 10 | **E8** training on customer data or not | A sales argument or an asset given away; not both |
-| 11 | **I10** Act 2 anchor | Defines whether you are infrastructure or a risk partner |
+| 11 | ~~**I10** Act 2 anchor~~ | **Closed: hybrid floor plus lift bonus** |
 | 12 | **B7/B8** paid pilot with signed criteria | Determines whether phase 1 feedback is real or polite |
 
 ## Five actions for this week, independent of everything above
