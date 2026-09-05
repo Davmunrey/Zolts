@@ -24,6 +24,14 @@ jobs:
         run: python3 scripts/run_program_tests.py
         env:
           PYTHONPATH: .
+      - name: Check the built site is in sync with its source
+        run: |
+          python3 scripts/build_site.py
+          git diff --exit-code -- site vercel.json \
+            || { echo "::error::site/ is stale — run python3 scripts/build_site.py and commit"; exit 1; }
+        env:
+          PYTHONPATH: .
+
       - name: Benchmark the waterfall optimiser
         run: python3 scripts/benchmark_waterfall.py
         env:

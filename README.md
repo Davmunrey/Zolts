@@ -69,6 +69,27 @@ Its governing rule is that **the violet accent never enters a data region**. Bra
 
 That is also positioning. The category's most visible product renders warm cream, claymation illustration and five saturated card colours; reading as its opposite communicates *audited* before a word is read.
 
+## Deployment
+
+The product surface deploys as a static site with no build step beyond a wrapper.
+
+```bash
+python3 scripts/build_site.py      # design/console.html -> site/, and derives the CSP
+```
+
+`scripts/build_site.py` hashes the inline style and script it actually ships into the Content-Security-Policy, so the policy cannot drift from the page. `style-src-elem` stays hash-locked while `style-src-attr` allows inline attributes, because the surface sets transforms from data at runtime and a hash never covers a `style=""` attribute. CI fails if the committed `site/` is stale.
+
+| Target | Configuration | Status |
+|---|---|---|
+| Cloudflare Pages | `wrangler.toml`, `site/_headers`, `.github/workflows/deploy-pages.yml` | Deploys on push to `main` once `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set; the job skips cleanly until then |
+| Vercel | `vercel.json` | Connect the repository; output directory `site` |
+
+Manual Cloudflare deploy from a checkout:
+
+```bash
+npx wrangler pages deploy site --project-name=zolts
+```
+
 ## Conventions
 
 See [CLAUDE.md](CLAUDE.md). The repository is English-only — product, code, documentation, commits and pull requests.
