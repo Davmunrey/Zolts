@@ -15,6 +15,16 @@ reputation_factor ∈ [0, 1.2]  a function of bounces, complaints, engagement, P
 
 The scheduler assigns each send to a specific mailbox, optimising for mailbox reputation, geographic and language affinity with the recipient, the recipient's MX provider (segregating Google-bound from Microsoft-bound traffic), and load balance. A mailbox whose reputation degrades is automatically pulled back into warm-up.
 
+Implemented in `zolts/deliverability.py`, with 32 tests. Executing it settled three things the prose left open.
+
+**Reputation is scored per domain, so the domain is the unit that burns.** A domain past the complaint cut-off has zero capacity including its healthy mailboxes. Letting a clean mailbox keep sending from a burned domain is not a way out; it is how the rest of the fleet follows.
+
+**A rate needs a sample before it means anything.** One bounce in three sends is 33%, and pausing on it would make every new mailbox unusable on its first day. Rates are only enforced above 50 sends — below that the verdict is `sample.insufficient`, recorded rather than assumed.
+
+**Threshold rules are ordered worst-first and the first match decides**, so a cut-off is never masked by an alarm on another metric. A mailbox bouncing at 2% *and* complaining at 0.3% pauses; it does not merely alarm.
+
+Missing authentication is handled separately from reputation, because it is not a state to recover from: mail without SPF, DKIM, a DMARC policy of at least `quarantine`, or one-click unsubscribe is filtered on arrival, so the domain's capacity is zero rather than reduced.
+
 ## Operating thresholds (non-negotiable)
 
 | Metric | Target | Alarm | Automatic cut-off |
@@ -25,6 +35,8 @@ The scheduler assigns each send to a specific mailbox, optimising for mailbox re
 | Unsubscribe | <0.5% | 1% | 2% → review |
 | Emails per mailbox per day | 30-40 | 50 | 60 |
 | Simultaneous new domains | — | — | Staggered ramp, never a mass activation |
+
+Every verdict carries a rule key and a rationale, for the same reason policy decisions do: an unexplained pause is a pause the operator works around. `ramp_plan()` schedules new domains in waves of two a week apart — activating a fleet at once gives every domain one shared reputation history, so a single mistake takes all of them down together instead of one.
 
 ## Domain technical requirements (automated checklist)
 

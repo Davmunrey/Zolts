@@ -8,7 +8,7 @@ Building it changed the plan in four places. That is the point of building it.
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 237 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 271 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
@@ -41,6 +41,8 @@ PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 | A B2C profile can never land on a B2B archetype | [05](05-blueprints-and-adaptability.md) | `blueprint.py` | **Proven.** `customer_type` and `compliance_tier` disqualify rather than deduct |
 | A program may not loosen its blueprint's policy | [05](05-blueprints-and-adaptability.md) | `catalog.py` | **Proven** — and it caught a live violation |
 | The figure on screen is the figure the runtime computes | [10](10-measurement-and-incrementality.md) | `build_fixture.py` | **Proven.** The console holds no formula of its own |
+| Sending capacity is managed inventory, not plumbing | [09](09-execution-and-deliverability.md) | `deliverability.py` | **Proven.** Warm-up, thresholds, per-provider segregation, staggered ramp |
+| A burned domain cannot send from its healthy mailboxes | [09](09-execution-and-deliverability.md) | `deliverability.py` | **Proven** |
 
 ## What building it changed
 
@@ -92,6 +94,18 @@ The consequence was the familiar one. That program would have skipped the global
 
 **A correction to a figure that was on screen.** Wiring the console to the reference core showed that a program I had marked significant with a green check was not: 9.50 pp of lift against a 10.14 pp detectable effect. Of four programs, one is significant. The hand-written data had been wrong, and the surface had been asserting a result the statistics do not support — the exact failure the product exists to prevent, shipped in its own demo.
 
+## Fifth round: sending capacity
+
+`docs/09` was the last large specification nothing had executed, and the one where that mattered most: its errors do not surface as a failing test. A miscalculated capacity or a threshold checked one comparison too late shows up weeks later as a burned domain and a customer whose mail lands in spam — unrecoverable on the timescale that matters.
+
+Executing it settled three questions the prose had left open rather than finding a defect, which is itself the useful outcome.
+
+**The domain is the unit that burns, not the mailbox.** Reputation is scored per domain, so a domain past the complaint cut-off has zero capacity including its clean mailboxes. The first test written for this asserted the opposite — that a healthy mailbox on a bad domain stays selectable — and the implementation was right where the test was wrong.
+
+**A rate needs a sample.** One bounce in three sends is 33%. Without a minimum volume, every new mailbox pauses on its first day, and the whole warm-up curve becomes unreachable.
+
+**Rules are ordered worst-first.** A mailbox both bouncing at 2% and complaining at 0.3% must pause, not alarm. Evaluating thresholds in any other order lets a cut-off be masked by an alarm on a different metric.
+
 ## The pattern worth naming
 
 Ten defects so far. Every one was found by executing the artefacts, none by reading them — and three are the same failure in different clothing: **an opt-out path that silently does not work**. A missing `suppress` flag, then a second one, then an exit clause that cannot parse. Each looked correct in review.
@@ -100,4 +114,4 @@ The plan already classifies the policy decision log and idempotency as unaccepta
 
 ## Deliberately not implemented
 
-The durable runtime (Temporal), connectors, the agent layer and its eval harness, deliverability scheduling, and persistence. Those need infrastructure, not logic, and simulating them would prove nothing. Everything here is pure logic that either holds or does not.
+The durable runtime (Temporal), connectors, the agent layer and its eval harness, and persistence. Those need infrastructure, not logic, and simulating them would prove nothing. Everything here is pure logic that either holds or does not.

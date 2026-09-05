@@ -40,7 +40,8 @@
 - `zolts/` — reference implementation of the core primitives: overlay resolution, deterministic holdouts, signal decay and PIT-R scoring, the waterfall cost optimiser, the policy engine, and the DSL loader and linter
 - `zolts/blueprint.py` plus `blueprints/` — the archetype resolver and 11 blueprints as configuration
 - `zolts/catalog.py` — the join between programs and blueprints, and the integrity checks neither schema can perform
-- `tests/` — 237 tests, each backing a specific claim made in `docs/`
+- `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
+- `tests/` — 271 tests, each backing a specific claim made in `docs/`
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -50,7 +51,7 @@
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 237 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 271 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
