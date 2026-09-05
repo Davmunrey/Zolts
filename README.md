@@ -39,7 +39,8 @@
 
 - `zolts/` — reference implementation of the core primitives: overlay resolution, deterministic holdouts, signal decay and PIT-R scoring, the waterfall cost optimiser, the policy engine, and the DSL loader and linter
 - `zolts/blueprint.py` plus `blueprints/` — the archetype resolver and 11 blueprints as configuration
-- `tests/` — 184 tests, each backing a specific claim made in `docs/`
+- `zolts/catalog.py` — the join between programs and blueprints, and the integrity checks neither schema can perform
+- `tests/` — 237 tests, each backing a specific claim made in `docs/`
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -49,12 +50,12 @@
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 184 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 237 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
 
-The reference core exists to test the plan, not to be the product. Building it has corrected nine defects so far — five in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written. Three of the eight were the same failure in different clothing: an opt-out path that silently did not work. See [19](docs/19-reference-core.md).
+The reference core exists to test the plan, not to be the product. Building it has corrected ten defects so far — five in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written. Three of the eight were the same failure in different clothing: an opt-out path that silently did not work. See [19](docs/19-reference-core.md).
 
 ## Definition status
 
@@ -74,8 +75,10 @@ That is also positioning. The category's most visible product renders warm cream
 The product surface deploys as a static site with no build step beyond a wrapper.
 
 ```bash
-python3 scripts/build_site.py      # design/console.html -> site/, and derives the CSP
+PYTHONPATH=. python3 scripts/build_site.py   # derives the data, inlines it, derives the CSP
 ```
+
+The surface carries no data of its own. `scripts/build_fixture.py` reads the real programs and blueprints and computes every figure with the same `zolts.experiment` and `zolts.policy` functions the test suite covers, so the minimum detectable effect on screen cannot drift from the one in the runtime. Observed rates are the only invented numbers and are marked as such; everything downstream of them — lift, significance, whether a pipeline figure may be reported at all — is derived.
 
 `scripts/build_site.py` hashes the inline style and script it actually ships into the Content-Security-Policy, so the policy cannot drift from the page. `style-src-elem` stays hash-locked while `style-src-attr` allows inline attributes, because the surface sets transforms from data at runtime and a hash never covers a `style=""` attribute. CI fails if the committed `site/` is stale.
 

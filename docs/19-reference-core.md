@@ -8,7 +8,7 @@ Building it changed the plan in four places. That is the point of building it.
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 184 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 237 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
@@ -39,6 +39,8 @@ PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 | A program breaking compliance cannot be merged | [04](04-gtm-program-dsl.md) | `programtest.py` | **Proven.** Four deliberate breakages each fail the suite |
 | A company profile resolves to an archetype deterministically | [05](05-blueprints-and-adaptability.md) | `blueprint.py` | **Proven** for all 11 archetypes — after the profile needed a 13th dimension |
 | A B2C profile can never land on a B2B archetype | [05](05-blueprints-and-adaptability.md) | `blueprint.py` | **Proven.** `customer_type` and `compliance_tier` disqualify rather than deduct |
+| A program may not loosen its blueprint's policy | [05](05-blueprints-and-adaptability.md) | `catalog.py` | **Proven** — and it caught a live violation |
+| The figure on screen is the figure the runtime computes | [10](10-measurement-and-incrementality.md) | `build_fixture.py` | **Proven.** The console holds no formula of its own |
 
 ## What building it changed
 
@@ -79,9 +81,20 @@ The tempting fix was to nudge weights until the test passed. That would have hid
 
 This is the first finding that changed the *specification* rather than an implementation of it. It is also the clearest case so far of a document reading as complete because nothing had tried to execute it.
 
+## Fourth round: the join between programs and blueprints
+
+**10. A shipped program dropped its blueprint's global suppression list.**
+`new-site-and-reputation` declared `lists_check: [robinson_list_es]`, replacing the blueprint's list rather than adding to it. Nothing could catch it: a program's schema cannot see its blueprint, and the overlay resolver was only ever run against test fixtures, never against the shipped pair.
+
+The consequence was the familiar one. That program would have skipped the global suppression list — reaching contacts who opted out, current customers, accounts with an open opportunity, competitor domains. **This is the fourth time the same failure has appeared in this repository**, and the first time a guard caught it before it shipped rather than after.
+
+`zolts/catalog.py` now performs the join neither schema can: the blueprint exists, the blueprint declares the program, every trigger signal is one the blueprint arms, the holdout clears the blueprint's floor, and the program's policy overrides tighten rather than loosen.
+
+**A correction to a figure that was on screen.** Wiring the console to the reference core showed that a program I had marked significant with a green check was not: 9.50 pp of lift against a 10.14 pp detectable effect. Of four programs, one is significant. The hand-written data had been wrong, and the surface had been asserting a result the statistics do not support — the exact failure the product exists to prevent, shipped in its own demo.
+
 ## The pattern worth naming
 
-Nine defects so far. Every one was found by executing the artefacts, none by reading them — and three are the same failure in different clothing: **an opt-out path that silently does not work**. A missing `suppress` flag, then a second one, then an exit clause that cannot parse. Each looked correct in review.
+Ten defects so far. Every one was found by executing the artefacts, none by reading them — and three are the same failure in different clothing: **an opt-out path that silently does not work**. A missing `suppress` flag, then a second one, then an exit clause that cannot parse. Each looked correct in review.
 
 The plan already classifies the policy decision log and idempotency as unacceptable debt. This adds a third: **a suppression path with no test is unacceptable debt**, because it fails silently, it fails in the direction of contacting people who asked not to be contacted, and human review demonstrably does not catch it.
 

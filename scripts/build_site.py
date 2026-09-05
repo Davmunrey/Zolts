@@ -19,8 +19,12 @@ import base64
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 
+from build_fixture import build as build_fixture
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "design" / "console.html"
 OUT_DIR = ROOT / "site"
@@ -66,6 +70,17 @@ def sha256_csp(payload: str) -> str:
 
 def build() -> None:
     source = SOURCE.read_text(encoding="utf-8")
+
+    # The surface ships with its data inlined rather than fetched: it keeps
+    # connect-src at 'none', avoids a round trip, and makes the page a single
+    # self-contained file. The placeholder is replaced before hashing, so the
+    # CSP covers the data as well as the code.
+    fixture = json.dumps(build_fixture(), separators=(",", ":"))
+    if "/*__FIXTURE__*/" not in source:
+        raise SystemExit("design/console.html has no /*__FIXTURE__*/ placeholder")
+    source = source.replace(
+        '/*__FIXTURE__*/ {"programs":[],"decisions":{},"jurisdictions":[],"plannedPrograms":[]}',
+        fixture, 1)
 
     # The surface authors <title>, <link> and <style> ahead of its markup; those
     # belong in the head, everything after belongs in the body.
@@ -141,7 +156,7 @@ def build() -> None:
     }
     (ROOT / "vercel.json").write_text(json.dumps(vercel, indent=2) + "\n", encoding="utf-8")
 
-    print(f"site/index.html   {len(document):,} bytes")
+    print(f"site/index.html   {len(document):,} bytes, fixture inlined")
     print(f"site/_headers     CSP with {len(hashes.split())} inline hashes")
     print("vercel.json       regenerated with the same policy")
 

@@ -246,58 +246,24 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 "use strict";
 var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* Seven programs across four blueprints. The first is deliberately the
-   uncomfortable one: a real lift the design cannot yet resolve. */
-var P = [
- {k:"series-a-hiring-surge", n:"Series A hiring surge", bp:"b2b-saas-sales-led", st:"live",
-  v:"2.1.0", enrolled:1284, holdout:10, treat:8.40, ctrl:3.60, mde:4.86, p95:41, owner:"DM",
-  metric:"opportunity_created_90d", signals:["funding.round","hiring.role_opened"],
-  spend:3426.32, perMeeting:147, pipeline:1247000,
-  act:[["14:02","Enrolled 12 accounts","live"],["13:41","Denied 3 · DE basis","deny"],
-       ["11:20","Published 2.1.0","accent"],["09:05","Signal lag 6 min","live"]]},
- {k:"champion-job-change", n:"Champion job change", bp:"b2b-saas-sales-led", st:"live",
-  v:"1.6.2", enrolled:412, holdout:15, treat:14.60, ctrl:5.10, mde:6.90, p95:22, owner:"DM",
-  metric:"opportunity_created_90d", signals:["people.job_change"],
-  spend:980.40, perMeeting:88, pipeline:642000,
-  act:[["13:58","Enrolled 4 accounts","live"],["12:10","Meeting booked · Vireo","lift"]]},
- {k:"competitor-displacement", n:"Competitor displacement", bp:"b2b-saas-sales-led", st:"live",
-  v:"1.2.0", enrolled:289, holdout:10, treat:6.20, ctrl:3.10, mde:9.40, p95:55, owner:"AR",
-  metric:"opportunity_created_90d", signals:["tech.uninstall","tech.install_detected"],
-  spend:711.05, perMeeting:212, pipeline:198000,
-  act:[["13:12","Enrolled 2 accounts","live"],["10:44","Underpowered · 6 more weeks","review"]]},
- {k:"renewal-window-expansion", n:"Renewal window expansion", bp:"b2b-saas-sales-led", st:"live",
-  v:"3.0.1", enrolled:640, holdout:10, treat:19.20, ctrl:13.80, mde:8.10, p95:18, owner:"AR",
-  metric:"expansion_booked_60d", signals:["cs.renewal_window","cs.expansion_headroom"],
-  spend:1204.90, perMeeting:96, pipeline:411000,
-  act:[["12:30","Enrolled 9 accounts","live"]]},
- {k:"workspace-expansion-trigger", n:"Workspace expansion trigger", bp:"b2b-saas-plg", st:"live",
-  v:"1.4.0", enrolled:2140, holdout:15, treat:11.90, ctrl:6.40, mde:3.20, p95:9, owner:"DM",
-  metric:"paid_conversion_30d", signals:["product.limit_hit","product.multi_user_signup"],
-  spend:842.16, perMeeting:41, pipeline:928000,
-  act:[["14:01","Enrolled 31 accounts","live"],["13:20","Auto-sent 84 · eval 0.91","accent"]]},
- {k:"exec-change-entry", n:"Exec change entry", bp:"b2b-enterprise", st:"paused",
-  v:"0.9.0", enrolled:0, holdout:10, treat:null, ctrl:null, mde:null, p95:null, owner:"AR",
-  metric:"pipeline_per_target_account", signals:["people.exec_hired"],
-  spend:0, perMeeting:null, pipeline:0,
-  act:[["Yesterday","Paused · bounce 2.4%","deny"]]},
- {k:"intent-surge-pilot", n:"Intent surge pilot", bp:"b2b-enterprise", st:"draft",
-  v:"0.1.0", enrolled:0, holdout:10, treat:null, ctrl:null, mde:null, p95:null, owner:"DM",
-  metric:"pipeline_per_target_account", signals:["intent.topic_surge"],
-  spend:0, perMeeting:null, pipeline:0,
-  act:[["2 d ago","Created from blueprint","accent"]]}
-];
+/* Data comes from the repository, not from this file. build_fixture.py derives
+   every figure from the real programs, blueprints and reference core, so the
+   minimum detectable effect on screen is computed by the same function the test
+   suite covers rather than by a second copy of the formula living here. */
+var D = /*__FIXTURE__*/ {"programs":[],"decisions":{},"jurisdictions":[],"plannedPrograms":[]};
+var P = D.programs;
 
-function sig(p){ return p.treat != null && (p.treat - p.ctrl) > p.mde; }
+function sig(p){ return p.significant === true; }
 function nf(n){ return n.toLocaleString("en-US"); }
 
 var ICON_SIG = '<svg viewBox="0 0 14 14" fill="none"><path d="M2.4 7.6l2.6 2.6 6.6-6.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="9.8" r=".7" fill="currentColor"/></svg>';
 
-var state = { sel: P[0].k, live: false, onlySig: false };
+var state = { sel: (P[0] || {}).key, live: false, onlySig: false, jur: "ES" };
 
 function visible(){
   return P.filter(function(p){
-    if (state.live && p.st !== "live") return false;
+    if (state.live && p.status !== "live") return false;
     if (state.onlySig && !sig(p)) return false;
     return true;
   });
@@ -309,7 +275,7 @@ function renderList(){
   var rows = visible();
   document.getElementById("shown").textContent = rows.length;
 
-  var live = rows.filter(function(p){ return p.st === "live"; });
+  var live = rows.filter(function(p){ return p.status === "live"; });
   var proven = rows.filter(sig);
   var enrolled = rows.reduce(function(a, p){ return a + p.enrolled; }, 0);
   var spend = rows.reduce(function(a, p){ return a + p.spend; }, 0);
@@ -320,25 +286,25 @@ function renderList(){
     + '<span style="margin-left:auto"><b>€' + nf(Math.round(spend)) + '</b> spend, quarter to date</span>';
   list.innerHTML = "";
   rows.forEach(function(p, i){
-    var d = p.treat == null ? null : p.treat - p.ctrl;
-    var cls = d == null ? "none" : d > p.mde ? "up" : d > 0 ? "flat" : "down";
+    var d = p.absLift;
+    var cls = d == null ? "none" : p.significant ? "up" : d > 0 ? "flat" : "down";
     var b = document.createElement("div");
     b.className = "row";
-    b.id = "row-" + p.k;
+    b.id = "row-" + p.key;
     b.setAttribute("role", "option");
-    b.setAttribute("aria-selected", String(p.k === state.sel));
-    b.dataset.k = p.k;
+    b.setAttribute("aria-selected", String(p.key === state.sel));
+    b.dataset.k = p.key;
     b.innerHTML =
-      '<span class="st ' + p.st + '" title="' + p.st + '"></span>'
-    + '<span class="pname"><b>' + p.n + '</b><span>' + p.k + ' · v' + p.v + '</span></span>'
-    + '<span class="bp">' + p.bp + '</span>'
+      '<span class="st ' + p.status + '" title="' + p.status + '"></span>'
+    + '<span class="pname"><b>' + p.name + '</b><span>' + p.key + ' · v' + p.version + '</span></span>'
+    + '<span class="bp">' + p.blueprint + '</span>'
     + '<span class="n">' + (p.enrolled ? nf(p.enrolled) : "—") + '</span>'
     + '<span class="lift ' + cls + '">' + (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2) + " pp") + '</span>'
     + '<span class="n">' + p.holdout + '%</span>'
     + '<span class="n">' + (p.p95 == null ? "—" : p.p95 + " m") + '</span>'
     + '<span class="sig" style="color:' + (d == null ? "var(--ink-tertiary)" : sig(p) ? "var(--lift)" : "var(--review)") + '">'
       + (d == null ? "" : sig(p) ? ICON_SIG : ICON_UND) + '</span>';
-    b.addEventListener("click", function(){ state.sel = p.k; renderList(); renderDetail(); });
+    b.addEventListener("click", function(){ state.sel = p.key; renderList(); renderDetail(); });
     list.appendChild(b);
   });
   // The listbox owns focus and names its active option, so a screen reader
@@ -349,58 +315,86 @@ function renderList(){
 /* ── detail ────────────────────────────────────────────────────────── */
 var detail = document.getElementById("detail");
 function renderDetail(){
-  var p = P.find(function(x){ return x.k === state.sel; });
+  var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
-  var has = p.treat != null, d = has ? p.treat - p.ctrl : null, ok = has && sig(p);
+  var has = p.treat != null, d = p.absLift, ok = p.significant;
 
   var evidence = !has
     ? '<p style="margin:0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">'
       + 'No enrollments yet. Evidence appears once the control group fills.</p>'
     : '<div class="arm t"><em>Treatment</em><span class="track"><i style="transform:scaleX('
-        + Math.min(1, p.treat / 20).toFixed(3) + ')"></i></span><span class="v">' + p.treat.toFixed(2) + '%</span></div>'
+        + Math.min(1, p.treat / 25).toFixed(3) + ')"></i></span><span class="v">'
+        + p.treat.toFixed(2) + '%</span></div>'
     + '<div class="arm c"><em>Control</em><span class="track"><i style="transform:scaleX('
-        + Math.min(1, p.ctrl / 20).toFixed(3) + ')"></i></span><span class="v">' + p.ctrl.toFixed(2) + '%</span></div>'
+        + Math.min(1, p.ctrl / 25).toFixed(3) + ')"></i></span><span class="v">'
+        + p.ctrl.toFixed(2) + '%</span></div>'
     + '<dl class="props" style="margin-top:11px">'
       + '<dt>Absolute lift</dt><dd class="hi">' + (d > 0 ? "+" : "") + d.toFixed(2) + ' pp</dd>'
       + '<dt>Minimum detectable effect</dt><dd class="hi">' + p.mde.toFixed(2) + ' pp</dd>'
-      + '<dt>Incremental pipeline</dt><dd>' + (ok ? "€" + nf(p.pipeline) : "not reported") + '</dd>'
-      + '<dt>Cost per incremental meeting</dt><dd>' + (ok ? "€" + p.perMeeting : "—") + '</dd>'
+      + '<dt>Treatment · control</dt><dd>' + nf(p.nTreat) + ' · ' + nf(p.nControl) + '</dd>'
+      + '<dt>Incremental pipeline</dt><dd>'
+        + (ok ? "€" + nf(p.pipeline) : "not reported") + '</dd>'
     + '</dl>'
     + '<div class="note ' + (ok ? "pass" : "fail") + '">'
       + (ok ? ICON_SIG : ICON_UND)
       + '<span>' + (ok
           ? 'Lift clears the detectable effect. <b style="color:var(--ink)">€' + nf(p.pipeline)
             + '</b> reported as incremental against a concurrent control.'
-          : 'Lift sits below what this design can resolve. Zolts will not report it as '
-            + 'incremental. Raise the holdout or run longer.')
+          : 'Lift sits below what this design can resolve, so it is not reported as '
+            + 'incremental. A <b style="color:var(--ink)">' + (p.neededHoldout || "larger")
+            + '%</b> holdout would resolve it at this sample size.')
       + '</span></div>';
+
+  var trace = (D.decisions[state.jur] || []).map(function(r){
+    return '<div class="act"><span class="g" style="background:var(--'
+         + (r.decision === "allow" ? "lift" : "deny") + ')"></span>'
+         + '<span>' + r.account + ' · <span class="mono" style="font-size:11px">'
+         + r.channel + '</span></span>'
+         + '<time>' + r.rule + '</time></div>';
+  }).join("");
 
   detail.innerHTML =
     '<div class="dhead">'
-      + '<div class="k">' + p.k + ' · v' + p.v + '</div>'
-      + '<h2>' + p.n + '</h2>'
+      + '<div class="k">' + p.key + ' · v' + p.version + ' · ' + p.specHash + '</div>'
+      + '<h2>' + p.name + '</h2>'
       + '<div class="dactions"><button class="btn btn-p">Publish</button>'
       + '<button class="btn btn-s">Open in editor</button></div>'
     + '</div>'
     + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
-      + '<dt>Status</dt><dd class="hi">' + p.st + '</dd>'
-      + '<dt>Blueprint</dt><dd>' + p.bp + '</dd>'
+      + '<dt>Status</dt><dd class="hi">' + p.status + '</dd>'
+      + '<dt>Blueprint</dt><dd>' + p.blueprint + '</dd>'
       + '<dt>Primary metric</dt><dd>' + p.metric + '</dd>'
       + '<dt>Holdout</dt><dd class="hi">' + p.holdout + '%</dd>'
       + '<dt>Enrolled</dt><dd>' + (p.enrolled ? nf(p.enrolled) : "—") + '</dd>'
       + '<dt>Signal → action p95</dt><dd>' + (p.p95 == null ? "—" : p.p95 + " min") + '</dd>'
       + '<dt>Spend (QTD)</dt><dd>€' + p.spend.toFixed(2) + '</dd>'
+      + '<dt>Monthly budget</dt><dd>' + nf(p.budget) + ' credits</dd>'
     + '</dl></div>'
     + '<div class="block"><div class="blabel">Triggers</div><dl class="props">'
-      + p.signals.map(function(s){ return '<dt style="font-family:var(--mono);font-size:11.5px">' + s + '</dt><dd>armed</dd>'; }).join("")
+      + p.signals.map(function(sg){
+          return '<dt style="font-family:var(--mono);font-size:11.5px">' + sg + '</dt>'
+               + '<dd>armed</dd>'; }).join("")
     + '</dl></div>'
-    + '<div class="block" style="border-bottom:0"><div class="blabel">Activity</div>'
-      + p.act.map(function(a){
-          return '<div class="act"><span class="g" style="background:var(--' + a[2] + ')"></span>'
-               + '<span>' + a[1] + '</span><time>' + a[0] + '</time></div>';
-        }).join("")
+    + '<div class="block" style="border-bottom:0">'
+      + '<div class="blabel" style="display:flex;align-items:center;gap:8px">Policy decisions'
+      + '<span class="seg" style="margin-left:auto" id="jur">'
+      + D.jurisdictions.map(function(j){
+          return '<button data-j="' + j + '" aria-pressed="' + (j === state.jur) + '">'
+               + j + '</button>'; }).join("")
+      + '</span></div>' + trace
+      + '<p style="margin:10px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
+      + 'Evaluated by the policy engine, not transcribed. Switching jurisdiction '
+      + 'replays the same actions against that pack.</p>'
     + '</div>';
+
+  var seg = document.getElementById("jur");
+  if (seg) seg.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-j]");
+    if (!b) return;
+    state.jur = b.dataset.j;
+    renderDetail();
+  });
 }
 
 /* ── filters ───────────────────────────────────────────────────────── */
@@ -410,7 +404,7 @@ function toggle(id, key){
     state[key] = !state[key];
     b.setAttribute("aria-pressed", String(state[key]));
     var rows = visible();
-    if (rows.length && !rows.some(function(p){ return p.k === state.sel; })) state.sel = rows[0].k;
+    if (rows.length && !rows.some(function(p){ return p.key === state.sel; })) state.sel = rows[0].key;
     renderList(); renderDetail();
   });
 }
@@ -421,8 +415,8 @@ toggle("f-sig", "onlySig");
 function move(step){
   var rows = visible();
   if (!rows.length) return;
-  var i = rows.findIndex(function(p){ return p.k === state.sel; });
-  state.sel = rows[Math.max(0, Math.min(rows.length - 1, (i < 0 ? 0 : i) + step))].k;
+  var i = rows.findIndex(function(p){ return p.key === state.sel; });
+  state.sel = rows[Math.max(0, Math.min(rows.length - 1, (i < 0 ? 0 : i) + step))].key;
   renderList(); renderDetail();
   var el = list.querySelector('[aria-selected="true"]');
   if (el) el.scrollIntoView({ block: "nearest" });
@@ -460,7 +454,7 @@ function palClose(){
 function palRender(){
   var term = q.value.trim().toLowerCase();
   var progs = P.filter(function(p){
-    return !term || p.n.toLowerCase().indexOf(term) > -1 || p.k.indexOf(term) > -1 || p.bp.indexOf(term) > -1;
+    return !term || p.name.toLowerCase().indexOf(term) > -1 || p.key.indexOf(term) > -1 || p.blueprint.indexOf(term) > -1;
   });
   var cmds = [
     { label: "Toggle live only", key: "L", run: function(){ document.getElementById("f-live").click(); } },
@@ -476,11 +470,11 @@ function palRender(){
   if (progs.length){
     html += '<div class="pgroup">Programs</div>';
     progs.forEach(function(p){
-      var i = palItems.findIndex(function(x){ return x.kind === "p" && x.p.k === p.k; });
+      var i = palItems.findIndex(function(x){ return x.kind === "p" && x.p.key === p.key; });
       html += '<div class="pitem" role="option" id="pal-' + i + '" data-i="' + i + '"'
             + ' aria-selected="' + (i === palIndex) + '" data-on="' + (i === palIndex ? 1 : 0) + '">'
-            + '<span class="st ' + p.st + '"></span><span>' + p.n + '</span>'
-            + '<span class="pk">' + p.bp + '</span></div>';
+            + '<span class="st ' + p.status + '"></span><span>' + p.name + '</span>'
+            + '<span class="pk">' + p.blueprint + '</span></div>';
     });
   }
   if (cmds.length){
@@ -502,7 +496,7 @@ function palRender(){
 function palRun(){
   var it = palItems[palIndex];
   if (!it) return;
-  if (it.kind === "p"){ state.sel = it.p.k; state.live = false; state.onlySig = false;
+  if (it.kind === "p"){ state.sel = it.p.key; state.live = false; state.onlySig = false;
     document.getElementById("f-live").setAttribute("aria-pressed", "false");
     document.getElementById("f-sig").setAttribute("aria-pressed", "false");
     renderList(); renderDetail(); }

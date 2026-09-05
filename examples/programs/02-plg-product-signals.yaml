@@ -6,6 +6,7 @@ kind: Program
 metadata:
   key: workspace-expansion-trigger
   version: 1.4.0
+  name: Workspace expansion trigger
   blueprint: b2b-saas-plg
 spec:
   trigger:

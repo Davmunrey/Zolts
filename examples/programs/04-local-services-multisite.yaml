@@ -7,6 +7,7 @@ kind: Program
 metadata:
   key: new-site-and-reputation
   version: 1.0.0
+  name: New site and reputation
   blueprint: local-services-multisite
 spec:
   trigger:
@@ -75,7 +76,10 @@ spec:
     overrides:
       quiet_hours: {start: "20:00", end: "09:00", tz: contact_local}
       channels_require_basis: {voice: legitimate_interest, whatsapp: consent}
-      lists_check: [robinson_list_es]      # mandatory advertising suppression list in ES
+      # Adds to the blueprint's lists; it must never replace them. Dropping
+      # global_suppression here would have made opted-out contacts, current
+      # customers and open opportunities reachable again.
+      lists_check: [global_suppression, robinson_list_es]
 
   experiment:
     holdout_pct: 10

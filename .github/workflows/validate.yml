@@ -28,7 +28,7 @@ jobs:
         run: |
           python3 scripts/build_site.py
           git diff --exit-code -- site vercel.json \
-            || { echo "::error::site/ is stale — run python3 scripts/build_site.py and commit"; exit 1; }
+            || { echo "::error::site/ is stale — run PYTHONPATH=. python3 scripts/build_site.py and commit"; exit 1; }
         env:
           PYTHONPATH: .
 
