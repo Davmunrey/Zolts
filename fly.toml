@@ -1,0 +1,38 @@
+# Deployment on Fly. The worker runs as a second process in the same image,
+# because the API and the worker share the code and differ only in the command.
+#
+# Attach a Postgres with `fly postgres create` and `fly postgres attach`, which
+# sets DATABASE_URL; ZOLTS_DATABASE_URL is set from it. ZOLTS_APP_DATABASE_URL
+# points at a role that cannot bypass row-level security and is set once that
+# role exists — running the application as the owner passes every test and
+# removes the second lock.
+app = "zolts"
+primary_region = "mad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "python3 -m runtime.cli migrate"
+
+[env]
+  ZOLTS_ENV = "production"
+
+[processes]
+  api = "python3 -m runtime.cli serve --host 0.0.0.0 --port 8080"
+  worker = "python3 -m runtime.cli worker"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false     # the worker holds leases; stopping it mid-flight
+  auto_start_machines = true     # relies on lease expiry to recover, which is slower
+  min_machines_running = 1
+  processes = ["api"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"

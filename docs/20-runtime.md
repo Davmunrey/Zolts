@@ -95,6 +95,32 @@ python3 -m runtime.cli worker
 
 `docker compose up` runs the same thing with a database, migrations, API and worker.
 
+A first run is one command:
+
+```bash
+python3 -m runtime.cli quickstart --slug acme --name "Acme Analytics"
+```
+
+It provisions the tenant, publishes and activates the four example programs, opens a webhook endpoint and issues a key, then prints the console URL. It deliberately does **not** create a connector. A tenant with no connection fails loudly on dispatch, and that is the correct first experience: the operator says which provider is theirs rather than discovering later that nothing was ever sent.
+
+## Deploying it
+
+| Target | File | What it gives you |
+|---|---|---|
+| Anywhere with Docker | `docker-compose.yml` | Database, migrations, API, worker |
+| Render | `render.yaml` | Managed Postgres, web service, background worker, migrations as a pre-deploy step |
+| Fly | `fly.toml` | Two processes from one image, migrations as a release command |
+
+All three run the API and the worker from the same image, because they share the code and differ only in the command.
+
+Two things need doing by hand on a managed host, and both are deliberate:
+
+**Create the application role.** A managed Postgres issues one role, and it owns the schema. `ZOLTS_APP_DATABASE_URL` must point at a second role that cannot bypass row-level security — `create role zolts_app login password '…'`, then re-run `migrate`, which re-grants. Leaving it unset makes the application connect as the owner. RLS is FORCED so the policies still apply, but the second lock is gone, and `GET /health` reports `isolation_enforced: false` so the state is visible rather than assumed.
+
+**Set `ZOLTS_SECRET_KEY` once and keep it.** It seals connector credentials before they reach the database, which is the property that matters when the database is managed by someone else. Losing it means re-entering every credential. It belongs in a secret manager, not in the database it protects.
+
+On Fly, do not enable `auto_stop_machines` for the worker: it holds leases, and stopping it mid-flight makes recovery wait for the lease to expire rather than happen at the next tick.
+
 `ZOLTS_SECRET_KEY` seals connector credentials with AES-GCM before they reach the database, so a dump discloses nothing on its own. Losing it means re-entering every credential; it belongs in a secret manager, not in the database it protects.
 
 ## What would break first at scale
@@ -112,7 +138,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-366 tests. The runtime's 85 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+368 tests. The runtime's 87 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 

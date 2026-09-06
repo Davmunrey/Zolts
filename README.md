@@ -47,12 +47,13 @@
 - `runtime/engine/inbound.py`, `runtime/api/webhooks.py` — signed inbound webhooks that close the measurement loop: replies and deals become outcomes, bounces and opt-outs become suppressions
 - `runtime/api/` — HTTP surface with API-key tenancy; no route takes a tenant id, and `GET /console` serves the operator surface with the tenant's live figures inlined
 - `runtime/cli.py` — migrate, provision a tenant, issue a key, seal a credential, run the worker, serve
-- `Dockerfile`, `docker-compose.yml` — database, migrations, API and worker in one command
+- `Dockerfile`, `docker-compose.yml`, `render.yaml`, `fly.toml` — database, migrations, API and worker in one command, locally or on a managed host
 
 ```bash
 export ZOLTS_SECRET_KEY=$(openssl rand -hex 32)
 docker compose up                                      # database, API, worker
-PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action out
+python3 -m runtime.cli quickstart --slug acme          # tenant, programs, key, console URL
+PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action out, outcome back
 ```
 
 ### The reference core — the part that decides
@@ -61,7 +62,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/blueprint.py` plus `blueprints/` — the archetype resolver and 11 blueprints as configuration
 - `zolts/catalog.py` — the join between programs and blueprints, and the integrity checks neither schema can perform
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
-- `tests/` — 366 tests, each backing a specific claim made in `docs/`; the 85 runtime tests run against a real Postgres and CI fails a run that skipped them
+- `tests/` — 368 tests, each backing a specific claim made in `docs/`; the 87 runtime tests run against a real Postgres and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -71,7 +72,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 366 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 368 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```

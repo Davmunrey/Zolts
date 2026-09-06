@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from runtime.api.app import create_app
 from runtime.provision import issue_api_key
+from tests.conftest import SECRET
 
 SPEC = {
     "trigger": {"events": [{"signal": "funding.round",
@@ -338,3 +339,40 @@ def test_a_published_program_keeps_its_blueprint(client, key):
                       "blueprint": "b2b-saas-sales-led", "activate": True})
     data = client.get("/v1/console", headers=_auth(key)).json()
     assert data["programs"][0]["blueprint"] == "b2b-saas-sales-led"
+
+
+# -- first run -----------------------------------------------------------
+
+def test_quickstart_leaves_a_tenant_that_can_be_used_immediately(db):
+    """A first run is one command, and what it produces must actually work."""
+    import uuid as _uuid
+
+    from runtime.cli import quickstart
+
+    slug = f"qs-{_uuid.uuid4().hex[:8]}"
+    result = quickstart(db, secret_key=SECRET, slug=slug, name="Quickstart Co",
+                        region="eu", blueprint="b2b-saas-sales-led",
+                        base_url="http://testserver")
+    assert len(result["programs"]) == 4
+    assert all(p["lint"] == [] for p in result["programs"]), "shipped examples must lint clean"
+
+    client = TestClient(create_app(db), raise_server_exceptions=False)
+    listed = client.get("/v1/programs", headers=_auth(result["api_key"])).json()
+    assert {p["status"] for p in listed} == {"live"}
+    assert client.get("/console", headers=_auth(result["api_key"])).status_code == 200
+
+
+def test_quickstart_does_not_connect_a_provider_for_you(db):
+    """A tenant with no connection fails loudly on dispatch, which is the
+    correct first experience: the operator says which provider is theirs rather
+    than discovering later that nothing was ever sent."""
+    import uuid as _uuid
+
+    from runtime.cli import quickstart
+
+    result = quickstart(db, secret_key=SECRET, slug=f"qs-{_uuid.uuid4().hex[:8]}",
+                        name="Quickstart Co", region="eu",
+                        blueprint="b2b-saas-sales-led", base_url="http://testserver")
+    with db.tenant_tx(result["tenant"]["id"]) as cur:
+        cur.execute("select count(*) as n from connection")
+        assert cur.fetchone()["n"] == 0
