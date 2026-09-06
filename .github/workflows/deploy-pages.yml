@@ -17,17 +17,37 @@ jobs:
       contents: read
       deployments: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Build the static site
-        run: python3 scripts/build_site.py
-
+      # The credential check comes first. Building a site that cannot be
+      # deployed spends a runner and, when the build fails, reports a
+      # deployment failure for a deployment that was never going to happen —
+      # which is exactly what it did the first time this ran on main.
       - name: Check for Cloudflare credentials
         id: creds
         run: echo "ready=${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Explain the skip
+        if: steps.creds.outputs.ready != 'true'
+        run: |
+          echo "::notice::Cloudflare secrets are not set, so nothing was deployed."
+          echo "::notice::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to enable this job."
+
+      - uses: actions/checkout@v5
+        if: steps.creds.outputs.ready == 'true'
+      - uses: actions/setup-python@v6
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          python-version: '3.11'
+
+      # The build imports the reference core, which reads YAML and validates
+      # against a JSON Schema. Without these the build fails on the import,
+      # not on anything to do with deployment.
+      - name: Install build dependencies
+        if: steps.creds.outputs.ready == 'true'
+        run: pip install pyyaml jsonschema
+
+      - name: Build the static site
+        if: steps.creds.outputs.ready == 'true'
+        run: python3 scripts/build_site.py
 
       - name: Deploy to Cloudflare Pages
         if: steps.creds.outputs.ready == 'true'
@@ -36,9 +56,3 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy site --project-name=zolts --branch=main
-
-      - name: Explain the skip
-        if: steps.creds.outputs.ready != 'true'
-        run: |
-          echo "::notice::Cloudflare secrets are not set, so nothing was deployed."
-          echo "::notice::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to enable this job."
