@@ -1,0 +1,48 @@
+# A partner's own CRM. Nothing about it is on the market, and no connector in
+# this repository could read it — which is the point: this document is the
+# integration.
+apiVersion: zolts/v1
+kind: CrmMapping
+metadata:
+  provider: acme-internal
+  name: Acme internal CRM
+  owner: revops@acme.example
+  description: In-house Rails app, read-only REST API behind the VPN
+spec:
+  transport:
+    kind: http
+    base_url: https://crm.acme.internal/api/v2
+    auth: {kind: header, name: x-acme-key}
+    accounts:
+      path: /companies
+      records: data.items
+      pagination: {kind: offset, param: offset, size_param: per_page, size: 200}
+    contacts:
+      path: /people
+      records: data.items
+      pagination: {kind: cursor, param: after, cursor_path: data.next_cursor, size: 200}
+
+  accounts:
+    external_id: id | str
+    name: legal_name
+    domain: website | domain
+    country: address.country_code | upper
+    employee_band: headcount_bucket
+
+  contacts:
+    external_id: id | str
+    email: emails[primary].address | trim | lower
+    full_name: name_parts | join
+    title: role
+    account_external_id: company.id | str
+    # Without this block the mapping would be saying "we cannot tell you whether
+    # these people opted out", and every contact would be unreachable. Acme's
+    # own field has four states and only one of them is permission.
+    consent:
+      field: mail_pref
+      values:
+        opted_in: allowed
+        bounced: unknown
+        never_asked: unknown
+        opted_out: opted_out
+      default: unknown

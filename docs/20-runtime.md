@@ -58,6 +58,46 @@ Pipedrive exists to prove the seam is not HubSpot-shaped: organizations rather t
 
 The contract's sharpest rule is about consent. `Capabilities.reads_opt_out` is a claim the suite verifies: a source that claims it and never reports an opted-out contact fails. A source that does **not** claim it has every contact stored with consent `unknown`, the policy gate denies on `unknown`, and the sync report says which CRM could not answer. A CRM's silence is never read as permission — which is also the reason a unified CRM API cannot be the only integration, since that is precisely the field they normalise worst.
 
+## Connecting a CRM nobody here has seen
+
+A partner may run their own system, built in-house, with field names nobody can guess. No connector written here can read it, so the connector stops being the unit of work and the mapping becomes it (ADR-014). The tenant publishes a YAML document; `GenericSource` reads it and passes the same contract suite as HubSpot and Pipedrive.
+
+```yaml
+apiVersion: zolts/v1
+kind: CrmMapping
+metadata: {provider: acme-internal, name: Acme internal CRM}
+spec:
+  transport:
+    kind: http                       # or 'push', for a system behind a VPN
+    base_url: https://crm.acme.internal/api/v2
+    auth: {kind: header, name: x-acme-key}
+    contacts:
+      path: /people
+      records: data.items
+      pagination: {kind: cursor, param: after, cursor_path: data.next_cursor, size: 200}
+  contacts:
+    external_id: id | str
+    email: emails[primary].address | trim | lower
+    full_name: name_parts | join
+    consent:
+      field: mail_pref
+      values: {opted_in: allowed, opted_out: opted_out, never_asked: unknown}
+      default: unknown
+```
+
+Four path forms, and no fifth: `properties.email`, `emails[0].value`, `emails[primary].address`, and a transform pipeline `name | trim | lower`. Anything more expressive is a program, and a customer-authored program run against a customer payload inside this runtime is a liability sold as a feature.
+
+| | |
+|---|---|
+| Publish | `POST /v1/crm/mappings`, or `zolts crm-mapping --tenant … --file …` |
+| List | `GET /v1/crm/mappings` — provider, `spec_hash`, `reads_opt_out` |
+| Pull | `zolts sync --provider acme-internal` — falls back to the tenant's mapping when no built-in source matches |
+| Push | `POST /v1/crm/acme-internal/records` — refused with 409 if the mapping declares `http`, because the document would then describe one system and the runtime run another |
+
+`reads_opt_out` is derived at publish time from whether the document names the consent field — never set by the author. Omitting the block is allowed and answered with a warning: every contact imported is stored `unknown` and unreachable. `default: allowed` with no value map is refused, because it marks an entire imported list contactable regardless of what the CRM says.
+
+Validation runs at three doors: `scripts/validate.py` in CI, the publish endpoint, and the CLI. All three raise the same `MappingError` — a caller handling a customer's document should not have to know which library rejected it. Beyond the schema, a document is refused for an unknown transform, a malformed path segment, a consent block that would mark everyone contactable, a `base_url` on loopback or link-local (the runtime's own network position, and the cloud metadata endpoint with it), and a provider name a built-in connector already owns.
+
 ## The console
 
 `GET /console` serves the operator surface with the tenant's live figures inlined, same origin as the API. That means no CORS to configure, no second origin in `connect-src`, and the same content security policy derivation the static build uses — `runtime/surface.py` holds both, because two copies would drift and the copy that drifts is the one that ships a policy the page violates.
@@ -179,7 +219,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-448 tests. The runtime's 142 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+504 tests. The runtime's 151 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -201,3 +241,6 @@ What they assert, in the order that matters:
 16. What reaches the provider is what survived provenance, not what the model wrote.
 17. A CRM that cannot read opt-out state never produces a legal basis, and the contact it returns is denied by the policy gate.
 18. The sync contains no provider field names; a test greps for them.
+19. A tenant-authored mapping is refused for an unknown transform, and for a consent block that would mark everyone contactable.
+20. A mapping belongs to one tenant: another tenant's key lists nothing and pushes nothing.
+21. Records pushed through a mapping land as the same canonical entities, with consent translated out of the CRM's own vocabulary.

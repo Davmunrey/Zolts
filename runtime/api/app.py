@@ -21,7 +21,8 @@ from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.engine import enroll
-from runtime.repo import actions, enrollments, entities, ledger, programs, proposals
+from runtime.repo import (actions, enrollments, entities, ledger, mappings, programs,
+                          proposals)
 from runtime.surface import content_security_policy, document, inject
 from zolts import dsl, experiment
 
@@ -233,6 +234,90 @@ def create_app(db: Database, *, install_connectors: bool = True,
             holdout_pct=holdout, treatment_rate=t_rate, control_rate=c_rate,
             lift_pp=lift_pp, minimum_detectable_effect_pp=mde * 100 if resolvable else -1,
             significant=bool(resolvable and lift_pp > mde * 100))
+
+    # -- CRM mappings ----------------------------------------------------
+
+    @app.post("/v1/crm/mappings", status_code=status.HTTP_201_CREATED)
+    def publish_mapping(document: dict[str, Any],
+                        principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Connect a CRM this runtime has never seen.
+
+        The mapping is the integration. It is validated at the door for the
+        same reason a program is: a document that decides who gets contacted,
+        discovered wrong later, is discovered in a sent message.
+        """
+        principal.require("write")
+        from runtime.connectors.crm import sources as crm_sources
+        from zolts import mapping as crm_mapping
+
+        try:
+            crm_mapping.validate(document)
+        except crm_mapping.MappingError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+        provider = document["metadata"]["provider"]
+        if provider in crm_sources():
+            # A built-in source wins the name everywhere it is resolved, so a
+            # mapping claiming it would store cleanly and then never be used.
+            raise HTTPException(409, f"'{provider}' is a connector this runtime ships; "
+                                     "a mapping cannot claim its name — choose another")
+
+        reads_opt_out = bool((document["spec"]["contacts"].get("consent")))
+        with db.tenant_tx(principal.tenant_id) as cur:
+            row = mappings.publish(cur, principal.tenant_id, document,
+                                   reads_opt_out=reads_opt_out,
+                                   created_by=principal.key_id)
+            ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                         action="crm_mapping.published", subject=str(row["id"]),
+                         detail={"provider": row["provider"],
+                                 "reads_opt_out": reads_opt_out})
+        return {"id": str(row["id"]), "provider": row["provider"],
+                "spec_hash": row["spec_hash"], "reads_opt_out": reads_opt_out,
+                "warning": None if reads_opt_out else
+                "this mapping declares no consent field, so every contact it "
+                "imports is stored with consent unknown and cannot be contacted "
+                "until a basis is established elsewhere"}
+
+    @app.get("/v1/crm/mappings")
+    def list_mappings(principal: Principal = CurrentPrincipal) -> list[dict[str, Any]]:
+        with db.tenant_tx(principal.tenant_id) as cur:
+            rows = mappings.listing(cur)
+        return [{"id": str(r["id"]), "provider": r["provider"], "name": r["name"],
+                 "reads_opt_out": r["reads_opt_out"], "spec_hash": r["spec_hash"],
+                 "active": r["active"]} for r in rows]
+
+    @app.post("/v1/crm/{provider}/records")
+    def push_records(provider: str, batch: dict[str, Any],
+                     principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Records posted by a CRM this runtime cannot reach.
+
+        Behind a firewall, or with no API at all. Same mapping, same
+        normaliser, same contract as a pulled source — the transport is the
+        only thing that differs, and it is the least interesting part.
+        """
+        principal.require("write")
+        from runtime.connectors.generic import GenericSource
+        from runtime.connectors.sync import pull_staged
+
+        with db.tenant_tx(principal.tenant_id) as cur:
+            stored = mappings.get(cur, provider)
+        if stored is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                f"no mapping for '{provider}'; publish one first")
+        if stored["document"]["spec"]["transport"]["kind"] != "push":
+            # The mapping says this runtime pulls. Accepting a push anyway
+            # would leave the document describing one system and the runtime
+            # running another.
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                f"the '{provider}' mapping declares transport 'http', "
+                                "so this runtime pulls; republish it with transport "
+                                "'push' to post batches")
+
+        source = GenericSource(stored["document"])
+        source.stage("accounts", list(batch.get("accounts") or []))
+        source.stage("contacts", list(batch.get("contacts") or []))
+        report = pull_staged(db, principal.tenant_id, source)
+        return {"provider": provider, **{k: v for k, v in report.__dict__.items()}}
 
     # -- the review queue ------------------------------------------------
 
