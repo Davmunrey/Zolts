@@ -58,6 +58,19 @@ Pipedrive exists to prove the seam is not HubSpot-shaped: organizations rather t
 
 The contract's sharpest rule is about consent. `Capabilities.reads_opt_out` is a claim the suite verifies: a source that claims it and never reports an opted-out contact fails. A source that does **not** claim it has every contact stored with consent `unknown`, the policy gate denies on `unknown`, and the sync report says which CRM could not answer. A CRM's silence is never read as permission — which is also the reason a unified CRM API cannot be the only integration, since that is precisely the field they normalise worst.
 
+### Salesforce
+
+The third native connector, and the one that showed the contract holds: it shares almost nothing with the first two and the contract did not move (ADR-018).
+
+```sh
+printf %s "$ACCESS_TOKEN" | python3 -m runtime.cli connect --tenant … \
+  --provider salesforce --config '{"instance_url": "https://acme.my.salesforce.com"}'
+```
+
+The `instance_url` is not optional and not guessable: every org has its own. Without it the sync exits naming the field rather than requesting some other org's host.
+
+`HasOptedOutOfEmail` is a boolean, so `true` is a definite opt-out and `false` means the CRM was checked and carries none — legitimate interest, not consent. Salesforce therefore cannot report "never asked", which is a property of the field and is asserted rather than skipped. An org that keeps opt-out in a custom field or in Marketing Cloud is not read here; publish a mapping for those, and the sync report says so on every run.
+
 ## Connecting a CRM nobody here has seen
 
 A partner may run their own system, built in-house, with field names nobody can guess. No connector written here can read it, so the connector stops being the unit of work and the mapping becomes it (ADR-014). The tenant publishes a YAML document; `GenericSource` reads it and passes the same contract suite as HubSpot and Pipedrive.
@@ -434,7 +447,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-631 tests. The runtime's 271 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+656 tests. The runtime's 296 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -479,3 +492,5 @@ What they assert, in the order that matters:
 39. Every price in `docs/12` matches `zolts/billing.py`, for every action and every plan.
 40. An unpriced action raises rather than costing nothing, and enterprise has no default terms.
 41. A tenant at its ceiling holds its work instead of losing it, and a closed period keeps the terms it was sold.
+42. Salesforce follows the page URL the server returns, terminates on a repeated one, and refuses to read without an instance_url.
+43. A boolean opt-out reports OPTED_OUT for true and legitimate interest for false, and never claims to know 'never asked'.

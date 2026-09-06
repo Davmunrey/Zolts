@@ -222,13 +222,29 @@ def main(argv: list[str] | None = None) -> int:
             source = GenericSource(stored["document"])
 
         with db.tenant_tx(args.tenant) as cur:
-            cur.execute("select secret_enc from connection where provider = %s"
+            cur.execute("select secret_enc, config from connection where provider = %s"
                         " and status = 'active' limit 1", (args.provider,))
             row = cur.fetchone()
         if row is None:
             print(f"no active {args.provider} connection for this tenant; run 'connect' first",
                   file=sys.stderr)
             return 2
+
+        # Some CRMs are not one host. Salesforce gives each org its own, so the
+        # credential alone cannot reach it and the connection's config is part
+        # of the address. A source that needs configuring says so by exposing
+        # `from_config`; the rest are untouched.
+        if source is None:
+            from runtime.connectors.base import PermanentError
+            from runtime.connectors.crm import get_source
+
+            builder = getattr(type(get_source(args.provider)), "from_config", None)
+            if builder is not None:
+                try:
+                    source = builder(row["config"] or {})
+                except PermanentError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 2
         report = pull(db, args.tenant,
                       open_sealed(row["secret_enc"], settings.secret_key),
                       provider=args.provider, source=source, batch_size=args.limit)
