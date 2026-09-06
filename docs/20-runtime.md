@@ -430,6 +430,20 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## What a channel is
+
+Adding a second channel is not adding a connector. `runtime/channels.py` holds the three things the connector contract does not: what a touch costs, what bounds how many go out, and whether this runtime performs the channel itself.
+
+| Channel | Costs | Bounded by |
+|---|---|---|
+| `email` | `email.send`, 1 credit | The mailbox fleet: a daily cap and a reputation |
+| `task` | Nothing extra — `docs/12` prices no such action, and the step that created it already cost 0.2 | Nothing |
+| `crm` | Nothing extra, same reasoning. A sync that billed per record would make an integration the most expensive thing a customer connects | Nothing |
+
+Anything else — `linkedin`, `ads`, `sms`, `voice` — is a step for a person. The planner reads the definitions rather than a second list of its own, so the set that decides "dispatch this" and the set that decides "here is what it costs" cannot disagree.
+
+Three defects came out of writing this down rather than assuming it. Every dispatch was priced at `email.send`, so a HubSpot task was billed as an email the customer never sent. Every dispatch allocated a mailbox seat, so that task was held once the mailboxes were full. And `linkedin` was dispatchable with nothing behind it, so the flagship program's LinkedIn steps queued, failed permanently and were cancelled one at a time while the sequence carried on (ADR-027).
+
 ## Proving it: policy and the audit log
 
 Two screens for the two questions a regulated buyer asks first, and neither answer was reachable without a terminal.
@@ -614,7 +628,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-794 tests. 273 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+802 tests. 277 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
