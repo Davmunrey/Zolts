@@ -816,7 +816,10 @@ function renderSending(){
         + '<span class="nm" style="color:var(--ink-secondary)">' + esc(m.address) + '</span>'
         + '<span class="mono">' + nf(m.remaining) + ' left</span>'
         + '<span class="mono">day ' + nf(m.warmupDay) + '</span>'
-        + '<span class="mono">' + esc(m.provider) + '</span>'
+        // The rule when there is one to report, the provider otherwise. A row
+        // with an amber dot and no reason on it makes the reader ask, and the
+        // answer is already computed.
+        + '<span class="mono">' + esc(m.health === "ok" ? m.provider : m.rule) + '</span>'
         + '</div>';
     }).join("");
     return head + boxes;

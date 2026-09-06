@@ -200,3 +200,46 @@ def test_the_rendering_contract_the_surface_relies_on(key):
     if p["significant"]:
         assert p["mde"] is not None and p["absLift"] > p["mde"]
         assert p["pipeline"] and p["pipeline"] > 0
+
+
+# -- the sending fleet the demo shows ------------------------------------
+
+def test_the_demo_fleet_is_computed_by_the_reference_core():
+    """Every figure on the demo's Sending panel comes out of
+    `zolts.deliverability`, not out of somebody's head.
+
+    A demo that shows a capacity the product would not compute is a demo that
+    lies about the one control a buyer's deliverability lead asks about, and
+    it is the panel where the lie would be hardest to spot: 40 a day looks as
+    plausible as 48.
+    """
+    from zolts.deliverability import BASE_CAP, warmup_factor
+
+    fleet = FIXTURE["fleet"]
+    domain = fleet["domains"][0]
+    assert fleet["capacity"] == sum(m["capacity"] for m in domain["mailboxes"])
+
+    for shown in domain["mailboxes"]:
+        assert shown["remaining"] == max(0, shown["capacity"] - shown["sentToday"])
+        # The warm-up curve is the half of the calculation that does not depend
+        # on metrics the fixture does not carry, and it is the half a typed
+        # number would get wrong: day six is not most of a mailbox.
+        ceiling = BASE_CAP * warmup_factor(shown["warmupDay"]) * 1.2
+        assert shown["capacity"] <= ceiling, (
+            f"{shown['address']} shows {shown['capacity']} on warm-up day "
+            f"{shown['warmupDay']}, above anything the curve produces")
+
+
+def test_the_demo_fleet_shows_the_mechanism_and_not_a_happy_path():
+    """A panel where everything is green demonstrates nothing.
+
+    The fixture carries a mailbox mid-warm-up and one in alarm on purpose: they
+    are what make the control visible. If a later edit smooths them away the
+    demo still renders and stops proving anything, which is exactly the kind of
+    regression nobody notices.
+    """
+    boxes = FIXTURE["fleet"]["domains"][0]["mailboxes"]
+    assert any(b["warmupDay"] < 14 for b in boxes), "no mailbox is still warming up"
+    assert any(b["health"] != "ok" for b in boxes), "every mailbox is healthy"
+    assert {b["provider"] for b in boxes} >= {"google", "microsoft"}, (
+        "the panel does not show per-provider segregation")

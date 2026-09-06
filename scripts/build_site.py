@@ -28,10 +28,18 @@ OUT_DIR = ROOT / "site"
 
 def build() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    rendered = document(inject(source, build_fixture()), title=TITLE, description=DESCRIPTION)
+    fixture = build_fixture()
+    rendered = document(inject(source, fixture), title=TITLE, description=DESCRIPTION)
 
     OUT_DIR.mkdir(exist_ok=True)
     (OUT_DIR / "index.html").write_text(rendered, encoding="utf-8")
+
+    # The same fixture, as data. It was written only when `build_fixture.py`
+    # was run by hand, so CI's staleness check — which runs this file — could
+    # never see it drift from the page beside it.
+    (OUT_DIR / "data").mkdir(exist_ok=True)
+    (OUT_DIR / "data" / "console.json").write_text(
+        json.dumps(fixture, indent=2) + "\n", encoding="utf-8")
 
     # The static build fetches nothing, so connect-src stays closed.
     policy = content_security_policy(rendered, connect_src="'none'")
