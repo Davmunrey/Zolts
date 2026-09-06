@@ -27,6 +27,7 @@ from runtime.connectors.registry import get_connector, providers_for
 from runtime.crypto import open_sealed
 from runtime.db import Database, one
 from runtime.engine import gate, generate, planner
+from runtime import metering
 from runtime.repo import actions, enrollments, entities, ledger, programs, signals
 
 log = logging.getLogger("zolts.worker")
@@ -38,6 +39,9 @@ class Tick:
     claimed: int = 0
     succeeded: int = 0
     cancelled: int = 0
+    # Held rather than cancelled: the tenant ran out of credits, which no
+    # retry fixes and no failure describes.
+    deferred: int = 0
     failed: int = 0
     dead: int = 0
     errors: list[str] = field(default_factory=list)
@@ -132,6 +136,21 @@ class Worker:
             tick.succeeded += 1
             return
 
+        # Before anything about this particular action. Credits are the thing
+        # being sold, and spending past the ceiling with no decision is how a
+        # customer on the smallest plan runs up a bill nobody authorised.
+        #
+        # First, not last: a tenant who has run out should not also have their
+        # work cancelled for a contact that could not be resolved this minute.
+        # They have not done anything wrong, so the action is held rather than
+        # cancelled and comes back when the period turns.
+        cur.execute("select * from tenant where id = %s", (tenant_id,))
+        budget = metering.allowance(cur, cur.fetchone(), cost="email.send", units=1)
+        if not budget.allowed:
+            actions.defer(cur, str(action["id"]), f"budget: {budget.reason}")
+            tick.deferred += 1
+            return
+
         person = self._resolve_contact(cur, payload)
         if person is None:
             raise PermanentError("no reachable contact resolved for this action")
@@ -167,10 +186,14 @@ class Worker:
             content={"step": payload.get("step", {})}, provider=provider,
             provider_ref=result.provider_ref, status="sent",
             cost_micros=result.cost_micros, sent_at=datetime.now(timezone.utc))
-        if result.cost_micros:
-            ledger.record_cost(cur, tenant_id, program_id=str(action["program_id"])
-                               if action["program_id"] else None, kind="send",
-                               provider=provider, units=1, cost_micros=result.cost_micros)
+        # Metered whatever the provider cost us. Billing a send only when we
+        # happen to know our own COGS made every send through a provider that
+        # reports no cost free to the customer, which is not a discount
+        # anybody decided to give.
+        cur.execute("select * from tenant where id = %s", (tenant_id,))
+        metering.meter(cur, cur.fetchone(), kind="email.send", units=1,
+                       program_id=str(action["program_id"]) if action["program_id"] else None,
+                       provider=provider, cost_micros=result.cost_micros or 0)
         actions.succeed(cur, str(action["id"]),
                         {"provider_ref": result.provider_ref, **result.detail},
                         verdict.decision_id)

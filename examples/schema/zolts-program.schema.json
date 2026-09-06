@@ -306,6 +306,10 @@
                     "sla_hours": {
                       "type": "integer",
                       "minimum": 1
+                    },
+                    "when": {
+                      "type": "string",
+                      "description": "Condition on `engagement` deciding whether this step runs at all, in the same expression language as triggers and exit rules. Available: engagement.has_replied, has_opened, no_response, opened, replied, bounced, sent, converted, and tier. A step with no `when` always runs."
                     }
                   }
                 }
@@ -443,6 +447,47 @@
               },
               "suppress": {
                 "type": "boolean"
+              }
+            }
+          }
+        },
+        "schedule": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "When steps may land. This moves a send; it never cancels one. A program that declares no schedule lands wherever its waits land, which is the behaviour every program had before this existed.",
+          "properties": {
+            "send_window": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "days": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "enum": [
+                      "mon",
+                      "tue",
+                      "wed",
+                      "thu",
+                      "fri",
+                      "sat",
+                      "sun"
+                    ]
+                  },
+                  "description": "Days the window is open. Defaults to Monday-Friday."
+                },
+                "opens": {
+                  "type": "string",
+                  "pattern": "^([01]?\\d|2[0-3]):[0-5]\\d$"
+                },
+                "closes": {
+                  "type": "string",
+                  "pattern": "^([01]?\\d|2[0-3]):[0-5]\\d$"
+                },
+                "timezone": {
+                  "type": "string",
+                  "description": "IANA name, for example Europe/Madrid. The window is the customer's local time, not the runtime's."
+                }
               }
             }
           }

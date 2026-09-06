@@ -31,11 +31,19 @@ ROOT = Path(__file__).resolve().parent.parent
 # has run. Everything downstream of these — lift, significance, whether a
 # figure may be reported at all — is computed, not written.
 OBSERVED = {
-    "series-a-hiring-surge":       {"enrolled": 1284, "treat": 0.0840, "ctrl": 0.0360, "p95": 41, "spend": 3426.32},
-    "workspace-expansion-trigger": {"enrolled": 2140, "treat": 0.1190, "ctrl": 0.0640, "p95": 9,  "spend": 842.16},
-    "replenishment-winback":       {"enrolled": 8930, "treat": 0.2140, "ctrl": 0.1880, "p95": 12, "spend": 611.40},
-    "new-site-and-reputation":     {"enrolled": 412,  "treat": 0.1460, "ctrl": 0.0510, "p95": 22, "spend": 980.40},
+    "series-a-hiring-surge":       {"enrolled": 1284, "treat": 0.0840, "ctrl": 0.0360, "p95": 41, "spend": 3426.32, "unread": 0.31},
+    "workspace-expansion-trigger": {"enrolled": 2140, "treat": 0.1190, "ctrl": 0.0640, "p95": 9,  "spend": 842.16, "unread": 0.0},
+    "replenishment-winback":       {"enrolled": 8930, "treat": 0.2140, "ctrl": 0.1880, "p95": 12, "spend": 611.40, "unread": 0.62},
+    "new-site-and-reputation":     {"enrolled": 412,  "treat": 0.1460, "ctrl": 0.0510, "p95": 22, "spend": 980.40, "unread": 0.08},
 }
+
+# `unread` above is the share of a program's conversions that are replies
+# nobody read — the provider reported that a human responded and sent no body,
+# so an unsubscribe written in prose looks exactly like interest. They still
+# count, deliberately; correcting it silently would move every tenant's
+# measured lift on a deploy. Decision 16 reports it instead, and the demo shows
+# a program where it is 62% next to one where it is zero, because that spread
+# is the point.
 
 AVG_OPPORTUNITY_EUR = 24_000
 
@@ -144,6 +152,11 @@ def build() -> dict:
         if seen:
             n_control = round(seen["enrolled"] * holdout / 100)
             n_treat = seen["enrolled"] - n_control
+            # Counted from the observed rates rather than written down, like
+            # every other derived figure here.
+            conversions = (round(n_treat * seen["treat"])
+                           + round(n_control * seen["ctrl"]))
+            unread = round(conversions * seen["unread"])
             # An arm with too few observed conversions does not establish a
             # baseline, and an MDE computed from one that does not is a number
             # that reads as precise and is not. Same rule as the runtime.
@@ -166,6 +179,9 @@ def build() -> dict:
 
             entry.update({
                 "enrolled": seen["enrolled"], "nTreat": n_treat, "nControl": n_control,
+                "conversions": conversions,
+                "unverifiedConversions": unread,
+                "unverifiedShare": (round(unread / conversions, 3) if conversions else None),
                 "treat": round(seen["treat"] * 100, 2), "ctrl": round(seen["ctrl"] * 100, 2),
                 "absLift": round(delta["absolute"] * 100, 2),
                 "relLift": round(seen["treat"] / seen["ctrl"], 2) if seen["ctrl"] else None,
@@ -192,6 +208,8 @@ def build() -> dict:
         else:
             entry.update({"enrolled": 0, "nTreat": 0, "nControl": 0, "treat": None,
                           "ctrl": None, "absLift": None, "relLift": None, "mde": None,
+                          "conversions": 0, "unverifiedConversions": 0,
+                          "unverifiedShare": None,
                           "significant": False, "neededHoldout": None, "p95": None,
                           "spend": 0.0, "pipeline": None,
                           "unresolvedReason": "no enrollments"})

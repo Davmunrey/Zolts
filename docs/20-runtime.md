@@ -58,6 +58,19 @@ Pipedrive exists to prove the seam is not HubSpot-shaped: organizations rather t
 
 The contract's sharpest rule is about consent. `Capabilities.reads_opt_out` is a claim the suite verifies: a source that claims it and never reports an opted-out contact fails. A source that does **not** claim it has every contact stored with consent `unknown`, the policy gate denies on `unknown`, and the sync report says which CRM could not answer. A CRM's silence is never read as permission — which is also the reason a unified CRM API cannot be the only integration, since that is precisely the field they normalise worst.
 
+### Salesforce
+
+The third native connector, and the one that showed the contract holds: it shares almost nothing with the first two and the contract did not move (ADR-018).
+
+```sh
+printf %s "$ACCESS_TOKEN" | python3 -m runtime.cli connect --tenant … \
+  --provider salesforce --config '{"instance_url": "https://acme.my.salesforce.com"}'
+```
+
+The `instance_url` is not optional and not guessable: every org has its own. Without it the sync exits naming the field rather than requesting some other org's host.
+
+`HasOptedOutOfEmail` is a boolean, so `true` is a definite opt-out and `false` means the CRM was checked and carries none — legitimate interest, not consent. Salesforce therefore cannot report "never asked", which is a property of the field and is asserted rather than skipped. An org that keeps opt-out in a custom field or in Marketing Cloud is not read here; publish a mapping for those, and the sync report says so on every run.
+
 ## Connecting a CRM nobody here has seen
 
 A partner may run their own system, built in-house, with field names nobody can guess. No connector written here can read it, so the connector stops being the unit of work and the mapping becomes it (ADR-014). The tenant publishes a YAML document; `GenericSource` reads it and passes the same contract suite as HubSpot and Pipedrive.
@@ -160,6 +173,40 @@ Approving queues an action. It does not send: the policy gate still runs on the 
 
 `scripts/browser_console.py` drives a real browser against a real server against a real database: type the URL, get the door, paste the key, click Activate, open the review queue, click Approve — then check in Postgres that the program is live and the proposal decided. It runs in CI.
 
+## What a play can say
+
+Two things a program declares, both versioned configuration and neither a new language (ADR-019).
+
+**A step may branch on what the contact did.**
+
+```yaml
+- step: email_2
+  channel: email
+  wait: 4d
+  when: not engagement.has_replied
+- step: email_3
+  channel: email
+  wait: 6d
+  when: engagement.no_response
+```
+
+`engagement` is read from touches and outcomes rather than from a counter, and carries `has_replied`, `has_opened`, `no_response`, `opened`, `replied`, `bounced`, `sent` and `converted`. The expression language is the one triggers and exit rules already use.
+
+`no_response` is not `not has_replied`. Flattening them sends a breakup to somebody who is reading.
+
+**A program may declare when its steps land.**
+
+```yaml
+schedule:
+  send_window:
+    days: [mon, tue, wed, thu, fri]
+    opens: "08:00"
+    closes: "18:00"
+    timezone: Europe/Madrid
+```
+
+This moves a send; it never cancels one, and never moves one earlier. The window is the customer's local time, so it does not drift across daylight saving. A program that declares none lands wherever its waits land, exactly as before.
+
 ## Reading a reply
 
 Every reply used to be recorded as `reply_positive`. Somebody writing "take me off your list" was counted as a conversion, left contactable, and folded into the reported lift (ADR-016).
@@ -174,7 +221,9 @@ The triage agent classifies the text and stops there — it does not suppress, d
 
 **A verdict must quote the reply**, and one whose quote is not in the text is discarded. A confident label with nothing behind it reads exactly like a correct one, and this decides whether somebody is contacted again.
 
-A blocked verdict is not a weaker signal, not a reason to fail the webhook, and not a default. Absent a usable one — agents off, no model, no body in the payload, the spend guard refusing — the reply is recorded as `reply_positive`, exactly as before. That over-counts, and it is registered rather than fixed: flipping it would move every tenant's measured lift on a deploy, silently.
+A blocked verdict is not a weaker signal, not a reason to fail the webhook, and not a default. Absent a usable one — agents off, no model, no body in the payload, the spend guard refusing — the reply is recorded as `reply_positive`, exactly as before. That over-counts, and flipping it would move every tenant's measured lift on a deploy, silently.
+
+**So it is counted rather than hidden.** Every outcome records whether anybody read the words behind it, and the measurement shows *conversions read of conversions total* beside the lift — on the same screen, not in a footnote, because a caveat nobody reaches is not a disclosure. A program whose number rests on 62% unread replies says so where the number is read. The share falls on its own as providers send bodies and tenants enable the agent layer: nothing to migrate, nothing to announce. Decision 16, closed.
 
 ## The console
 
@@ -349,6 +398,24 @@ directory and forgetting the Dockerfile fails the suite. And CI builds the image
 and runs it: migrate, quickstart (asserting the programs are non-empty), then
 `/health` and `/console` over HTTP against a container.
 
+## Billing what a tenant uses
+
+`cost_event.billed_credits` existed from the first migration and no caller ever set it. `docs/12` prices eight actions and four plans in full, and the runtime billed nothing (ADR-017).
+
+`zolts/billing.py` holds the price list; `runtime/metering.py` holds which period a tenant is in and what they have spent. What something costs is arithmetic, when and to whom is a database.
+
+| | |
+|---|---|
+| Meter | Every send and every generation, priced at the moment it happens — not conditional on knowing our own COGS |
+| Ceiling | Checked **before** the spend and before anything about the particular action. A tenant who has run out is held, not cancelled: the action returns to pending, due when the period turns |
+| Period | One open period per tenant, enforced by a partial unique index. Its terms are copied in at open time, so a mid-month upgrade does not restate the month being consumed |
+| Close | `zolts close-period --tenant …` produces a statement. Idempotent: closing twice returns the first one rather than restating it |
+| Read | `GET /v1/billing/current` for consumption and what is left; `GET /v1/billing/statements` for closed periods |
+
+Seats are counted from live API keys at close time rather than from a number somebody maintains, because a seat count nobody maintains undercharges forever.
+
+**The overage rate is not computed.** The statement reports overage credits and says the rate is contractual. Inventing one here produces an invoice nobody signed — decision 17, open by design.
+
 ## Operating it once a partner is real
 
 `/health` answers "can I reach the database". That is nearly always yes, including on the morning the worker died at 3am, the outbox has been growing for six hours and a paying partner's campaign has sent nothing. Both states report `"status": "ok"`, which makes the endpoint an alibi rather than a signal.
@@ -414,7 +481,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-609 tests. The runtime's 249 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+676 tests. The runtime's 302 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -455,3 +522,11 @@ What they assert, in the order that matters:
 35. A draft appears in the console's program list, carries an id, and a real browser can click it live.
 36. The review queue carries what every gate said, agrees with the rail's count, and is tenant-scoped.
 37. A real browser opens the queue, approves a draft, and the proposal is decided in Postgres.
+38. An unread reply counts and is marked unread; a read one records who read it; the measurement reports the share and the console renders it beside the lift.
+39. Every price in `docs/12` matches `zolts/billing.py`, for every action and every plan.
+40. An unpriced action raises rather than costing nothing, and enterprise has no default terms.
+41. A tenant at its ceiling holds its work instead of losing it, and a closed period keeps the terms it was sold.
+42. Salesforce follows the page URL the server returns, terminates on a repeated one, and refuses to read without an instance_url.
+43. A boolean opt-out reports OPTED_OUT for true and legitimate interest for false, and never claims to know 'never asked'.
+44. A step whose condition excludes this contact is skipped, and a sequence whose remaining steps are all excluded finishes in one write.
+45. A send lands inside the declared window, is never brought forward, and follows the customer's local time across daylight saving.

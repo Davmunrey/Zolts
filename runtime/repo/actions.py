@@ -66,6 +66,23 @@ def cancel(cur, action_id: str, reason: str, policy_decision_id: str | None = No
     )
 
 
+def defer(cur, action_id: str, reason: str, until: datetime | None = None) -> None:
+    """Hold an action without consuming an attempt.
+
+    A tenant who has spent their credits has not done anything wrong and their
+    work is not a failure: cancelling would discard it, and failing would burn
+    the retry budget on a condition no retry can change. It goes back to
+    pending, due when the period turns.
+    """
+    cur.execute(
+        "update action set state = 'pending', last_error = %s,"
+        " run_after = coalesce(%s, date_trunc('month', now()) + interval '1 month'),"
+        " leased_until = null, lease_owner = null, updated_at = now()"
+        " where id = %s",
+        (reason, until, action_id),
+    )
+
+
 def fail(cur, action_id: str, error: str) -> str:
     """Record a failure and schedule the retry, or bury the action.
 

@@ -15,6 +15,7 @@ from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContac
                                     CrmSource, get_source, register_source, sources)
 from runtime.connectors.hubspot import HubSpotConnector
 from runtime.connectors.pipedrive import PipedriveConnector
+from runtime.connectors.salesforce import SalesforceConnector
 from runtime.connectors.registry import get_connector, providers_for, register
 from runtime.connectors.smartlead import SmartleadConnector
 
@@ -38,3 +39,8 @@ def install_default_connectors() -> None:
     # read is not automatically a channel you may write to.
     register_source(HubSpotConnector())
     register_source(PipedriveConnector())
+    # Registered unconfigured, so it is listed as a supported CRM and the sync
+    # path can find its `from_config`. Reading through this instance raises
+    # naming the missing instance_url rather than requesting some other org's
+    # host, which is the only failure mode worth being loud about here.
+    register_source(SalesforceConnector())

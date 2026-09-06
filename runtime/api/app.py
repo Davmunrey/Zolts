@@ -182,6 +182,44 @@ def create_app(db: Database, *, install_connectors: bool = True,
                              action="api_key.revoked", subject=key_id, detail={})
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    # -- billing -----------------------------------------------------------
+
+    @app.get("/v1/billing/current")
+    def current_period(principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """What this period has consumed, and what is left of it."""
+        from runtime import metering
+
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute("select * from tenant where id = %s", (principal.tenant_id,))
+            tenant = cur.fetchone()
+            period = metering.open_period(cur, tenant)
+            budget = metering.allowance(cur, tenant)
+            cur.execute(
+                "select kind, sum(billed_credits) as credits, count(*) as events"
+                " from cost_event where billing_period_id = %s group by kind"
+                " order by credits desc", (period["id"],))
+            by_kind = [{"kind": r["kind"], "credits": float(r["credits"] or 0),
+                        "events": int(r["events"])} for r in cur.fetchall()]
+
+        return {"plan": tenant["plan"],
+                "periodStart": period["starts_at"], "periodEnd": period["ends_at"],
+                "includedCredits": float(period["included_credits"]),
+                "consumedCredits": float(budget.consumed),
+                "remainingCredits": float(budget.remaining),
+                "spending": budget.allowed,
+                "byKind": by_kind}
+
+    @app.get("/v1/billing/statements")
+    def statements(principal: Principal = CurrentPrincipal) -> list[dict[str, Any]]:
+        """Closed periods, newest first. A statement is what can be invoiced."""
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute(
+                "select id, starts_at, ends_at, statement from billing_period"
+                " where closed_at is not null order by starts_at desc limit 24")
+            return [{"id": str(r["id"]), "periodStart": r["starts_at"],
+                     "periodEnd": r["ends_at"], **(r["statement"] or {})}
+                    for r in cur.fetchall()]
+
     # -- the browser session ---------------------------------------------
 
     @app.post("/v1/console/session", status_code=status.HTTP_201_CREATED)

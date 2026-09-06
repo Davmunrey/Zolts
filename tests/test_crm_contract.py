@@ -24,6 +24,7 @@ from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
 from runtime.connectors.generic import GenericSource
 from runtime.connectors.hubspot import HubSpotConnector
 from runtime.connectors.pipedrive import PipedriveConnector
+from runtime.connectors.salesforce import SalesforceConnector
 
 # One recorded page per provider, in the provider's own shape.
 HUBSPOT_PAGES = {
@@ -135,9 +136,50 @@ def _in_house_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"data": {"items": []}})
 
 
+SALESFORCE_INSTANCE = "https://acme.my.salesforce.com"
+
+# Salesforce answers one endpoint and pages by handing back a URL. The second
+# page is served only for that URL, so a connector that ignored
+# `nextRecordsUrl` and re-sent the first query would loop on page one forever
+# and this suite would not notice.
+SALESFORCE_PAGES = {
+    "accounts": [
+        {"done": False, "nextRecordsUrl": "/services/data/v59.0/query/01g-more",
+         "records": [
+             {"Id": "001A", "Name": "Northwind", "Website": "https://www.northwind.test/about",
+              "BillingCountry": "ES", "NumberOfEmployees": 120, "Industry": "Logistics"},
+             {"Id": "001B", "Website": "kestrel.test"},          # no name
+         ]},
+        {"done": True, "records": [
+            {"Id": "001C", "Name": "Second Page Ltd", "Website": "second.test"},
+        ]},
+    ],
+    "contacts": [
+        {"done": True, "records": [
+            {"Id": "003A", "Email": "dana@northwind.test", "FirstName": "Dana",
+             "LastName": "Cruz", "Title": "RevOps Lead", "MailingCountry": "ES",
+             "AccountId": "001A", "HasOptedOutOfEmail": False},
+            {"Id": "003B", "Email": "gone@northwind.test", "LastName": "Gone",
+             "HasOptedOutOfEmail": True},
+            {"Id": "003C", "FirstName": "No Email", "HasOptedOutOfEmail": False},
+        ]},
+    ],
+}
+
+
+def _salesforce_handler(request: httpx.Request) -> httpx.Response:
+    if "/query/" in request.url.path:                # the paged continuation
+        return httpx.Response(200, json=SALESFORCE_PAGES["accounts"][1])
+    soql = request.url.params.get("q", "")
+    which = "contacts" if "FROM Contact" in soql else "accounts"
+    return httpx.Response(200, json=SALESFORCE_PAGES[which][0])
+
+
 SOURCES = {
     "hubspot": (HubSpotConnector, _hubspot_handler),
     "pipedrive": (PipedriveConnector, _pipedrive_handler),
+    "salesforce": (lambda: SalesforceConnector.from_config(
+        {"instance_url": SALESFORCE_INSTANCE}), _salesforce_handler),
     "in-house-mapping": (lambda: GenericSource(IN_HOUSE_MAPPING), _in_house_handler),
 }
 
@@ -156,6 +198,7 @@ def source(request, monkeypatch):
     monkeypatch.setattr("runtime.connectors.hubspot.request", routed)
     monkeypatch.setattr("runtime.connectors.pipedrive.request", routed)
     monkeypatch.setattr("runtime.connectors.generic.request", routed)
+    monkeypatch.setattr("runtime.connectors.salesforce.request", routed)
     return factory()
 
 

@@ -62,6 +62,17 @@ spec:
         when: "score >= 55"
         capacity_per_week: 2000
 
+  # When steps may land, in the customer's local time. This moves a send; it
+  # never cancels one. Two days after a Friday afternoon enrollment is Sunday
+  # afternoon, and two days after that is 03:00 for a contact three timezones
+  # away — both are sends nobody reads.
+  schedule:
+    send_window:
+      days: [mon, tue, wed, thu, fri]
+      opens: "08:00"
+      closes: "18:00"
+      timezone: Europe/Madrid
+
   plays:
     t1:
       template: exec-1to1

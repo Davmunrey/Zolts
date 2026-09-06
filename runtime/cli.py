@@ -129,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("liveness", help="is this deployment draining its outbox?")
 
+    close = sub.add_parser("close-period", help="close a tenant's billing period")
+    close.add_argument("--tenant", required=True)
+
     invite = sub.add_parser("invite", help="mint a signup invitation; token shown once")
     invite.add_argument("--company", required=True)
     invite.add_argument("--email")
@@ -219,13 +222,29 @@ def main(argv: list[str] | None = None) -> int:
             source = GenericSource(stored["document"])
 
         with db.tenant_tx(args.tenant) as cur:
-            cur.execute("select secret_enc from connection where provider = %s"
+            cur.execute("select secret_enc, config from connection where provider = %s"
                         " and status = 'active' limit 1", (args.provider,))
             row = cur.fetchone()
         if row is None:
             print(f"no active {args.provider} connection for this tenant; run 'connect' first",
                   file=sys.stderr)
             return 2
+
+        # Some CRMs are not one host. Salesforce gives each org its own, so the
+        # credential alone cannot reach it and the connection's config is part
+        # of the address. A source that needs configuring says so by exposing
+        # `from_config`; the rest are untouched.
+        if source is None:
+            from runtime.connectors.base import PermanentError
+            from runtime.connectors.crm import get_source
+
+            builder = getattr(type(get_source(args.provider)), "from_config", None)
+            if builder is not None:
+                try:
+                    source = builder(row["config"] or {})
+                except PermanentError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 2
         report = pull(db, args.tenant,
                       open_sealed(row["secret_enc"], settings.secret_key),
                       provider=args.provider, source=source, batch_size=args.limit)
@@ -256,6 +275,23 @@ def main(argv: list[str] | None = None) -> int:
                                  "mapping imports is unreachable until a basis is "
                                  "established elsewhere")
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "close-period":
+        from runtime import metering
+
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute("select * from tenant where id = %s", (args.tenant,))
+            tenant = cur.fetchone()
+            if tenant is None:
+                print(f"no tenant {args.tenant}", file=sys.stderr)
+                return 2
+            period = metering.open_period(cur, tenant)
+            closed = metering.close_period(cur, tenant, str(period["id"]))
+        print(json.dumps({"period": str(closed["id"]),
+                          "from": closed["starts_at"].isoformat(),
+                          "to": closed["ends_at"].isoformat(),
+                          "statement": closed["statement"]}, indent=2))
         return 0
 
     if args.command == "liveness":

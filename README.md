@@ -44,7 +44,7 @@
 - `runtime/migrations/` — 18 tables on Postgres 16, row-level security forced on all 16 tenant-scoped ones
 - `runtime/db.py`, `runtime/repo/` — data access where the only way to get a cursor is to name a tenant
 - `runtime/engine/` — signal ingest, holdout assignment, step planning, the policy gate, and a leased worker with backoff and dead-letter
-- `runtime/connectors/` — the CRM contract and its suite, HubSpot and Pipedrive as sources, a generic source driven by a tenant-authored mapping for CRMs nobody here has seen, Smartlead for sending
+- `runtime/connectors/` — the CRM contract and its suite, HubSpot, Pipedrive and Salesforce as sources, a generic source driven by a tenant-authored mapping for CRMs nobody here has seen, Smartlead for sending
 - `runtime/engine/inbound.py`, `runtime/api/webhooks.py` — signed inbound webhooks that close the measurement loop: replies and deals become outcomes, bounces and opt-outs become suppressions
 - `runtime/agents/`, `runtime/engine/generate.py` — the agent layer: agents write proposals and cannot send; cost is governed by [Trazum](https://github.com/Davmunrey/Trazum)'s `spend_guard` before every model call
 - `runtime/api/` — HTTP surface with API-key tenancy; no route takes a tenant id, and `GET /console` serves the operator surface with the tenant's live figures inlined
@@ -66,7 +66,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 609 tests, each backing a specific claim made in `docs/`; the 249 runtime tests run against a real Postgres and CI fails a run that skipped them
+- `tests/` — 676 tests, each backing a specific claim made in `docs/`; the 302 runtime tests run against a real Postgres and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -76,7 +76,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 609 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 676 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
