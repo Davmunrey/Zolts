@@ -12,13 +12,14 @@ from pathlib import Path
 from typing import Any
 
 import jsonschema
-from fastapi import FastAPI, HTTPException, Query, Response, status
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 
 from runtime.api import console, webhooks
 from runtime.api.auth import CurrentPrincipal, Principal
 from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
                                  MeasurementOut, PersonIn, ProgramIn, ProgramOut,
-                                 SignalIn, SignupIn)
+                                 KeyIn, SignalIn, SignupIn)
+from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.engine import enroll
@@ -44,6 +45,17 @@ def create_app(db: Database, *, install_connectors: bool = True,
 
     # -- health ----------------------------------------------------------
 
+    signup_throttle = Throttle()
+    app.state.signup_throttle = signup_throttle
+
+    def _throttle(request: Request) -> None:
+        caller = caller_of(request)
+        if not signup_throttle.allow(caller):
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "too many signup attempts; try again shortly",
+                headers={"retry-after": str(signup_throttle.retry_after(caller))})
+
     @app.get("/health", response_model=HealthOut)
     def health() -> HealthOut:
         migrations: list[str] = []
@@ -59,20 +71,101 @@ def create_app(db: Database, *, install_connectors: bool = True,
             isolation_enforced=db.isolation_enforced,
             connectors=sorted({p for c in ("email", "task", "crm") for p in providers_for(c)}))
 
+    @app.get("/health/liveness")
+    def liveness() -> dict[str, Any]:
+        """Whether this deployment is doing its job, not whether it is up.
+
+        Deliberately not tenant-scoped and deliberately counts only: it answers
+        an operator's question, and returning a tenant's identifiers on an
+        unauthenticated path would answer a different one.
+        """
+        from runtime import liveness as liveness_module
+
+        try:
+            report = liveness_module.check(db)
+        except Exception as exc:  # noqa: BLE001 - a monitor must get an answer
+            return {"draining": False, "signals": [
+                {"name": "database", "ok": False, "detail": str(exc), "value": 0}]}
+        return report.as_dict()
+
+    # -- keys ------------------------------------------------------------
+
+    @app.get("/v1/keys")
+    def list_keys(principal: Principal = CurrentPrincipal) -> list[dict[str, Any]]:
+        """Prefixes and usage, never tokens. A token is shown once, at creation."""
+        from runtime.provision import list_api_keys
+
+        return list_api_keys(db, principal.tenant_id)
+
+    @app.post("/v1/keys", status_code=status.HTTP_201_CREATED)
+    def create_key(body: KeyIn, principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        principal.require("admin")
+        from runtime.provision import issue_api_key
+
+        issued = issue_api_key(db, principal.tenant_id, body.name, body.scopes or [])
+        with db.tenant_tx(principal.tenant_id) as cur:
+            ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                         action="api_key.created", subject=issued.key_id,
+                         detail={"name": body.name, "scopes": body.scopes or []})
+        return {"id": issued.key_id, "prefix": issued.prefix, "token": issued.token,
+                "note": "the token is shown once and is not recoverable"}
+
+    @app.post("/v1/keys/{key_id}/rotate")
+    def rotate_key(key_id: str, principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """A replacement is issued before the original is revoked.
+
+        Revoking first leaves a window with no working key, and a rotation that
+        causes an outage is one nobody performs a second time.
+        """
+        principal.require("admin")
+        from runtime.provision import rotate_api_key
+
+        try:
+            issued = rotate_api_key(db, principal.tenant_id, key_id)
+        except KeyError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                "no live key with that id") from exc
+        with db.tenant_tx(principal.tenant_id) as cur:
+            ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                         action="api_key.rotated", subject=issued.key_id,
+                         detail={"replaced": key_id})
+        return {"id": issued.key_id, "prefix": issued.prefix, "token": issued.token,
+                "replaced": key_id,
+                "note": "the token is shown once; the replaced key no longer works"}
+
+    @app.delete("/v1/keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def revoke_key(key_id: str, principal: Principal = CurrentPrincipal) -> Response:
+        """Revoking is idempotent and never deletes the row: `last_used_at`
+        still answers "was this key used after it leaked"."""
+        principal.require("admin")
+        from runtime.provision import revoke_api_key
+
+        if key_id == principal.key_id:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "this is the key making the request; rotate it instead, "
+                                "or revoke it with another key")
+        changed = revoke_api_key(db, principal.tenant_id, key_id)
+        if changed:
+            with db.tenant_tx(principal.tenant_id) as cur:
+                ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                             action="api_key.revoked", subject=key_id, detail={})
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     # -- onboarding ------------------------------------------------------
 
     @app.get("/v1/signup/{token}")
-    def describe_invitation(token: str) -> dict[str, Any]:
+    def describe_invitation(token: str, request: Request) -> dict[str, Any]:
         """What the signup form shows before anything is created."""
         from runtime import onboarding
 
+        _throttle(request)
         try:
             return onboarding.describe(db, token)
         except onboarding.InvitationError as exc:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
     @app.post("/v1/signup", status_code=status.HTTP_201_CREATED)
-    def redeem_invitation(body: SignupIn) -> dict[str, Any]:
+    def redeem_invitation(body: SignupIn, request: Request) -> dict[str, Any]:
         """Turn an invitation into a tenant, a first key and its programs.
 
         The only unauthenticated write path in this runtime. An invalid token,
@@ -81,6 +174,7 @@ def create_app(db: Database, *, install_connectors: bool = True,
         """
         from runtime import onboarding
 
+        _throttle(request)
         try:
             return onboarding.redeem(db, body.token, name=body.name,
                                      blueprint_id=body.blueprint_id)

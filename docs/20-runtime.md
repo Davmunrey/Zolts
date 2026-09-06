@@ -296,6 +296,52 @@ directory and forgetting the Dockerfile fails the suite. And CI builds the image
 and runs it: migrate, quickstart (asserting the programs are non-empty), then
 `/health` and `/console` over HTTP against a container.
 
+## Operating it once a partner is real
+
+`/health` answers "can I reach the database". That is nearly always yes, including on the morning the worker died at 3am, the outbox has been growing for six hours and a paying partner's campaign has sent nothing. Both states report `"status": "ok"`, which makes the endpoint an alibi rather than a signal.
+
+`GET /health/liveness`, and `python3 -m runtime.cli liveness`, answer whether the deployment is doing its job. Point a monitor at it.
+
+| Signal | Fails when | Why it is silent otherwise |
+|---|---|---|
+| Outbox draining | Work is due and nothing has claimed it for 30 minutes | No request errors. The queue simply grows |
+| Actions completing | 10 or more actions exhausted their attempts in 24 hours | One is a bad address; each retry is logged individually and nothing looks at the pattern |
+| Connections healthy | A connection is in `error` | Every send through it fails, and each failure looks like an ordinary retry |
+| Tenants can send | A tenant has live programs and no working connection | The shape of an onboarding that stopped halfway: programs activated, connector never connected. It enrolls, plans, and sends nothing |
+
+The endpoint is unauthenticated and returns counts only, never a tenant's identifiers: it answers an operator's question, and returning identifiers would answer a different one.
+
+### Keys
+
+A key that leaks — pasted into a chat, committed to the partner's repository — has to stop working without a shell.
+
+| | |
+|---|---|
+| `GET /v1/keys` | Prefixes, scopes and `last_used_at`. Never a token; a token is shown once, at creation |
+| `POST /v1/keys` | Issue another |
+| `POST /v1/keys/{id}/rotate` | Issue a replacement, **then** revoke the original. Revoking first leaves a window with no working key, and a rotation that causes an outage is one nobody performs a second time |
+| `DELETE /v1/keys/{id}` | Revoke. Idempotent, and never deletes the row: `last_used_at` still answers "was this key used after it leaked", which is the first question anybody asks |
+
+A key cannot revoke itself — that locks the tenant out of their own account — and the error says to rotate instead.
+
+### Rate limiting
+
+`POST /v1/signup` is the only route that takes a write without a key. Its tokens are 32 random bytes and single-use, so guessing one is not the threat; volume is. A sliding window caps it at 20 requests per minute per caller.
+
+**The limiter is per process.** Two machines allow twice the traffic and a restart forgets everything. That is stated rather than hidden: at this scale a per-process ceiling is most of the value for none of the operational cost of shared state, and a limiter that needs Redis to exist is a limiter nobody turns on. When a second machine matters it is replaced by a counter in Postgres, not extended.
+
+### Restoring
+
+Neon takes the backups. The part that goes wrong is the restore, and it goes wrong quietly.
+
+`pg_dump` of one database emits `GRANT … TO zolts_app` and no `CREATE ROLE`, because roles are cluster-wide. Restored into a fresh project the role does not exist, every `GRANT` fails — and `psql` without `ON_ERROR_STOP=1` exits 0 anyway. The restore reports success, the API starts, connects, and cannot read a single row.
+
+```sh
+scripts/restore.sh backup.sql "$OWNER_URL" "$APP_PASSWORD"
+```
+
+Four steps: create the role if absent, restore with `ON_ERROR_STOP=1`, re-grant via `migrate`, then `preflight` the result. A restore that has not been preflighted is a backup nobody has tested.
+
 ## What would break first at scale
 
 | Limit | Bites at roughly | Fix when it does |
@@ -315,7 +361,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-539 tests. The runtime's 186 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+559 tests. The runtime's 206 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -344,3 +390,7 @@ What they assert, in the order that matters:
 23. Preflight blocks a production release on a published secret key, an application role that can bypass row-level security, a pending migration, or a query with no tenant that returns rows.
 24. An invitation is redeemed once, including by two requests racing, and invalid, expired and redeemed answer identically.
 25. The role that serves tenant requests cannot read the invitations table.
+26. A revoked key stops working, a key cannot revoke itself, and rotation issues the replacement before revoking the original.
+27. A stalled outbox is reported while `/health` still says ok.
+28. The signup route refuses a caller past its ceiling, and the window slides.
+29. A dump grants to a role it does not create, which is why the restore script creates it first.

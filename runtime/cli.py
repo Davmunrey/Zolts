@@ -127,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     mapping.add_argument("--tenant", required=True)
     mapping.add_argument("--file", required=True)
 
+    sub.add_parser("liveness", help="is this deployment draining its outbox?")
+
     invite = sub.add_parser("invite", help="mint a signup invitation; token shown once")
     invite.add_argument("--company", required=True)
     invite.add_argument("--email")
@@ -255,6 +257,13 @@ def main(argv: list[str] | None = None) -> int:
                                  "established elsewhere")
         print(json.dumps(result, indent=2))
         return 0
+
+    if args.command == "liveness":
+        from runtime import liveness
+
+        report = liveness.check(db)
+        print(liveness.render(report))
+        return 1 if report.failing else 0
 
     if args.command == "invite":
         # Minting has no HTTP surface. An operator capability reachable from a

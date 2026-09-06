@@ -51,6 +51,47 @@ def issue_api_key(db: Database, tenant_id: str, name: str, scopes: list[str]) ->
     return IssuedKey(token=token, key_id=str(key_id), prefix=prefix)
 
 
+def list_api_keys(db: Database, tenant_id: str) -> list[dict[str, Any]]:
+    """Every key this tenant has, live or revoked. Prefixes only, never tokens."""
+    with db.tenant_tx(tenant_id) as cur:
+        cur.execute(
+            "select id, name, prefix, scopes, last_used_at, revoked_at, created_at"
+            " from api_key order by created_at desc")
+        return [{**dict(r), "id": str(r["id"])} for r in cur.fetchall()]
+
+
+def revoke_api_key(db: Database, tenant_id: str, key_id: str) -> bool:
+    """Stop a key working. Returns whether anything changed.
+
+    Revoking is idempotent and does not delete: the row stays so `last_used_at`
+    still answers "was this key used after it leaked", which is the first
+    question anybody asks.
+    """
+    with db.tenant_tx(tenant_id) as cur:
+        cur.execute("update api_key set revoked_at = now()"
+                    " where id = %s and revoked_at is null", (key_id,))
+        return cur.rowcount == 1
+
+
+def rotate_api_key(db: Database, tenant_id: str, key_id: str) -> IssuedKey:
+    """Issue a replacement and revoke the original, in that order.
+
+    Order matters. Revoking first leaves a window in which the tenant has no
+    working key, and a rotation that causes an outage is a rotation nobody
+    performs a second time.
+    """
+    with db.tenant_tx(tenant_id) as cur:
+        cur.execute("select name, scopes from api_key where id = %s and revoked_at is null",
+                    (key_id,))
+        existing = one(cur)
+    if existing is None:
+        raise KeyError(key_id)
+
+    replacement = issue_api_key(db, tenant_id, existing["name"], list(existing["scopes"] or []))
+    revoke_api_key(db, tenant_id, key_id)
+    return replacement
+
+
 def create_webhook_endpoint(db: Database, tenant_id: str, *, provider: str,
                             secret_key: str, secret: str | None = None) -> dict[str, str]:
     """Create an inbound endpoint. Returns the URL path and the signing secret.

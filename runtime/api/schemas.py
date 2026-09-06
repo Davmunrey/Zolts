@@ -116,3 +116,9 @@ class SignupIn(BaseModel):
     token: str = Field(min_length=8, max_length=200)
     name: str | None = Field(default=None, min_length=1, max_length=200)
     blueprint_id: str | None = Field(default=None, max_length=80)
+
+
+class KeyIn(BaseModel):
+    """A new API key. Scopes narrow it; an empty list is full tenant access."""
+    name: str = Field(min_length=1, max_length=120)
+    scopes: list[str] | None = Field(default=None, max_length=20)
