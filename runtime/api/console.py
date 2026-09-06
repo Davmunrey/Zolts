@@ -233,6 +233,134 @@ def decisions_view(cur, limit: int = 200) -> dict[str, list[dict[str, Any]]]:
     return grouped
 
 
+def prospects_view(cur, limit: int = 200) -> dict[str, Any]:
+    """The accounts and contacts an operator works, and what is missing on them.
+
+    There was no way to see this at all: `/v1/accounts` and `/v1/people` were
+    POST-only, so a tenant could create prospects and never read one back, and
+    the only way to enrich anything was the CLI.
+
+    "Missing" is decided by `dataprovider.unresolved` — the same rule the
+    enrichment path uses to decide whether to spend money. A screen with its
+    own idea of what is missing is a screen that offers to buy a field the
+    engine will then decline to buy.
+    """
+    from runtime.connectors.dataprovider import unresolved
+
+    cur.execute(
+        "select a.*, count(m.person_id) as contacts"
+        "  from account a left join membership m on m.account_id = a.id"
+        " group by a.id order by a.created_at desc limit %s", (limit,))
+    accounts = [{
+        "id": str(r["id"]), "name": r["name"], "domain": r["domain"],
+        "country": r["country"], "employeeBand": r["employee_band"],
+        "industry": r["industry_code"], "contacts": int(r["contacts"]),
+        "missing": ["firmographics"] if unresolved(dict(r), "firmographics") else [],
+    } for r in cur.fetchall()]
+
+    cur.execute(
+        "select p.*, a.name as account_name from person p"
+        " left join membership m on m.person_id = p.id"
+        " left join account a on a.id = m.account_id"
+        " order by p.created_at desc limit %s", (limit,))
+    people = []
+    for row in cur.fetchall():
+        record = dict(row)
+        people.append({
+            "id": str(row["id"]), "name": row["full_name"],
+            "email": row["email"], "phone": row["phone"],
+            "account": row["account_name"], "country": row["country"],
+            "missing": [f for f in ("email", "phone") if unresolved(record, f)],
+            # Whether this contact may be emailed at all, which is the first
+            # thing an operator wants to know and the reason a bought address
+            # is not automatically a usable one.
+            "optedOut": bool(((row["consent_state"] or {}).get("email") or {})
+                             .get("opted_out")),
+        })
+
+    return {
+        "accounts": accounts, "people": people,
+        "missingCounts": {
+            "firmographics": sum(1 for a in accounts if a["missing"]),
+            "email": sum(1 for p in people if "email" in p["missing"]),
+            "phone": sum(1 for p in people if "phone" in p["missing"]),
+        },
+    }
+
+
+def signals_view(cur, limit: int = 100) -> dict[str, Any]:
+    """What fired, and how long it took to reach somebody.
+
+    The latency split is the point rather than a detail: `docs/06` calls
+    signal-to-action the highest-leverage variable in the system, and a bad
+    number is either a source to change or workers to add.
+    """
+    from runtime import watch
+
+    cur.execute(
+        "select s.type, s.source, s.strength, s.observed_at, s.ingested_at,"
+        "       coalesce(a.name, p.full_name) as subject"
+        "  from signal s"
+        "  left join account a on a.id = s.entity_id"
+        "  left join person p on p.id = s.entity_id"
+        " order by s.observed_at desc limit %s", (limit,))
+    recent = [{
+        "type": r["type"], "source": r["source"], "subject": r["subject"],
+        "strength": round(float(r["strength"]), 3),
+        "observedAt": r["observed_at"].isoformat(),
+        "detectionMinutes": int(
+            (r["ingested_at"] - r["observed_at"]).total_seconds() // 60),
+    } for r in cur.fetchall()]
+
+    cur.execute(
+        "select signal_key, count(*) as checks,"
+        "       count(*) filter (where detected) as detected,"
+        "       count(*) filter (where stale) as stale,"
+        "       max(checked_at) as last_checked"
+        "  from signal_check group by signal_key order by signal_key")
+    watched = [{
+        "signal": r["signal_key"], "checks": int(r["checks"]),
+        "detected": int(r["detected"]), "staleRefused": int(r["stale"]),
+        "lastChecked": r["last_checked"].isoformat(),
+    } for r in cur.fetchall()]
+
+    return {"recent": recent, "watched": watched, "latency": watch.latency(cur)}
+
+
+def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:
+    """Credits, what is left, and where they went.
+
+    `GET /v1/billing/current` has answered this since billing existed and no
+    screen asked it, so the number a customer is charged on was visible only
+    to whoever ran curl.
+    """
+    from runtime import metering
+
+    period = metering.open_period(cur, tenant)
+    budget = metering.allowance(cur, tenant)
+    cur.execute(
+        "select kind, sum(billed_credits) as credits, count(*) as events,"
+        "       sum(cost_micros) as micros"
+        "  from cost_event where billing_period_id = %s"
+        " group by kind order by credits desc", (period["id"],))
+    by_kind = [{"kind": r["kind"], "credits": float(r["credits"] or 0),
+                "events": int(r["events"]),
+                "costEur": round(int(r["micros"] or 0) / 1_000_000, 4)}
+               for r in cur.fetchall()]
+
+    return {
+        "plan": tenant["plan"],
+        "included": float(period["included_credits"]),
+        "consumed": float(budget.consumed),
+        "remaining": float(budget.remaining),
+        "ceiling": float(budget.ceiling),
+        "shareUsed": float(budget.share_used),
+        "alerting": budget.alerting,
+        "periodEnd": period["ends_at"].isoformat(),
+        "byKind": by_kind,
+    }
+
+
 def review_view(cur, limit: int = 50) -> list[dict[str, Any]]:
     """What is waiting for a person, and what each gate said about it.
 
@@ -331,5 +459,8 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         # in a summary and are opposite in consequence, so the surface has to
         # say which one this is.
         "fleet": fleet.health(cur),
+        "prospects": prospects_view(cur),
+        "signalsView": signals_view(cur),
+        "spendView": spend_view(cur, tenant),
         "spend": {"llm_usd": round(llm_micros / 1_000_000, 4)},
     }

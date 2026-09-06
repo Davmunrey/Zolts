@@ -168,6 +168,18 @@ def main() -> int:
             report["sending_rows"] = page.locator("#list .row").count()
             report["sending_view"] = page.locator("#list").inner_text()[:200]
 
+            # 6. The three views that did not exist, and the rail that
+            #    offered five links leading nowhere. Every entry is clicked,
+            #    because a nav that promises what it cannot do is the defect
+            #    this checks for rather than a cosmetic one.
+            report["rail"] = [t.replace("\n", " ")
+                              for t in page.locator("nav a").all_inner_texts()]
+            report["dead_links"] = page.locator("nav a:not([data-view])").count()
+            for view in ("prospects", "signals", "spend"):
+                page.click(f'nav a[data-view="{view}"]')
+                page.wait_for_selector("#list .row, #list .empty", timeout=15_000)
+                report[f"{view}_view"] = page.locator("#list").inner_text()[:120]
+
             report["page_errors"] = errors
             report["csp_violations"] = violations
             browser.close()
