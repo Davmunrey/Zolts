@@ -18,8 +18,36 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | CLI: migrate, provision, worker, serve | `runtime/cli.py` | Running |
 | Console served from the API with live tenant data | `runtime/api/console.py`, `runtime/surface.py` | Running |
 | Signed inbound webhooks: replies, bounces, opt-outs, deals | `runtime/api/webhooks.py`, `runtime/engine/inbound.py` | Running |
+| Agent layer: propose-only, provenance-checked, eval-gated | `runtime/agents/`, `runtime/engine/generate.py` | Running |
+| Cost governance before every model call | `runtime/agents/spend.py` + Trazum `spend_guard` | Running |
 
-Not built: the agent layer and its eval gate, the enrichment waterfall wired to real providers, warehouse zero-copy, and any second sending channel. Those are named here so the gap is a decision rather than a discovery.
+Not built: the enrichment waterfall wired to real providers, warehouse zero-copy, a per-tenant trained brand classifier (the deterministic floor under it ships), and any second sending channel. Those are named here so the gap is a decision rather than a discovery.
+
+## The agent layer
+
+A step naming an `agent:` is generated before it is sent, and generation is a different kind of action from dispatch. The order is the design:
+
+```
+generate action claimed
+  └─ policy gate FIRST      drafting for a contact you may not write to spends money on nothing
+     └─ dossier assembled   by retrieval; every item names its own subject
+        └─ tokens counted   from the API, not estimated — you cannot authorise a call you have not sized
+           └─ spend guard   Trazum prices it; a refusal names the cheaper model and the agent takes it
+              └─ generate
+                 └─ provenance   every claim without a source is removed
+                    └─ evals     unit, factuality, brand; compliance vetoes rather than averages
+                       └─ gate   approved → a dispatch action; otherwise → somebody's review queue
+```
+
+**Agents cannot send.** An agent writes a row in `proposal` and nothing else. The only two paths from generated text to a provider are the gate approving it and a person approving it through `POST /v1/proposals/{id}/approve`, and the row records which. That is ADR-012, and it is what a regulated buyer is actually asking about.
+
+**Compliance is a veto, not a term in an average.** A missing opt-out line in a well-written message scores 0.95 and still cannot be sent. Averaging it would let a message that breaks the law clear the bar on the strength of its prose.
+
+**An unmeasured check is not a pass.** No factuality verifier configured means no score, and no score means no unattended send. Treating an absent check as 1.0 turns every unconfigured tenant into an unattended sender.
+
+**A program with no declared budget cannot run an agent.** The guard answers `cannot-tell`, and `cannot-tell` is not a yes.
+
+Two defects came out of wiring it to real data. The provenance rule first measured overlap across every content word, which dropped *"Northwind opened four RevOps roles last quarter, which usually means the reporting layer is about to be rebuilt"* — with that exact fact in evidence — because the interpretive clause diluted the overlap. It now measures the citable half of a sentence: numbers, proper nouns, absolutes. And the retrieval split the company name into its own evidence item, so no single source could support a sentence that named who did the thing; each item now states its own subject, because that is what a citation is.
 
 ## The console
 
@@ -131,6 +159,8 @@ On Fly, do not enable `auto_stop_machines` for the worker: it holds leases, and 
 | One worker process per deployment | Same | The lease already makes workers horizontally safe; run more |
 | `plan_due` scans every active tenant per tick | Thousands of tenants | Drive planning from a due-time index rather than a tenant loop |
 | Contact-local hour approximated by country | Immediately, for accuracy | Resolve a real timezone per contact; the coarse table is marked in the code |
+| One Trazum process per worker, one call per generation | Thousands of generations per minute | The verdict is a pure function of the figures passed; cache it per (model, budget bucket) |
+| Misattribution across sources is not caught deterministically | Whenever a model borrows a real figure for the wrong subject | The factuality judge in `docs/08`; the regex layer catches fabrication, not misattribution, and says so |
 | Provider rate limits are the connector's problem | First large tenant | A shared token bucket per (tenant, provider) in the claim path |
 | Webhooks are interpreted inline on the request | A provider bursting a backlog | The events are already stored first; move the interpretation to the worker |
 
@@ -138,7 +168,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-368 tests. The runtime's 87 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+420 tests. The runtime's 114 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -155,3 +185,6 @@ What they assert, in the order that matters:
 11. An unsigned or wrongly signed webhook is rejected, and an unknown endpoint token is indistinguishable from a revoked one.
 12. An opt-out arriving by webhook suppresses, exits and cancels — and the policy gate then denies that contact.
 13. A retried provider event is applied once. A retried conversion would move the measured lift.
+14. An agent step with no model configured fails loudly rather than sending an empty message.
+15. A draft that fails the gate never queues a send, and a dispatched proposal cannot be re-approved.
+16. What reaches the provider is what survived provenance, not what the model wrote.

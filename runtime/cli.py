@@ -172,9 +172,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "worker":
         install_default_connectors()
+        # The agent layer is optional and both halves are required together: a
+        # model with no spend guard would generate against no ceiling, and a
+        # guard with no model has nothing to price.
+        model_client = spend_guard = None
+        if settings.agents_enabled:
+            from runtime.agents.client import ModelClient
+            from runtime.agents.spend import SpendGuard
+
+            model_client = ModelClient()
+            spend_guard = SpendGuard()
+            if not spend_guard.available:
+                print(f"warning: the spend guard '{spend_guard._command}' is not on PATH,"
+                      " so every generation will be refused. Install it with"
+                      " 'npm i -g @trazum/mcp' or unset ZOLTS_AGENTS.", file=sys.stderr)
         runner = Worker(db, secret_key=settings.secret_key,
                         lease_seconds=settings.lease_seconds, batch=settings.worker_batch,
-                        dry_run=settings.dry_run)
+                        dry_run=settings.dry_run, model_client=model_client,
+                        spend_guard=spend_guard)
         if args.once:
             print(json.dumps(runner.tick().__dict__, default=str))
             return 0

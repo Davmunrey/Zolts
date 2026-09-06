@@ -91,10 +91,20 @@ def plan_next(cur, tenant_id: str, enrollment: dict[str, Any],
         "entity_id": str(enrollment["entity_id"]),
         "requires_human": requires_human(spec, enrollment["tier"]),
         "auto_send_requires": play_of(spec, enrollment["tier"]).get("auto_send_requires", {}),
+        "agent": step.get("agent"),
     }
+    # A step naming an agent is generated before it is sent. The agent writes a
+    # proposal; only the gate can turn one into a dispatch. Queueing it as a
+    # dispatch would let generated text reach a provider without passing the
+    # eval gate at all.
+    if step.get("agent"):
+        kind = "generate"
+    elif channel in DISPATCHABLE:
+        kind = "dispatch"
+    else:
+        kind = "manual"
     row = actions.enqueue(
-        cur, tenant_id,
-        kind="dispatch" if channel in DISPATCHABLE else "manual",
+        cur, tenant_id, kind=kind,
         idempotency_key=key, payload=payload, enrollment_id=str(enrollment["id"]),
         program_id=str(program["id"]), channel=channel, step_key=step_key,
         run_after=scheduled)

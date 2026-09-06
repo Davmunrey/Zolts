@@ -37,6 +37,10 @@ jobs:
       - run: pip install pyyaml jsonschema pytest
       - run: pip install -r runtime/requirements.txt
 
+      # The spend guard is a Node package. The agent tests skip without it,
+      # and a skipped cost-control test is the kind CI must not report green.
+      - run: npm install -g @trazum/mcp@2.3.0
+
       - name: Create the non-owning application role
         run: |
           psql "$ZOLTS_TEST_DATABASE_URL" -c \
@@ -56,6 +60,13 @@ jobs:
 
       - name: Benchmark the waterfall optimiser
         run: python3 scripts/benchmark_waterfall.py
+
+      - name: Refuse a green run that skipped the agent tests
+        run: |
+          if ! command -v trazum-mcp >/dev/null; then
+            echo "::error::trazum-mcp is missing, so the spend-guard tests did not run"
+            exit 1
+          fi
 
       - name: Smoke the runtime end to end
         run: python3 scripts/smoke_runtime.py
