@@ -200,6 +200,18 @@ def main(argv: list[str] | None = None) -> int:
     enrich.add_argument("--dry-run", action="store_true",
                         help="report what would be bought and buy nothing")
 
+    look = sub.add_parser(
+        "watch", help="look for the signals live programs are waiting on")
+    look.add_argument("--tenant", required=True)
+    look.add_argument("--signal", help="only this one")
+    look.add_argument("--limit", type=int, default=500,
+                      help="accounts examined per signal. A check is billed once "
+                           "per account per day however many signals ask")
+
+    lat = sub.add_parser("latency",
+                         help="time to touch, split into detection and execution")
+    lat.add_argument("--tenant", required=True)
+
     hits = sub.add_parser("hit-rates",
                           help="the measured per-provider per-cohort matrix")
     hits.add_argument("--tenant", required=True)
@@ -606,6 +618,34 @@ def main(argv: list[str] | None = None) -> int:
                            for k in sorted({r.provider for r in hits_found if r.provider})},
             "note": "misses are paid for and not billed to the tenant",
         }, indent=2))
+        return 0
+
+    if args.command == "watch":
+        from runtime import watch as watcher
+
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute("select * from tenant where id = %s", (args.tenant,))
+            tenant = one(cur)
+            if tenant is None:
+                print(f"no tenant {args.tenant}", file=sys.stderr)
+                return 2
+            result = watcher.once(cur, tenant, secret_key=settings.secret_key,
+                                  limit=args.limit, only=args.signal)
+        print(json.dumps(result.as_dict(), indent=2))
+        # A pass where every source failed is not a quiet week.
+        return 1 if result.signals and all(w.error for w in result.signals) else 0
+
+    if args.command == "latency":
+        from runtime import watch as watcher
+
+        with db.tenant_tx(args.tenant) as cur:
+            measured = watcher.latency(cur)
+        print(json.dumps({
+            **measured,
+            "note": "docs/06 defines time to touch as signal to action. "
+                    "Detection is how long the source took to notice; execution "
+                    "is how long this runtime took to act. A bad total is one "
+                    "or the other, and they need opposite fixes"}, indent=2))
         return 0
 
     if args.command == "hit-rates":

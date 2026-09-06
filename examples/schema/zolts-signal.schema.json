@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zolts.dev/schema/zolts-signal.schema.json",
+  "title": "Zolts SignalDefinition",
+  "description": "What a signal is worth, how fast it decays, what it costs to look for it, and on what legal basis. docs/06: without cost, decay and legal basis a signal can be neither budgeted nor audited, so all three are required.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "zolts/v1"
+    },
+    "kind": {
+      "const": "SignalDefinition"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+          "description": "Namespaced, e.g. funding.round. The same key a program's trigger names."
+        },
+        "name": {
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity",
+        "source",
+        "freshness_sla",
+        "half_life_h",
+        "base_strength",
+        "legal_basis"
+      ],
+      "properties": {
+        "entity": {
+          "enum": [
+            "account",
+            "person"
+          ]
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "connector"
+          ],
+          "properties": {
+            "connector": {
+              "type": "string",
+              "description": "A registered SignalSource. Adding one is implementing an interface."
+            },
+            "refresh": {
+              "type": "string",
+              "pattern": "^[0-9]+[hd]$",
+              "default": "24h",
+              "description": "How often an account is re-checked. Checks are billed once per account-day however often this fires."
+            },
+            "config": {
+              "type": "object"
+            }
+          }
+        },
+        "freshness_sla": {
+          "type": "string",
+          "pattern": "^[0-9]+[hd]$",
+          "description": "Maximum acceptable data age. A detection older than this is refused rather than ingested: acting on a three-day-old pricing-page visit with a 48h half-life is acting on nothing."
+        },
+        "half_life_h": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "base_strength": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "legal_basis": {
+          "enum": [
+            "legitimate_interest",
+            "consent",
+            "contract"
+          ]
+        },
+        "dedupe_window": {
+          "type": "string",
+          "pattern": "^[0-9]+[hd]$",
+          "default": "14d"
+        },
+        "payload_schema": {
+          "type": "object",
+          "description": "Shape of the detection payload, for documentation. Not enforced: a source that adds a field should not stop producing signals."
+        }
+      }
+    }
+  }
+}

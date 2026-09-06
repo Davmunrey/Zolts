@@ -1,0 +1,24 @@
+# Funding round announced
+#
+# New budget plus growth pressure. docs/06 Tier B.
+#
+# Every signal declares cost, decay and legal basis, because docs/06 says a
+# signal missing any of the three can be neither budgeted nor audited. The
+# cost is not here: a check is priced once per account-day in docs/12, not per
+# signal, so a definition cannot name its own price without contradicting it.
+apiVersion: zolts/v1
+kind: SignalDefinition
+metadata:
+  key: funding.round
+  name: Funding round announced
+  tier: "B"
+spec:
+  entity: account
+  source:
+    connector: press_feed
+    refresh: 24h
+  freshness_sla: 30d
+  half_life_h: 720
+  base_strength: 0.7
+  legal_basis: legitimate_interest
+  dedupe_window: 30d

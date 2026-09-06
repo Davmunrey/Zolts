@@ -1,0 +1,24 @@
+# Local ads activity started
+#
+# Somebody decided to spend, which means a budget exists.
+#
+# Every signal declares cost, decay and legal basis, because docs/06 says a
+# signal missing any of the three can be neither budgeted nor audited. The
+# cost is not here: a check is priced once per account-day in docs/12, not per
+# signal, so a definition cannot name its own price without contradicting it.
+apiVersion: zolts/v1
+kind: SignalDefinition
+metadata:
+  key: local.ads_activity_started
+  name: Local ads activity started
+  tier: "B"
+spec:
+  entity: account
+  source:
+    connector: ads_intel
+    refresh: 12h
+  freshness_sla: 48h
+  half_life_h: 720
+  base_strength: 0.6
+  legal_basis: legitimate_interest
+  dedupe_window: 30d

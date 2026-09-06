@@ -62,21 +62,38 @@ def _rates(cur, program_id: str) -> tuple[int, int, int, int]:
             converted.get("treatment", 0), converted.get("control", 0))
 
 
-def _spend_and_latency(cur, program_id: str) -> tuple[float, int | None]:
+def _spend_and_latency(cur, program_id: str) -> tuple[float, int | None, int | None]:
     cur.execute("select coalesce(sum(cost_micros), 0) as micros from cost_event"
                 " where program_id = %s", (program_id,))
     spend = int(cur.fetchone()["micros"]) / 1_000_000
-    # Time to first touch, in minutes, at the 95th percentile. The signal-to-
-    # touch SLA is the operational number a buyer checks first, so it is
-    # measured rather than asserted.
+    # Time to touch, in minutes, at the 95th percentile — measured from when
+    # the signal happened, which is what `docs/06` means by it and what this
+    # comment claimed while the query measured from the enrollment instead.
+    #
+    # For a signal a customer pushed those are nearly the same instant. For one
+    # this runtime detected, the difference is however long the source took to
+    # notice, and that half was invisible: a program looked fast because the
+    # clock started after the slow part.
+    #
+    # A left join, because an enrollment with no signal behind it — a CRM sync,
+    # a manual enrollment — still has a latency worth reporting, measured from
+    # the only start it has.
     cur.execute(
         "select percentile_disc(0.95) within group ("
-        "  order by extract(epoch from (t.sent_at - e.entered_at)) / 60) as p95"
+        "  order by extract(epoch from"
+        "    (t.sent_at - coalesce(s.observed_at, e.entered_at))) / 60) as p95,"
+        "  percentile_disc(0.95) within group ("
+        "  order by extract(epoch from"
+        "    (coalesce(s.ingested_at, e.entered_at) - coalesce(s.observed_at,"
+        "     e.entered_at))) / 60) as detection_p95"
         " from touch t join enrollment e on e.id = t.enrollment_id"
+        " left join signal s on s.id = (e.context->>'signal_id')::uuid"
         " where e.program_id = %s and t.sent_at is not null", (program_id,))
     row = cur.fetchone()
     p95 = row["p95"] if row and row["p95"] is not None else None
-    return round(spend, 2), int(p95) if p95 is not None else None
+    detection = row["detection_p95"] if row and row["detection_p95"] is not None else None
+    return (round(spend, 2), int(p95) if p95 is not None else None,
+            int(detection) if detection is not None else None)
 
 
 def _mde_curve(baseline: float, enrolled: int) -> dict[str, float]:
@@ -116,7 +133,7 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
                                      n_control=n_control) * 100) if resolvable else None
     movement = lift(treat_rate, control_rate) if measurable else {}
     abs_lift = round(movement.get("absolute", 0.0) * 100, 2) if measurable else None
-    spend, p95 = _spend_and_latency(cur, program_id)
+    spend, p95, detection_p95 = _spend_and_latency(cur, program_id)
     unread, converted_total = _unverified(cur, program_id)
 
     # Pipeline is reported only when the lift clears the effect the sample can
@@ -178,7 +195,12 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
             "no control arm yet" if not n_control else
             f"fewer than {MIN_CONVERSIONS_PER_ARM} conversions in an arm; "
             "the baseline is not established"),
-        "p95": p95, "spend": spend, "pipeline": pipeline,
+        "p95": p95,
+        # How much of the p95 was the source noticing rather than this runtime
+        # acting. An operator whose latency is bad needs to know which of the
+        # two to change, and they need opposite fixes.
+        "detectionP95": detection_p95,
+        "spend": spend, "pipeline": pipeline,
         "mdeCurve": _mde_curve(baseline, enrolled) if enrolled else {},
     }
 

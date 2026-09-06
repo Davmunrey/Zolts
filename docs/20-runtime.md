@@ -430,6 +430,20 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## Going and looking for a signal
+
+`docs/06` calls signal-to-action latency the highest-leverage variable in the whole system. Nothing watched anything: signals arrived only when a customer pushed one, so the runtime's SLA was a claim about somebody else's work (ADR-022).
+
+| | |
+|---|---|
+| Define | `examples/signals/*.yaml` carry the strength, half-life, legal basis, freshness SLA, refresh interval and dedupe window `docs/06` specifies. `scripts/validate.py` refuses a definition missing any of them, and fails a program that triggers on a signal nobody defined |
+| Want | Only signals a **live program** declares are watched. The catalogue is the menu; the live programs are the order |
+| Check | `zolts watch --tenant …` asks each source about the accounts due a look. Billed once per account **per day**, however many signals asked — which is what makes a one-hour refresh on a Tier A signal affordable |
+| Refuse | A detection older than its freshness SLA is not ingested, and is counted as stale. A source that keeps finding things too late is one to replace, and that only shows up if the staleness is recorded |
+| Report | `zolts latency --tenant …` splits time-to-touch into detection (how long the source took) and execution (how long we took). A bad total is one or the other, and they need opposite fixes |
+
+A source that errors records nothing and bills nothing: the check history is what the refresh clock reads, so an outage writing "checked, found nothing" would silence the signal until the window passed again.
+
 ## Buying a missing field
 
 `docs/12` prices eight billable actions and two of them ran. The three enrichment actions are the bulk of the consumption the pricing model assumes, and `zolts/waterfall.py` — the optimiser `docs/07` calls the margin lever — was imported by nothing (ADR-021).
@@ -535,7 +549,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-740 tests. 226 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+756 tests. 237 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
