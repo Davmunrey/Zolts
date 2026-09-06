@@ -11,14 +11,22 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from runtime import channels
 from runtime.engine import triggers
 from runtime.repo import actions, enrollments
 from zolts import expr, schedule
 
-# Channels the runtime can act on. A step naming anything else is queued as a
-# human task rather than silently skipped, because a skipped step in a
-# sequence changes the play without anyone deciding to.
-DISPATCHABLE = {"email", "linkedin", "task", "ads", "webhook", "crm"}
+# Channels the runtime can act on, read from the definitions rather than
+# written down again. A step naming anything else is queued as a human task
+# rather than silently skipped, because a skipped step in a sequence changes
+# the play without anyone deciding to.
+#
+# This list used to include `linkedin`, `ads` and `webhook`, which have no
+# provider behind them: the shipped flagship program's LinkedIn steps queued,
+# failed as a permanent error and were cancelled one at a time while the
+# sequence carried on. They are somebody's work now, which is what the play
+# meant by writing them down.
+DISPATCHABLE = channels.dispatchable()
 
 
 @dataclass(frozen=True)

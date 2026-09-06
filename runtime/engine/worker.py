@@ -27,7 +27,7 @@ from runtime.connectors.registry import get_connector, providers_for
 from runtime.crypto import open_sealed
 from runtime.db import Database, one
 from runtime.engine import gate, generate, planner
-from runtime import fleet, metering
+from runtime import channels, fleet, metering
 from runtime.repo import actions, enrollments, entities, ledger, programs, signals
 
 log = logging.getLogger("zolts.worker")
@@ -149,6 +149,15 @@ class Worker:
             tick.succeeded += 1
             return
 
+        # What this channel costs and what limits it, before anything else is
+        # decided. Every dispatch used to be priced at `email.send` and gated
+        # by the mailbox fleet, so a HubSpot task was billed as an email the
+        # customer never sent and blocked once their mailboxes hit their cap.
+        try:
+            definition = channels.channel_for(channel)
+        except channels.ChannelNotDefined as exc:
+            raise PermanentError(str(exc)) from exc
+
         # Before anything about this particular action. Credits are the thing
         # being sold, and spending past the ceiling with no decision is how a
         # customer on the smallest plan runs up a bill nobody authorised.
@@ -158,7 +167,8 @@ class Worker:
         # They have not done anything wrong, so the action is held rather than
         # cancelled and comes back when the period turns.
         cur.execute("select * from tenant where id = %s", (tenant_id,))
-        budget = metering.allowance(cur, cur.fetchone(), cost="email.send", units=1)
+        budget = metering.allowance(cur, cur.fetchone(),
+                                    cost=definition.credit_kind, units=1)
         if not budget.allowed:
             actions.defer(cur, str(action["id"]), f"budget: {budget.reason}")
             tick.deferred += 1
@@ -190,14 +200,21 @@ class Worker:
         # is held: the work is good and the condition passes on its own. What
         # no retry budget should be spent on is a mailbox that will still be at
         # its daily cap in five minutes.
-        seat = fleet.allocate(cur, recipient=(person or {}).get("email"))
-        if not seat.granted:
-            # Due when the daily cap resets, not when the billing period
-            # turns, which is `defer`'s default and a month too late here.
-            actions.defer(cur, str(action["id"]), f"capacity: {seat.reason}",
-                          until=_next_sending_day())
-            tick.deferred += 1
-            return
+        # Only sending has a fleet. A warmed mailbox has a daily cap and a
+        # reputation to lose; a row written into somebody's CRM has neither,
+        # and holding one because the mailboxes are full is a limit borrowed
+        # from a channel it is not on.
+        mailbox_id: str | None = None
+        if definition.uses_mailbox_fleet:
+            seat = fleet.allocate(cur, recipient=(person or {}).get("email"))
+            if not seat.granted:
+                # Due when the daily cap resets, not when the billing period
+                # turns, which is `defer`'s default and a month too late here.
+                actions.defer(cur, str(action["id"]), f"capacity: {seat.reason}",
+                              until=_next_sending_day())
+                tick.deferred += 1
+                return
+            mailbox_id = seat.mailbox_id
 
         provider, secret, config = self._connection_for(cur, channel)
         connector = get_connector(provider)
@@ -215,15 +232,27 @@ class Worker:
             content={"step": payload.get("step", {})}, provider=provider,
             provider_ref=result.provider_ref, status="sent",
             cost_micros=result.cost_micros, sent_at=datetime.now(timezone.utc),
-            mailbox_id=seat.mailbox_id)
-        # Metered whatever the provider cost us. Billing a send only when we
-        # happen to know our own COGS made every send through a provider that
-        # reports no cost free to the customer, which is not a discount
-        # anybody decided to give.
+            mailbox_id=mailbox_id)
+        # Metered whatever the provider cost us, at this channel's price.
+        # Billing a send only when we happen to know our own COGS made every
+        # send through a provider that reports no cost free to the customer,
+        # which is not a discount anybody decided to give.
+        #
+        # A channel with no price in `docs/12` records the cost and bills
+        # nothing extra: the step that produced it was already charged, and
+        # inventing a price here would contradict the price list.
         cur.execute("select * from tenant where id = %s", (tenant_id,))
-        metering.meter(cur, cur.fetchone(), kind="email.send", units=1,
-                       program_id=str(action["program_id"]) if action["program_id"] else None,
-                       provider=provider, cost_micros=result.cost_micros or 0)
+        tenant = dict(cur.fetchone())
+        if definition.credit_kind:
+            metering.meter(cur, tenant, kind=definition.credit_kind, units=1,
+                           program_id=str(action["program_id"]) if action["program_id"] else None,
+                           provider=provider, cost_micros=result.cost_micros or 0)
+        elif result.cost_micros:
+            ledger.record_cost(
+                cur, tenant_id,
+                program_id=str(action["program_id"]) if action["program_id"] else None,
+                kind=f"{channel}.dispatch", provider=provider, units=1,
+                cost_micros=result.cost_micros)
         actions.succeed(cur, str(action["id"]),
                         {"provider_ref": result.provider_ref, **result.detail},
                         verdict.decision_id)
