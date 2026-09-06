@@ -361,7 +361,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-559 tests. The runtime's 206 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+565 tests. The runtime's 206 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
