@@ -376,3 +376,73 @@ def test_quickstart_does_not_connect_a_provider_for_you(db):
     with db.tenant_tx(result["tenant"]["id"]) as cur:
         cur.execute("select count(*) as n from connection")
         assert cur.fetchone()["n"] == 0
+
+
+# -- the review queue ----------------------------------------------------
+
+def test_the_review_queue_is_reachable_and_tenant_scoped(client, db, tenant, other_tenant, key):
+    from runtime.repo import proposals
+
+    with db.tenant_tx(str(tenant["id"])) as cur:
+        proposals.record(cur, str(tenant["id"]), agent="copywriter",
+                         idempotency_key="p/1", content={"body": "draft"}, evidence=[],
+                         evaluation={}, eval_score=0.7, spend={}, cost_micros=1200,
+                         state="needs_human", gate_reason="score below threshold")
+    mine = client.get("/v1/proposals", headers=_auth(key)).json()
+    assert len(mine) == 1 and mine[0]["state"] == "needs_human"
+
+    other_key = issue_api_key(db, str(other_tenant["id"]), "other", []).token
+    assert client.get("/v1/proposals", headers=_auth(other_key)).json() == []
+
+
+def test_a_human_can_approve_what_the_gate_would_not_send(client, db, tenant, key):
+    """The only other path from generated text to a provider, and it records
+    who took it."""
+    from runtime.repo import proposals
+
+    with db.tenant_tx(str(tenant["id"])) as cur:
+        row = proposals.record(cur, str(tenant["id"]), agent="copywriter",
+                               idempotency_key="p/2", content={"body": "a reviewed draft"},
+                               evidence=[], evaluation={}, eval_score=0.7, spend={},
+                               cost_micros=1200, state="needs_human",
+                               gate_reason="score below threshold", channel="email")
+    response = client.post(f"/v1/proposals/{row['id']}/approve", headers=_auth(key))
+    assert response.status_code == 200, response.text
+    assert response.json()["action_id"]
+
+    with db.tenant_tx(str(tenant["id"])) as cur:
+        cur.execute("select state, approved_by from proposal where id = %s", (row["id"],))
+        decided = cur.fetchone()
+        cur.execute("select payload from action where kind = 'dispatch'")
+        queued = cur.fetchone()
+    assert decided["state"] == "dispatched"
+    assert decided["approved_by"].startswith("key:"), "the approver is recorded, not implied"
+    assert queued["payload"]["step"]["body"] == "a reviewed draft"
+
+
+def test_approving_the_same_draft_twice_is_refused(client, db, tenant, key):
+    from runtime.repo import proposals
+
+    with db.tenant_tx(str(tenant["id"])) as cur:
+        row = proposals.record(cur, str(tenant["id"]), agent="copywriter",
+                               idempotency_key="p/3", content={"body": "draft"}, evidence=[],
+                               evaluation={}, eval_score=0.7, spend={}, cost_micros=0,
+                               state="needs_human", gate_reason="", channel="email")
+    assert client.post(f"/v1/proposals/{row['id']}/approve", headers=_auth(key)).status_code == 200
+    second = client.post(f"/v1/proposals/{row['id']}/approve", headers=_auth(key))
+    assert second.status_code == 409
+
+
+def test_the_console_counts_drafts_waiting_for_a_person(client, db, tenant, key):
+    """Not queued actions. Those are different queues and only one of them is
+    somebody's job."""
+    from runtime.repo import proposals
+
+    with db.tenant_tx(str(tenant["id"])) as cur:
+        for n in range(3):
+            proposals.record(cur, str(tenant["id"]), agent="copywriter",
+                             idempotency_key=f"q/{n}", content={"body": "d"}, evidence=[],
+                             evaluation={}, eval_score=0.5, spend={}, cost_micros=0,
+                             state="needs_human", gate_reason="")
+    data = client.get("/v1/console", headers=_auth(key)).json()
+    assert data["queue"]["review"] == 3

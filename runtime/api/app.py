@@ -21,7 +21,7 @@ from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.engine import enroll
-from runtime.repo import actions, enrollments, entities, ledger, programs
+from runtime.repo import actions, enrollments, entities, ledger, programs, proposals
 from runtime.surface import content_security_policy, document, inject
 from zolts import dsl, experiment
 
@@ -233,6 +233,58 @@ def create_app(db: Database, *, install_connectors: bool = True,
             holdout_pct=holdout, treatment_rate=t_rate, control_rate=c_rate,
             lift_pp=lift_pp, minimum_detectable_effect_pp=mde * 100 if resolvable else -1,
             significant=bool(resolvable and lift_pp > mde * 100))
+
+    # -- the review queue ------------------------------------------------
+
+    @app.get("/v1/proposals")
+    def list_proposals(state: str | None = Query(default=None),
+                       limit: int = Query(default=100, le=500),
+                       principal: Principal = CurrentPrincipal) -> list[dict[str, Any]]:
+        """What an agent drafted, and what each gate said about it."""
+        with db.tenant_tx(principal.tenant_id) as cur:
+            if state:
+                cur.execute("select * from proposal where state = %s"
+                            " order by created_at desc limit %s", (state, limit))
+                rows = [dict(r) for r in cur.fetchall()]
+            else:
+                rows = proposals.queue(cur, limit)
+        return [{**r, "id": str(r["id"])} for r in rows]
+
+    @app.post("/v1/proposals/{proposal_id}/approve")
+    def approve_proposal(proposal_id: str,
+                         principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """A human approving a draft the gate would not send unattended.
+
+        This is the only other path from generated text to a provider, and it
+        records who took it — which is the question an audit asks.
+        """
+        principal.require("approve")
+        from runtime.engine import generate
+
+        with db.tenant_tx(principal.tenant_id) as cur:
+            proposal = proposals.get(cur, proposal_id)
+            if proposal is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "proposal not found")
+            if proposal["state"] not in proposals.DECIDABLE:
+                raise HTTPException(status.HTTP_409_CONFLICT,
+                                    f"proposal is already {proposal['state']}")
+            action_id = generate.promote(cur, principal.tenant_id, proposal,
+                                         approved_by=f"key:{principal.key_id}")
+        return {"id": proposal_id, "state": "dispatched", "action_id": action_id}
+
+    @app.post("/v1/proposals/{proposal_id}/reject")
+    def reject_proposal(proposal_id: str,
+                        principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        principal.require("approve")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            row = proposals.decide(cur, proposal_id, state="rejected",
+                                   approved_by=f"key:{principal.key_id}")
+            if row is None:
+                raise HTTPException(status.HTTP_409_CONFLICT,
+                                    "proposal not found or already decided")
+            ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                         action="proposal.rejected", subject=proposal_id, detail={})
+        return {"id": proposal_id, "state": "rejected"}
 
     # -- the console -----------------------------------------------------
 

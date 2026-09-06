@@ -330,7 +330,9 @@ function renderChrome(){
   var signals = {};
   P.forEach(function(p){ (p.signals || []).forEach(function(s){ if (s) signals[s] = 1; }); });
   put("nav-signals", Object.keys(signals).length);
-  put("nav-review", D.queue ? D.queue.pending : null);
+  // Drafts waiting for a person, not actions waiting to be sent. Those are
+  // different queues and only one of them is somebody's job.
+  put("nav-review", D.queue ? (D.queue.review != null ? D.queue.review : D.queue.pending) : null);
   put("nav-experiments", P.filter(function(p){ return p.holdout > 0; }).length);
 }
 

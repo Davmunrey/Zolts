@@ -30,6 +30,7 @@ class Settings:
     lease_seconds: int
     worker_batch: int
     dry_run: bool
+    agents_enabled: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -48,6 +49,10 @@ class Settings:
             # A tenant with no live connector must not silently do nothing that
             # looks like success. Dry run is explicit and recorded on the touch.
             dry_run=os.environ.get("ZOLTS_DRY_RUN", "false").lower() == "true",
+            # Off unless asked for. A deployment that has not configured a
+            # model should run every non-agent program unchanged rather than
+            # fail on start-up.
+            agents_enabled=os.environ.get("ZOLTS_AGENTS", "false").lower() == "true",
         )
 
     @property

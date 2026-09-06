@@ -190,6 +190,13 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     queued = int(cur.fetchone()["n"])
     cur.execute("select count(*) as n from action where state = 'dead'")
     dead = int(cur.fetchone()["n"])
+    # The review queue is drafts waiting for a person, not queued actions. A
+    # rail counting actions told an operator there was work to review when
+    # there was only work to send.
+    cur.execute("select count(*) as n from proposal where state in ('draft','needs_human')")
+    review = int(cur.fetchone()["n"])
+    cur.execute("select coalesce(sum(cost_micros),0) as m from cost_event where kind = 'llm'")
+    llm_micros = int(cur.fetchone()["m"])
 
     return {
         "note": f"Live data for {tenant['name']}.",
@@ -202,5 +209,6 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "jurisdictions": sorted(decisions.keys()),
         "blueprints": [],
         "assignmentSample": [],
-        "queue": {"pending": queued, "dead": dead},
+        "queue": {"pending": queued, "dead": dead, "review": review},
+        "spend": {"llm_usd": round(llm_micros / 1_000_000, 4)},
     }

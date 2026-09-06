@@ -19,15 +19,15 @@ import socket
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from runtime.connectors.base import PermanentError, Request, Result, TransientError
 from runtime.connectors.registry import get_connector, providers_for
 from runtime.crypto import open_sealed
 from runtime.db import Database, one
-from runtime.engine import gate, planner
-from runtime.repo import actions, enrollments, entities, ledger, programs
+from runtime.engine import gate, generate, planner
+from runtime.repo import actions, enrollments, entities, ledger, programs, signals
 
 log = logging.getLogger("zolts.worker")
 
@@ -49,9 +49,15 @@ class Tick:
 
 class Worker:
     def __init__(self, db: Database, *, secret_key: str, lease_seconds: int = 60,
-                 batch: int = 25, dry_run: bool = False, name: str | None = None) -> None:
+                 batch: int = 25, dry_run: bool = False, name: str | None = None,
+                 model_client: Any = None, spend_guard: Any = None) -> None:
         self.db = db
         self.secret_key = secret_key
+        # The agent layer is optional: a deployment with no model configured
+        # runs every non-agent program unchanged, and an agent step on one
+        # fails loudly rather than silently skipping the generation.
+        self.model_client = model_client
+        self.spend_guard = spend_guard
         self.lease_seconds = lease_seconds
         self.batch = batch
         self.dry_run = dry_run
@@ -109,6 +115,10 @@ class Worker:
         program = programs.get(cur, str(action["program_id"])) if action["program_id"] else None
         spec = program["spec"] if program else {}
 
+        if action["kind"] == "generate":
+            self._generate(cur, tenant_id, action, program, spec, tick)
+            return
+
         # A manual step is real work for a human, not a no-op. It is recorded as
         # a queued touch and the action succeeds; the runtime's job was to
         # create the task, not to perform it.
@@ -164,6 +174,59 @@ class Worker:
         actions.succeed(cur, str(action["id"]),
                         {"provider_ref": result.provider_ref, **result.detail},
                         verdict.decision_id)
+        tick.succeeded += 1
+
+    def _generate(self, cur, tenant_id: str, action: dict[str, Any],
+                  program: dict[str, Any] | None, spec: dict[str, Any], tick: Tick) -> None:
+        """Run an agent. Its output is a proposal, never a send."""
+        if self.model_client is None or self.spend_guard is None:
+            raise PermanentError(
+                "this step names an agent but no model client is configured; refusing "
+                "to skip the generation and send an empty message")
+        if program is None:
+            raise PermanentError("the program behind this generation is gone")
+
+        payload = action["payload"] or {}
+        person = self._resolve_contact(cur, payload)
+        if person is None:
+            raise PermanentError("no reachable contact resolved for this generation")
+        account = None
+        if payload.get("entity_type") == "account":
+            account = entities.get_account(cur, payload.get("entity_id"))
+
+        # The policy gate runs before a word is generated. Drafting a message
+        # for a contact the runtime may not write to spends money to produce
+        # something that can only be thrown away.
+        verdict = gate.check(
+            cur, tenant_id, person=person, channel=action["channel"] or "email",
+            enrollment_id=str(action["enrollment_id"]) if action["enrollment_id"] else None,
+            program_spec=spec)
+
+        recent = signals.within_window(
+            cur, str(payload.get("entity_id")),
+            [e.get("signal") for e in (spec.get("trigger") or {}).get("events", [])
+             if e.get("signal")],
+            datetime.now(timezone.utc) - timedelta(days=90))
+
+        result = generate.run(
+            cur, tenant_id, action, program, client=self.model_client,
+            guard=self.spend_guard, signals=recent[:5], person=person, account=account,
+            policy_allows=verdict.allowed,
+            opt_out=(spec.get("policy") or {}).get("opt_out_text")
+                    or "Reply unsubscribe and I will stop.")
+
+        actions.succeed(cur, str(action["id"]),
+                        {"proposal_id": result.proposal_id, "state": result.state,
+                         "reason": result.reason, "action_id": result.action_id},
+                        verdict.decision_id)
+        if result.state in {"needs_human", "rejected"}:
+            ledger.record_touch(
+                cur, tenant_id, enrollment_id=action["enrollment_id"],
+                channel=action["channel"] or "email", step_key=action["step_key"],
+                idempotency_key=action["idempotency_key"],
+                content={"proposal_id": result.proposal_id, "awaiting": result.state,
+                         "reason": result.reason},
+                provider=None, provider_ref=None, status="queued")
         tick.succeeded += 1
 
     # -- helpers ---------------------------------------------------------
