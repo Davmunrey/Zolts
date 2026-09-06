@@ -976,6 +976,214 @@
       }
     ]
   },
+  "policyView": {
+    "recent": [
+      {
+        "decision": "allow",
+        "rule": "ok",
+        "jurisdiction": "ES",
+        "channel": "email",
+        "subject": "Vireo Labs",
+        "rationale": "all checks passed",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "deny",
+        "rule": "jurisdiction.ES.basis_required",
+        "jurisdiction": "ES",
+        "channel": "email",
+        "subject": "Kestrel Data",
+        "rationale": "email requires legitimate_interest, contact holds none",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "allow",
+        "rule": "ok",
+        "jurisdiction": "ES",
+        "channel": "linkedin",
+        "subject": "Harbour Systems",
+        "rationale": "all checks passed",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "deny",
+        "rule": "suppression.unsubscribed",
+        "jurisdiction": "ES",
+        "channel": "email",
+        "subject": "Ternary AG",
+        "rationale": "contact opted out of email",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "allow",
+        "rule": "ok",
+        "jurisdiction": "ES",
+        "channel": "email",
+        "subject": "Nordwind BV",
+        "rationale": "all checks passed",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "deny",
+        "rule": "suppression.robinson_list_es",
+        "jurisdiction": "ES",
+        "channel": "voice",
+        "subject": "Almacen Sur",
+        "rationale": "contact present on robinson_list_es",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "deny",
+        "rule": "jurisdiction.ES.basis_required",
+        "jurisdiction": "ES",
+        "channel": "whatsapp",
+        "subject": "Pallas Retail",
+        "rationale": "whatsapp requires consent, contact holds legitimate_interest",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "deny",
+        "rule": "frequency.cap_reached",
+        "jurisdiction": "ES",
+        "channel": "email",
+        "subject": "Orbit Freight",
+        "rationale": "3 touches already this week (cap 3)",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      },
+      {
+        "decision": "deny",
+        "rule": "quiet_hours",
+        "jurisdiction": "ES",
+        "channel": "whatsapp",
+        "subject": "Cobalt Health",
+        "rationale": "local hour 22 falls in quiet hours",
+        "decidedAt": "2026-01-01T12:00:00+00:00"
+      }
+    ],
+    "byRule": [
+      {
+        "rule": "ok",
+        "allow": 3,
+        "deny": 0
+      },
+      {
+        "rule": "jurisdiction.ES.basis_required",
+        "allow": 0,
+        "deny": 2
+      },
+      {
+        "rule": "suppression.unsubscribed",
+        "allow": 0,
+        "deny": 1
+      },
+      {
+        "rule": "suppression.robinson_list_es",
+        "allow": 0,
+        "deny": 1
+      },
+      {
+        "rule": "frequency.cap_reached",
+        "allow": 0,
+        "deny": 1
+      },
+      {
+        "rule": "quiet_hours",
+        "allow": 0,
+        "deny": 1
+      }
+    ],
+    "totals": {
+      "allow": 3,
+      "deny": 6,
+      "denyRate": 0.6667
+    },
+    "jurisdictions": [
+      "CA",
+      "DE",
+      "ES",
+      "FR",
+      "GB",
+      "US"
+    ]
+  },
+  "auditView": {
+    "entries": [
+      {
+        "actor": "key:3b9fc918",
+        "action": "program.activated",
+        "subject": "series-a",
+        "detail": {
+          "version": "1.2.0"
+        },
+        "at": "2026-09-04T09:12:00+00:00"
+      },
+      {
+        "actor": "key:3b9fc918",
+        "action": "proposal.approved",
+        "subject": "9f21ac04",
+        "detail": {
+          "tier": "t1"
+        },
+        "at": "2026-09-04T09:08:00+00:00"
+      },
+      {
+        "actor": "key:3b9fc918",
+        "action": "program.published",
+        "subject": "series-a",
+        "detail": {
+          "version": "1.2.0"
+        },
+        "at": "2026-09-03T17:40:00+00:00"
+      },
+      {
+        "actor": "key:0c4471de",
+        "action": "api_key.rotated",
+        "subject": "0c4471de",
+        "detail": {
+          "replaced": "1a77bd90"
+        },
+        "at": "2026-09-02T11:05:00+00:00"
+      },
+      {
+        "actor": "key:0c4471de",
+        "action": "api_key.created",
+        "subject": "3b9fc918",
+        "detail": {
+          "scopes": [
+            "read",
+            "write"
+          ]
+        },
+        "at": "2026-09-01T08:30:00+00:00"
+      }
+    ],
+    "byAction": [
+      {
+        "action": "program.published",
+        "count": 4
+      },
+      {
+        "action": "proposal.approved",
+        "count": 3
+      },
+      {
+        "action": "program.activated",
+        "count": 2
+      },
+      {
+        "action": "api_key.created",
+        "count": 2
+      },
+      {
+        "action": "api_key.rotated",
+        "count": 1
+      }
+    ],
+    "actors": [
+      "key:0c4471de",
+      "key:3b9fc918"
+    ]
+  },
   "review": [
     {
       "id": "prop-demo-1",

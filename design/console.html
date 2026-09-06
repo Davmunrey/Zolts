@@ -196,6 +196,9 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
       <a href="#" data-view="sending"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
       <a href="#" data-view="spend"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend<span class="c" id="nav-spend">0</span></a>
+      <p class="sec">Prove</p>
+      <a href="#" data-view="policy"><svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5l4.4 1.7v3.3c0 2.5-1.8 4.4-4.4 5.1C3.9 10.9 2.1 9 2.1 6.5V3.2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Policy<span class="c" id="nav-policy">0</span></a>
+      <a href="#" data-view="audit"><svg viewBox="0 0 13 13" fill="none"><path d="M3 1.8h5.2l2.3 2.3v7.1H3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M4.9 6.3h4M4.9 8.4h2.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Audit log<span class="c" id="nav-audit">0</span></a>
     </nav>
 
     <div class="rail-foot">
@@ -370,6 +373,12 @@ function renderChrome(){
   if (sn) sn.textContent = nf(((D.signalsView || {}).recent || []).length);
   var spn = document.getElementById("nav-spend");
   if (spn) spn.textContent = D.spendView ? nf(D.spendView.consumed) : "—";
+  // Denials, not decisions. The count an operator acts on is the work the
+  // policy engine stopped; the total includes every allow and never moves.
+  var pol = document.getElementById("nav-policy");
+  if (pol) pol.textContent = nf(((D.policyView || {}).totals || {}).deny || 0);
+  var aud = document.getElementById("nav-audit");
+  if (aud) aud.textContent = nf(((D.auditView || {}).entries || []).length);
 
   var F = D.fleet;
   var sending = document.getElementById("nav-sending");
@@ -985,10 +994,98 @@ function renderSpend(){
        + '</span></div>');
 }
 
+/* ── policy ────────────────────────────────────────────────────────────
+   Grouped by rule rather than by contact. One contact denied once is a
+   correct denial; one rule denying four fifths of a program is a program to
+   fix, and only the second grouping shows it. */
+function renderPolicy(){
+  document.querySelector(".bar h1").textContent = "Policy";
+  var P3 = D.policyView || {recent: [], byRule: [], totals: {}};
+  var recent = P3.recent || [], rules = P3.byRule || [];
+  document.getElementById("shown").textContent = recent.length;
+  detail.innerHTML = "";
+
+  if (!recent.length){
+    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+      + 'No policy decision recorded yet. Every send records one, allow or deny, '
+      + 'with the rule that produced it.</p>';
+    return;
+  }
+
+  var tt = P3.totals || {};
+  var head = '<div class="row" role="row">'
+    + '<span class="st ' + (tt.deny ? "warn" : "live") + '"></span>'
+    + '<span class="nm">' + nf(tt.allow || 0) + ' allowed, ' + nf(tt.deny || 0)
+    + ' denied</span>'
+    + '<span class="mono">' + (tt.denyRate === null || tt.denyRate === undefined
+        ? "—" : Math.round(tt.denyRate * 100) + "% denied") + '</span>'
+    + '<span class="mono">' + (P3.jurisdictions || []).join(", ") + '</span>'
+    + '<span class="mono">' + nf(rules.length) + ' rules</span></div>';
+
+  var ruleRows = rules.map(function(r){
+    return '<div class="row" role="row" style="padding-left:22px">'
+      + '<span class="st ' + (r.deny ? "deny" : "live") + '"></span>'
+      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(r.rule) + '</span>'
+      + '<span class="mono">' + nf(r.allow) + ' allow</span>'
+      + '<span class="mono">' + nf(r.deny) + ' deny</span>'
+      + '<span class="mono"></span></div>';
+  }).join("");
+
+  var rows = recent.slice(0, 40).map(function(d){
+    return '<div class="row" role="row">'
+      + '<span class="st ' + (d.decision === "allow" ? "live" : "deny") + '"></span>'
+      + '<span class="nm">' + esc(d.subject) + '</span>'
+      + '<span class="mono">' + esc(d.channel) + '</span>'
+      + '<span class="mono">' + esc(d.rule) + '</span>'
+      + '<span class="mono">' + esc(d.rationale || d.jurisdiction) + '</span>'
+      + '</div>';
+  }).join("");
+
+  list.innerHTML = head + ruleRows + rows;
+}
+
+/* ── audit log ─────────────────────────────────────────────────────────
+   Not what the system did — which human authorised it. That is the question
+   an audit asks, and the answer was only reachable from a SQL prompt. */
+function renderAudit(){
+  document.querySelector(".bar h1").textContent = "Audit log";
+  var A = D.auditView || {entries: [], byAction: [], actors: []};
+  var entries = A.entries || [];
+  document.getElementById("shown").textContent = entries.length;
+  detail.innerHTML = "";
+
+  if (!entries.length){
+    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+      + 'Nothing recorded yet. Issuing a key, publishing a program or approving '
+      + 'a draft each writes a line here.</p>';
+    return;
+  }
+
+  var head = '<div class="row" role="row"><span></span>'
+    + '<span class="nm">' + nf(entries.length) + ' entries</span>'
+    + '<span class="mono">' + nf((A.actors || []).length) + ' actors</span>'
+    + '<span class="mono">' + nf((A.byAction || []).length) + ' kinds</span>'
+    + '<span class="mono"></span></div>';
+
+  var rows = entries.slice(0, 60).map(function(e){
+    return '<div class="row" role="row">'
+      + '<span class="st live"></span>'
+      + '<span class="nm">' + esc(e.action) + '</span>'
+      + '<span class="mono">' + esc(e.actor) + '</span>'
+      + '<span class="mono">' + esc(e.subject) + '</span>'
+      + '<span class="mono">' + esc(String(e.at).slice(0, 16).replace("T", " "))
+      + '</span></div>';
+  }).join("");
+
+  list.innerHTML = head + rows;
+}
+
 function render(){
   if (state.view === "prospects"){ renderProspects(); return; }
   if (state.view === "signals"){ renderSignals(); return; }
   if (state.view === "spend"){ renderSpend(); return; }
+  if (state.view === "policy"){ renderPolicy(); return; }
+  if (state.view === "audit"){ renderAudit(); return; }
   if (state.view === "sending"){ renderSending(); return; }
   if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
   document.querySelector(".bar h1").textContent = "Programs";

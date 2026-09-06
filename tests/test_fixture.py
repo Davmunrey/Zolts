@@ -7,6 +7,7 @@ tests hold the derivation in place and prove the duplicate is gone.
 """
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -159,11 +160,29 @@ def test_the_build_is_deterministic():
 
 
 def test_the_fixture_carries_no_wall_clock_field():
+    """No timestamp that *moves*, rather than no timestamp.
+
+    This forbade every ISO timestamp, which was right while the fixture had
+    none to keep. A policy decision and an audit entry are meaningless without
+    when they happened, so the fixture now carries constants — and a rule that
+    cannot tell a constant from a clock reading rejects them both.
+
+    The rule is now the property: every timestamp in the fixture must be far
+    enough from now that it cannot have been read off the clock. That still
+    catches the one case the byte-identical test below cannot — a wall clock
+    truncated to the minute, where two builds in the same minute agree — and it
+    lets a constant through, which only gets further from now with time.
+    """
     import json
 
     blob = json.dumps(build())
     assert "generatedAt" not in blob
-    assert not re.search(r"20\d\d-\d\d-\d\dT\d\d:", blob), "a timestamp leaked into the fixture"
+    now = datetime.now(timezone.utc)
+    for stamp in re.findall(r"20\d\d-\d\d-\d\dT\d\d:\d\d", blob):
+        moment = datetime.fromisoformat(stamp).replace(tzinfo=timezone.utc)
+        assert abs((now - moment).total_seconds()) > 3600, (
+            f"{stamp} is within an hour of now, so it was read off the clock "
+            f"rather than written down")
 
 
 def test_the_fixture_is_byte_identical_across_builds():

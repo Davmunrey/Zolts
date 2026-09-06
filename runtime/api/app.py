@@ -576,6 +576,18 @@ def create_app(db: Database, *, install_connectors: bool = True,
             rows = ledger.decisions(cur, limit)
         return [{**r, "id": str(r["id"]), "subject_id": str(r["subject_id"])} for r in rows]
 
+    @app.get("/v1/audit")
+    def list_audit(limit: int = Query(default=100, le=500),
+                   principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Who authorised what, and when.
+
+        Written since the first key was issued and readable only from a SQL
+        prompt until now — which makes it evidence nobody can produce during
+        the diligence it exists for.
+        """
+        with db.tenant_tx(principal.tenant_id) as cur:
+            return console.audit_view(cur, limit)
+
     @app.get("/v1/actions")
     def list_actions(state: str = Query(default="pending"),
                      limit: int = Query(default=100, le=500),

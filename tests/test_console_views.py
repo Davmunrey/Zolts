@@ -198,3 +198,48 @@ def test_the_view_model_refuses_a_tenant_that_is_only_a_description(db, tenant):
         with pytest.raises(ValueError, match="own row"):
             console.build(cur, {"name": "Smoke Co", "slug": "smoke",
                                 "region": "eu", "blueprint_id": "b2b-saas-sales-led"})
+
+
+# -- policy and audit: the debt ADR-023 registered ------------------------
+
+@requires_db
+def test_policy_groups_by_rule_because_that_is_the_actionable_grouping(db, tenant):
+    """One contact denied once is a correct denial. One rule denying most of a
+    program is a program to fix, and only the second grouping shows it."""
+    from runtime.repo import entities, ledger
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        person = entities.upsert_person(cur, tid, email="dana@example.com",
+                                        full_name="Dana Cruz", country="ES")
+        for decision, rule in (("allow", "ok"), ("deny", "suppression.unsubscribed"),
+                               ("deny", "suppression.unsubscribed")):
+            ledger.record_decision(
+                cur, tid, subject_type="person", subject_id=str(person["id"]),
+                action="email.send",
+                decision=decision, rule_key=rule, jurisdiction="ES",
+                rationale="because the rule said so")
+        view = console.policy_view(cur)
+
+    assert view["totals"] == {"allow": 1, "deny": 2, "denyRate": 0.6667}
+    top = view["byRule"][0]
+    assert top["rule"] == "suppression.unsubscribed" and top["deny"] == 2
+    assert len(view["recent"]) == 3
+
+
+@requires_db
+def test_the_audit_log_answers_who_rather_than_what(db, client, key, tenant):
+    """An audit asks which human authorised something, not what the system did.
+    Issuing a key writes that line, and it was readable only from a SQL prompt."""
+    response = client.post("/v1/keys", json={"name": "second", "scopes": ["read"]},
+                           headers={"authorization": f"Bearer {key}"})
+    assert response.status_code == 201
+
+    read_back = client.get("/v1/audit", headers={"authorization": f"Bearer {key}"})
+    assert read_back.status_code == 200
+    body = read_back.json()
+    assert any(e["action"] == "api_key.created" for e in body["entries"])
+    assert body["actors"], "an entry with no actor answers nothing"
+    # The token is shown once at creation; this table is read by people who did
+    # not create the key, so it must never carry one.
+    assert response.json()["token"] not in read_back.text
