@@ -430,6 +430,16 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## Proving it: policy and the audit log
+
+Two screens for the two questions a regulated buyer asks first, and neither answer was reachable without a terminal.
+
+**Policy** is grouped by rule, not by contact. One contact denied once is a correct denial; one rule denying four fifths of a program is a program to fix, and only the second grouping shows that. The rail counts *denials* rather than decisions: the total includes every allow and never moves, while the number an operator acts on is the work the engine stopped. A tenant at zero denials has either a clean list or a policy that is not running, and in a count of sends those look identical.
+
+**Audit log** answers *who*, not *what*. Issuing, rotating or revoking a key, publishing or activating a program, approving a draft — each writes a line, and it has since the first key was issued. It was readable only from a SQL prompt, which makes it evidence nobody can produce during the diligence it exists for. `GET /v1/audit` returns it; the entries carry key ids and never a token, because a token is shown once at creation and this table is read by people who did not create the key.
+
+Both were removed from the rail in ADR-023 rather than left as links that did nothing, with the debt recorded. This pays it (ADR-026).
+
 ## The research dossier
 
 `docs/08` gives the Researcher a role and `docs/12` prices its output at 20 credits — the most expensive action in the list, and the last one the runtime could not execute. The word "dossier" appeared once in the code, as a local variable inside the copywriter holding evidence for one email.
@@ -483,7 +493,7 @@ Three views worked — Programs, Review queue, Sending — and the rail offered 
 
 `POST /v1/enrich` takes named ids rather than "everything unresolved": it spends a data budget, and an endpoint whose cost depends on how much happened to be missing is one nobody can predict the bill for. It requires a write scope for the same reason.
 
-Experiments, Policy and Audit log were removed from the rail rather than left as links. The data behind two of them exists — `GET /v1/decisions` and the audit log — and a view for each is honest work still to do; a link pretending it is done is not.
+Experiments, Policy and Audit log were removed from the rail rather than left as links. Policy and Audit log are back, with screens rather than links (below). Experiments is not: the data behind it needs a conclusion the measurement is often right to withhold, and a view that renders "not significant" as a number is worse than no view.
 
 ## Going and looking for a signal
 
@@ -604,7 +614,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-792 tests. 271 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+794 tests. 273 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

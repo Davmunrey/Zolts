@@ -385,3 +385,16 @@ At that price the interesting decisions are all about *not* spending.
 Coverage is reported beside staleness, never alone. A dossier on every account, every one written before this quarter's news, is full coverage and no knowledge.
 
 With this, all eight actions `docs/12` prices can be executed by the runtime that charges for them.
+
+**ADR-026 · The two screens a regulated buyer asks for first.**
+ADR-023 removed Policy and Audit log from the rail rather than leave links that did nothing, and recorded the debt. This pays it. Both answers existed in the database from the day the gate and the ledger did; neither was reachable without a terminal, which makes them evidence nobody can produce in the room where it is asked for.
+
+| Decision | Why |
+|---|---|
+| **Policy is grouped by rule, not by contact** | One contact denied once is a correct denial. One rule denying four fifths of a program is a program to fix, and the per-contact list hides that behind its own length |
+| **The rail counts denials, not decisions** | The total includes every allow and never moves. What an operator acts on is the work the engine stopped |
+| **The audit log answers who, not what** | An audit asks which human authorised something. The runtime's own actions are in the touch and decision ledgers; this table is for the ones a person took |
+| **Entries carry key ids, never tokens** | A token is shown once at creation, and this table is read by people who did not create the key |
+| **Experiments stays off the rail** | The measurement is often right to withhold a conclusion, and a screen that renders "not significant" as a number is worse than no screen. It goes back when it can say what it rests on, not when it can draw a chart |
+
+The rail is now eight entries and still has no link that leads nowhere; the test that asserts that has not changed.

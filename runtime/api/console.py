@@ -233,6 +233,85 @@ def decisions_view(cur, limit: int = 200) -> dict[str, list[dict[str, Any]]]:
     return grouped
 
 
+def policy_view(cur, limit: int = 200) -> dict[str, Any]:
+    """What the policy engine decided, and which rule decided it.
+
+    A regulated buyer's first question is not whether there is a policy engine;
+    it is to be shown a denial and told which rule produced it. That answer
+    existed at `GET /v1/decisions` from the day the gate did, and no screen
+    asked for it — so the demonstration required a terminal.
+
+    Grouped by rule rather than by contact. One contact denied once is a
+    correct denial; one rule denying four fifths of a program is a program to
+    fix, and only the second grouping shows it.
+    """
+    cur.execute(
+        "select d.decision, d.rule_key, d.jurisdiction, d.action, d.rationale,"
+        "       d.decided_at, coalesce(p.full_name, p.email::text) as subject"
+        "  from policy_decision d"
+        "  left join person p on p.id = d.subject_id"
+        " order by d.decided_at desc limit %s", (limit,))
+    recent = [{
+        "decision": r["decision"], "rule": r["rule_key"],
+        "jurisdiction": r["jurisdiction"] or "—",
+        "channel": str(r["action"]).split(".")[0],
+        "subject": r["subject"] or "—",
+        "rationale": r["rationale"],
+        "decidedAt": r["decided_at"].isoformat(),
+    } for r in cur.fetchall()]
+
+    cur.execute(
+        "select rule_key, decision, count(*) as n from policy_decision"
+        " group by rule_key, decision order by n desc")
+    by_rule: dict[str, dict[str, Any]] = {}
+    for row in cur.fetchall():
+        entry = by_rule.setdefault(row["rule_key"], {"rule": row["rule_key"],
+                                                     "allow": 0, "deny": 0})
+        entry["allow" if row["decision"] == "allow" else "deny"] += int(row["n"])
+
+    allowed = sum(e["allow"] for e in by_rule.values())
+    denied = sum(e["deny"] for e in by_rule.values())
+    return {
+        "recent": recent,
+        "byRule": sorted(by_rule.values(), key=lambda e: -(e["deny"] + e["allow"])),
+        "totals": {"allow": allowed, "deny": denied,
+                   # The share of work the engine stopped. A tenant at zero has
+                   # either a clean list or a policy that is not running, and
+                   # those look identical in a count of sends.
+                   "denyRate": round(denied / (allowed + denied), 4)
+                   if allowed + denied else None},
+        "jurisdictions": sorted({r["jurisdiction"] for r in recent}),
+    }
+
+
+def audit_view(cur, limit: int = 200) -> dict[str, Any]:
+    """Who did what, and when.
+
+    Written on every key issued, rotated or revoked, every program published or
+    activated, and every proposal a person approved. It answers the question an
+    audit actually asks — not what the system did, but which human authorised
+    it — and until now the only way to read it was a SQL prompt.
+    """
+    cur.execute(
+        "select actor, action, subject, detail, at from audit_log"
+        " order by at desc limit %s", (limit,))
+    entries = [{
+        # The key id, not the token, and never the token: keys are shown once
+        # at creation and this table is read by people who did not create them.
+        "actor": r["actor"], "action": r["action"],
+        "subject": (str(r["subject"])[:8] if r["subject"] else "—"),
+        "detail": r["detail"] or {},
+        "at": r["at"].isoformat(),
+    } for r in cur.fetchall()]
+
+    cur.execute("select action, count(*) as n from audit_log"
+                " group by action order by n desc limit 20")
+    return {"entries": entries,
+            "byAction": [{"action": r["action"], "count": int(r["n"])}
+                         for r in cur.fetchall()],
+            "actors": sorted({e["actor"] for e in entries})}
+
+
 def prospects_view(cur, limit: int = 200) -> dict[str, Any]:
     """The accounts and contacts an operator works, and what is missing on them.
 
@@ -491,5 +570,7 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "prospects": prospects_view(cur),
         "signalsView": signals_view(cur),
         "spendView": spend_view(cur, tenant),
+        "policyView": policy_view(cur),
+        "auditView": audit_view(cur),
         "spend": {"llm_usd": round(llm_micros / 1_000_000, 4)},
     }

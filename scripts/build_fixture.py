@@ -387,6 +387,56 @@ def build() -> dict:
                          "rule": d.rule_key, "rationale": d.rationale})
         decisions[jurisdiction] = rows
 
+    # The policy view reads one jurisdiction's evaluation and groups it the way
+    # the served console does: by rule, because one contact denied once is a
+    # correct denial and one rule denying most of a program is a program to fix.
+    policy_rows = decisions["ES"]
+    by_rule: dict[str, dict[str, object]] = {}
+    for row in policy_rows:
+        entry = by_rule.setdefault(row["rule"], {"rule": row["rule"], "allow": 0, "deny": 0})
+        entry["allow" if row["decision"] == "allow" else "deny"] += 1
+    allowed = sum(int(e["allow"]) for e in by_rule.values())
+    denied = sum(int(e["deny"]) for e in by_rule.values())
+    policy_view = {
+        "recent": [{"decision": r["decision"], "rule": r["rule"], "jurisdiction": "ES",
+                    "channel": r["channel"], "subject": r["account"],
+                    "rationale": r["rationale"],
+                    "decidedAt": EVALUATED_AT.isoformat()} for r in policy_rows],
+        "byRule": sorted(by_rule.values(), key=lambda e: -(int(e["deny"]) + int(e["allow"]))),
+        "totals": {"allow": allowed, "deny": denied,
+                   "denyRate": round(denied / (allowed + denied), 4)
+                   if allowed + denied else None},
+        "jurisdictions": sorted(PACK_V1),
+    }
+
+    # Who authorised what. Every line here is one the runtime actually writes:
+    # a key issued, a program published and activated, a draft approved.
+    audit_view = {
+        "entries": [
+            {"actor": "key:3b9fc918", "action": "program.activated",
+             "subject": "series-a", "detail": {"version": "1.2.0"},
+             "at": "2026-09-04T09:12:00+00:00"},
+            {"actor": "key:3b9fc918", "action": "proposal.approved",
+             "subject": "9f21ac04", "detail": {"tier": "t1"},
+             "at": "2026-09-04T09:08:00+00:00"},
+            {"actor": "key:3b9fc918", "action": "program.published",
+             "subject": "series-a", "detail": {"version": "1.2.0"},
+             "at": "2026-09-03T17:40:00+00:00"},
+            {"actor": "key:0c4471de", "action": "api_key.rotated",
+             "subject": "0c4471de", "detail": {"replaced": "1a77bd90"},
+             "at": "2026-09-02T11:05:00+00:00"},
+            {"actor": "key:0c4471de", "action": "api_key.created",
+             "subject": "3b9fc918", "detail": {"scopes": ["read", "write"]},
+             "at": "2026-09-01T08:30:00+00:00"},
+        ],
+        "byAction": [{"action": "program.published", "count": 4},
+                     {"action": "proposal.approved", "count": 3},
+                     {"action": "program.activated", "count": 2},
+                     {"action": "api_key.created", "count": 2},
+                     {"action": "api_key.rotated", "count": 1}],
+        "actors": ["key:0c4471de", "key:3b9fc918"],
+    }
+
     # A holdout assignment the reader can check: the same hash the runtime uses.
     sample = assign("acct-demo-1", "series-a-hiring-surge", 10, salt="2026q1")
 
@@ -411,6 +461,8 @@ def build() -> dict:
         "blueprints": sorted(catalog.blueprints),
         "plannedPrograms": sorted(catalog.planned_programs),
         "decisions": decisions,
+        "policyView": policy_view,
+        "auditView": audit_view,
         "review": REVIEW,
         "jurisdictions": sorted(PACK_V1),
         "assignmentSample": {"entity": "acct-demo-1", "bucket": sample.bucket,
