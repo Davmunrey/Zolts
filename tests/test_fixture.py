@@ -166,6 +166,18 @@ def test_the_fixture_carries_no_wall_clock_field():
     assert not re.search(r"20\d\d-\d\d-\d\dT\d\d:", blob), "a timestamp leaked into the fixture"
 
 
+def test_the_fixture_is_byte_identical_across_builds():
+    """The property the timestamp guard is a proxy for.
+
+    A fixture that differs between builds makes CI's staleness check
+    permanently red, and the pattern above cannot tell a wall clock from a
+    constant. This can.
+    """
+    import json
+
+    assert json.dumps(build(), sort_keys=True) == json.dumps(build(), sort_keys=True)
+
+
 @pytest.mark.parametrize("key", sorted(BY_KEY), ids=lambda k: k)
 def test_the_rendering_contract_the_surface_relies_on(key):
     """The surface branches on `treat` and then reads `absLift` and `mde`.

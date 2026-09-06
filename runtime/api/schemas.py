@@ -122,3 +122,8 @@ class KeyIn(BaseModel):
     """A new API key. Scopes narrow it; an empty list is full tenant access."""
     name: str = Field(min_length=1, max_length=120)
     scopes: list[str] | None = Field(default=None, max_length=20)
+
+
+class SessionIn(BaseModel):
+    """Opening a browser session with an API key."""
+    api_key: str = Field(min_length=8, max_length=200)

@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-python@v6    # v5 targets the deprecated Node 20
         with:
           python-version: '3.11'
-      - run: pip install pyyaml jsonschema pytest
+      - run: pip install pyyaml jsonschema pytest playwright
       - run: pip install -r runtime/requirements.txt
 
       # The spend guard is a Node package. The agent tests skip without it,
@@ -67,6 +67,18 @@ jobs:
             echo "::error::trazum-mcp is missing, so the spend-guard tests did not run"
             exit 1
           fi
+
+      # The console was built, served, tested against its view model and
+      # rendered headlessly from the static build — and still answered 401 to
+      # anyone who typed its URL. Every check passed; nobody had opened it.
+      - name: Open the console the way an operator does
+        run: |
+          python3 -m playwright install --with-deps chromium
+          python3 scripts/browser_console.py
+        env:
+          ZOLTS_DATABASE_URL: postgresql://zolts:zolts@127.0.0.1:5432/zolts
+          ZOLTS_APP_DATABASE_URL: postgresql://zolts_app:zolts_app@127.0.0.1:5432/zolts
+          ZOLTS_SECRET_KEY: ci-only-not-a-real-key
 
       - name: Smoke the runtime end to end
         run: python3 scripts/smoke_runtime.py
