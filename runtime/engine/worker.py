@@ -115,6 +115,7 @@ class Worker:
                 return
             try:
                 self._dispatch(cur, tenant_id, action, tick)
+                self._bill_step(cur, tenant_id, action_id)
             except PermanentError as exc:
                 actions.cancel(cur, action_id, f"permanent: {exc}")
                 tick.cancelled += 1
@@ -282,6 +283,26 @@ class Worker:
         tick.succeeded += 1
 
     # -- helpers ---------------------------------------------------------
+
+    def _bill_step(self, cur, tenant_id: str, action_id: str) -> None:
+        """Charge the step, once, and only one the runtime disposed.
+
+        Here rather than at each of the three success paths, because the rule
+        is about the action's outcome and not about which branch reached it:
+        `meter_step` charges a succeeded action and nothing else, so a step the
+        policy gate refused, one deferred for budget or capacity, and one that
+        failed all leave no charge without any branch having to remember.
+
+        `docs/12` prices this as program execution at 0.2 credits, the
+        highest-volume action in the list and the only one the runtime never
+        billed. A six-step play over ten thousand accounts is twelve thousand
+        credits of consumption that was, until now, free.
+        """
+        cur.execute("select * from tenant where id = %s", (tenant_id,))
+        tenant = cur.fetchone()
+        if tenant is None:
+            return
+        metering.meter_step(cur, dict(tenant), action_id)
 
     def _resolve_contact(self, cur, payload: dict[str, Any]) -> dict[str, Any] | None:
         entity_type = payload.get("entity_type")

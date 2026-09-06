@@ -190,6 +190,40 @@ def meter(cur, tenant: dict[str, Any], *, kind: str, units: float = 1,
     return billed
 
 
+# What one step of a program costs, per `docs/12`.
+STEP_KIND = "program.step"
+
+
+def meter_step(cur, tenant: dict[str, Any], action_id: str) -> Decimal:
+    """Bill one program step, once, and only one the runtime actually ran.
+
+    `docs/12` prices this as **program execution**, not as program queueing,
+    and the two are different events. The planner queues one step at a time
+    and an exit rule cancels what is still pending, so a step billed at the
+    queue is a step a reply or an opt-out correctly threw away — charged for.
+
+    The billing mark goes on the action's own row because the action *is* the
+    step: an outbox row already carrying the idempotency key that makes the
+    step unique within its enrollment. A retried action therefore bills once
+    by construction rather than by a caller remembering to check.
+
+    The `succeeded` condition is the rule, not a guard: a step the policy gate
+    refused, or one deferred for budget or capacity, leaves no charge. Billing
+    a step our own compliance engine blocked would make the safest
+    configuration the most expensive one to run, which is the incentive
+    `docs/11` exists to prevent.
+    """
+    cur.execute(
+        "update action set billed_at = now()"
+        " where id = %s and billed_at is null and state = 'succeeded'"
+        " returning program_id", (action_id,))
+    row = one(cur)
+    if row is None:
+        return Decimal("0")
+    return meter(cur, tenant, kind=STEP_KIND,
+                 program_id=str(row["program_id"]) if row["program_id"] else None)
+
+
 def close_period(cur, tenant: dict[str, Any], period_id: str) -> dict[str, Any]:
     """Turn a period into a statement. Idempotent: a closed period is returned.
 
