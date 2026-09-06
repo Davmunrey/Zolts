@@ -200,6 +200,29 @@ On Fly, do not enable `auto_stop_machines` for the worker: it holds leases, and 
 
 `ZOLTS_SECRET_KEY` seals connector credentials with AES-GCM before they reach the database, so a dump discloses nothing on its own. Losing it means re-entering every credential; it belongs in a secret manager, not in the database it protects.
 
+## What the image ships
+
+The image once carried the code and none of the data the code reads. It built,
+started, answered `/health` with `"status": "ok"`, seeded a tenant with zero
+programs and reported success, and `/console` returned 500. Nothing failed —
+the product was simply empty, and the quickstart handed a first-time operator a
+URL that 500s.
+
+Two fixes, because either alone leaves the failure mode:
+
+| | |
+|---|---|
+| The image ships what the runtime reads | `examples/schema`, `examples/programs`, `blueprints`, `design`, alongside the code |
+| A missing directory is an error with a name | `load_blueprints` and `load_catalog` raise on an absent directory; globbing one returns nothing, which reads as "this product has no blueprints". An empty directory still returns `[]` — absent and empty are different facts |
+| `quickstart` refuses to seed nothing | A first run that publishes no programs is a failure, not a result |
+| `/console` names the missing file | 503 with the path, not a stack trace |
+
+Two checks keep it that way. `tests/test_packaging.py` resolves every data path
+from the modules themselves and asserts a `COPY` ships it, so renaming a
+directory and forgetting the Dockerfile fails the suite. And CI builds the image
+and runs it: migrate, quickstart (asserting the programs are non-empty), then
+`/health` and `/console` over HTTP against a container.
+
 ## What would break first at scale
 
 | Limit | Bites at roughly | Fix when it does |
@@ -219,7 +242,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-504 tests. The runtime's 151 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+512 tests. The runtime's 151 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 

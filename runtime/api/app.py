@@ -387,6 +387,15 @@ def create_app(db: Database, *, install_connectors: bool = True,
             tenant = cur.fetchone()
             data = console.build(cur, tenant)
 
+        if not SURFACE.is_file():
+            # The quickstart hands this URL to a first-time operator. A stack
+            # trace there says nothing; the name of the missing file says
+            # everything.
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"the console surface is missing from this deployment "
+                f"({SURFACE}); the API and the worker are unaffected, and "
+                f"GET /v1/console returns the same data as JSON")
         rendered = document(inject(SURFACE.read_text(encoding="utf-8"), data),
                             title=f"Zolts — {tenant['name']}")
         return Response(

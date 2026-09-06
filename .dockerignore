@@ -1,0 +1,13 @@
+# Keep the image to what the runtime reads. Everything below is either build
+# noise or would be shipped for no reason.
+.git
+.github
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+tests
+docs
+site
+node_modules
+.venv

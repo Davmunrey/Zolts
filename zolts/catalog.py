@@ -50,7 +50,12 @@ class Catalog:
 
 
 def load_catalog(program_dir: Path | None = None) -> Catalog:
-    programs = [load(p) for p in sorted((program_dir or PROGRAM_DIR).glob("*.yaml"))]
+    source = program_dir or PROGRAM_DIR
+    if not source.is_dir():
+        raise FileNotFoundError(
+            f"program directory {source} does not exist; the package or image "
+            "was built without it")
+    programs = [load(p) for p in sorted(source.glob("*.yaml"))]
     return Catalog(programs=programs, blueprints={b.key: b for b in load_blueprints()})
 
 
