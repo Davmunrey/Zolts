@@ -41,8 +41,8 @@ PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 | A B2C profile can never land on a B2B archetype | [05](05-blueprints-and-adaptability.md) | `blueprint.py` | **Proven.** `customer_type` and `compliance_tier` disqualify rather than deduct |
 | A program may not loosen its blueprint's policy | [05](05-blueprints-and-adaptability.md) | `catalog.py` | **Proven** — and it caught a live violation |
 | The figure on screen is the figure the runtime computes | [10](10-measurement-and-incrementality.md) | `build_fixture.py` | **Proven.** The console holds no formula of its own |
-| Sending capacity is managed inventory, not plumbing | [09](09-execution-and-deliverability.md) | `deliverability.py` | **Proven.** Warm-up, thresholds, per-provider segregation, staggered ramp |
-| A burned domain cannot send from its healthy mailboxes | [09](09-execution-and-deliverability.md) | `deliverability.py` | **Proven** |
+| Sending capacity is managed inventory, not plumbing | [09](09-execution-and-deliverability.md) | `deliverability.py` | **Proven, and now enforced.** Warm-up, thresholds, per-provider segregation, staggered ramp. The runtime imports it: a send with no capacity is held (ADR-020) |
+| A burned domain cannot send from its healthy mailboxes | [09](09-execution-and-deliverability.md) | `deliverability.py` | **Proven, and now enforced.** The complaint cut-off pauses the domain in the database, and `/health/liveness` reports it |
 
 ## What building it changed
 

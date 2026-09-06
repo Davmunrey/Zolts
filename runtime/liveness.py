@@ -15,6 +15,8 @@ request 500s, and the first person to notice is the customer:
 * Actions pile up dead. They have exhausted their attempts and stopped, and
   nobody was told they stopped.
 * A tenant has programs running and no live connection to run them through.
+* A circuit breaker paused a sending domain. The campaign stops, nothing
+  raises, and the asset that stopped takes months to replace.
 
 Each is expressed as a threshold with a number beside it, because "the outbox
 is deep" is not actionable and "412 actions have been pending for over 30
@@ -69,7 +71,28 @@ def check(db: Database) -> Liveness:
         _dead(cur, live)
         _connections(cur, live)
         _programs_without_a_channel(cur, live)
+        _burned_domains(cur, live)
     return live
+
+
+def _burned_domains(cur, live: Liveness) -> None:
+    """A domain a breaker paused is the most expensive silent state here.
+
+    Nothing raises when it happens, no request fails, and the campaign simply
+    stops. A domain takes months to build a reputation and cannot be bought,
+    so an operator finding out on the weekly review has found out too late.
+    """
+    cur.execute("select name, paused_reason, paused_at from sending_domain"
+                " where paused order by paused_at desc nulls last")
+    paused = cur.fetchall()
+    if paused:
+        named = ", ".join(f"{r['name']} ({r['paused_reason']})" for r in paused)
+        live.add("sending domains", False,
+                 f"paused by a cut-off: {named}. Every program sending from "
+                 "them has stopped, and nothing else reports that it has",
+                 value=len(paused))
+    else:
+        live.add("sending domains", True, "no domain is paused by a cut-off")
 
 
 def _outbox(cur, live: Liveness) -> None:

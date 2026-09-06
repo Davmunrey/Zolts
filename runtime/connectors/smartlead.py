@@ -8,8 +8,18 @@ this connector is the strictest one:
 * It reconciles rather than creates: adding a lead that already exists in the
   campaign returns the existing lead, so a redelivered action does not enqueue
   a second email.
-* It reports the mailbox actually used, because deliverability accounting is
-  per mailbox and per domain, and an aggregate hides the domain that is burning.
+* It does **not** report the mailbox actually used, and an earlier version of
+  this docstring claimed it did. Adding a lead to a campaign hands Smartlead a
+  recipient; Smartlead decides which of its mailboxes sends it and when. So the
+  mailbox `runtime.fleet` allocates for a send through this connector is an
+  intent, recorded on the touch, and not an observation.
+
+  What the capacity gate therefore buys on this path is a bound on the volume
+  Zolts releases per day, computed from the fleet it has been told about. That
+  is a real control and it is not the same control as choosing the mailbox.
+  Saying so is the point: a per-mailbox guarantee the provider never agreed to
+  is exactly the kind of claim that is discovered to be false by a burned
+  domain. Registered as decision 19.
 """
 
 from __future__ import annotations
