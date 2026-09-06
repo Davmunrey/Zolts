@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import requires_db
+
 ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILE = ROOT / "Dockerfile"
 
@@ -189,3 +191,68 @@ def test_the_deploy_either_builds_with_its_dependencies_or_does_not_build():
         f"'{output}' is committed. The deploy would serve an empty directory")
     assert f"{output}/index.html" in tracked, (
         f"'{output}' is committed without an index.html to serve")
+
+
+# -- the schema the documents describe ------------------------------------
+
+# Not tenant-scoped, and each for its own reason: `tenant` is the table the
+# isolation is keyed on, `invitation` exists before its tenant does, and
+# `schema_migration` is the migrator's own bookkeeping.
+UNSCOPED = {"tenant", "invitation", "schema_migration"}
+
+
+@requires_db
+def test_the_documents_do_not_overstate_the_schema(db):
+    """README said 18 tables with RLS forced on 16. There were 30 and 27.
+
+    Nobody wrote it dishonestly; a number in a document is not re-measurable,
+    so it is never re-measured — the same failure as the test counts, one layer
+    down, and in the claim a security reviewer reads first.
+    """
+    import re
+
+    with db.admin_tx() as cur:
+        cur.execute(
+            "select relname, relforcerowsecurity from pg_class"
+            " where relnamespace = 'public'::regnamespace and relkind = 'r'")
+        tables = {r["relname"]: r["relforcerowsecurity"] for r in cur.fetchall()}
+
+    unforced = {name for name, forced in tables.items() if not forced}
+    assert unforced == UNSCOPED, (
+        f"a tenant-scoped table without forced RLS is a tenant reading another "
+        f"tenant's rows: {sorted(unforced - UNSCOPED)}")
+
+    total, scoped = len(tables), len(tables) - len(UNSCOPED)
+    root = Path(__file__).resolve().parent.parent
+    for document in (root / "README.md", root / "docs" / "20-runtime.md"):
+        text = document.read_text()
+        assert re.search(rf"\b{total} tables\b", text), (
+            f"{document.name} does not say there are {total} tables")
+        assert re.search(rf"\b(on all )?{scoped}\b", text), (
+            f"{document.name} does not say RLS is forced on {scoped} of them")
+
+
+@requires_db
+def test_the_app_role_may_use_every_sequence(db):
+    """A `bigserial` column is insertable only by a role that may call
+    `nextval` on its sequence, and sequences are separate objects with their
+    own privileges.
+
+    `dossier.seq` is the first one in this schema — every primary key here is a
+    uuid — and its insert failed on a permission nobody had granted because
+    nobody knew to. The next sequence added must not repeat that.
+    """
+    with db.admin_tx() as cur:
+        cur.execute("select sequencename from pg_sequences where schemaname = 'public'")
+        sequences = [r["sequencename"] for r in cur.fetchall()]
+        cur.execute(
+            "select s.sequencename from pg_sequences s"
+            " where s.schemaname = 'public'"
+            "   and not has_sequence_privilege('zolts_app',"
+            "         format('public.%I', s.sequencename), 'USAGE')")
+        ungranted = [r["sequencename"] for r in cur.fetchall()]
+
+    assert sequences, "the premise moved: this schema has no sequences at all"
+    assert not ungranted, (
+        f"the role that serves tenant requests cannot use {ungranted}; every "
+        f"insert into the owning table fails")

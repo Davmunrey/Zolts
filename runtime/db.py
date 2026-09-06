@@ -159,6 +159,14 @@ class Database:
         """Re-grant table privileges. Idempotent; run after every migration."""
         with self.admin_pool.connection() as conn:
             conn.execute(f"grant select, insert, update, delete on all tables in schema public to {app_role}")
+            # Sequences are separate objects with their own privileges, so a
+            # table with a `bigserial` column is insertable by a role that
+            # cannot call `nextval` on its sequence — the insert fails on a
+            # permission nobody granted because nobody knew to. Every primary
+            # key here is a uuid; the one sequence is `dossier.seq`, which
+            # exists because two rows written in one transaction share `now()`
+            # and the newest of them has to be decidable.
+            conn.execute(f"grant usage, select on all sequences in schema public to {app_role}")
             conn.execute(f"revoke insert, update, delete on tenant from {app_role}")
             conn.execute(f"revoke all on schema_migration from {app_role}")
             # Invitations are operator state, not tenant state: they exist

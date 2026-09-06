@@ -68,7 +68,8 @@
         "employeeBand": "51-200",
         "industry": "62.01",
         "contacts": 2,
-        "missing": []
+        "missing": [],
+        "dossier": "complete"
       },
       {
         "id": "acct-2",
@@ -78,7 +79,8 @@
         "employeeBand": "11-50",
         "industry": "72.19",
         "contacts": 1,
-        "missing": []
+        "missing": [],
+        "dossier": "thin"
       },
       {
         "id": "acct-3",
@@ -90,7 +92,8 @@
         "contacts": 1,
         "missing": [
           "firmographics"
-        ]
+        ],
+        "dossier": null
       },
       {
         "id": "acct-4",
@@ -100,7 +103,8 @@
         "employeeBand": "201-500",
         "industry": "61.90",
         "contacts": 1,
-        "missing": []
+        "missing": [],
+        "dossier": null
       }
     ],
     "people": [
@@ -162,6 +166,21 @@
         "optedOut": false
       }
     ],
+    "research": {
+      "accounts": 4,
+      "withDossier": 2,
+      "stale": 1,
+      "byState": {
+        "complete": {
+          "count": 1,
+          "stale": 1
+        },
+        "thin": {
+          "count": 1,
+          "stale": 0
+        }
+      }
+    },
     "missingCounts": {
       "firmographics": 1,
       "email": 2,

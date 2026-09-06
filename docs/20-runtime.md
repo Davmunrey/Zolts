@@ -6,7 +6,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 
 | Piece | Where | State |
 |---|---|---|
-| Schema, 18 tables, RLS forced on 16 | `runtime/migrations/` | Running on Postgres 16 |
+| Schema, 30 tables, RLS forced on 27 | `runtime/migrations/` | Running on Postgres 16 |
 | Tenant-scoped data access | `runtime/db.py`, `runtime/repo/` | Running |
 | Signal ingest to enrollment, with holdout assignment | `runtime/engine/enroll.py` | Running |
 | Step planning and the transactional outbox | `runtime/engine/planner.py`, `runtime/repo/actions.py` | Running |
@@ -22,7 +22,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | Agent layer: propose-only, provenance-checked, eval-gated | `runtime/agents/`, `runtime/engine/generate.py` | Running |
 | Cost governance before every model call | `runtime/agents/spend.py` + Trazum `spend_guard` | Running |
 
-Not built: the enrichment waterfall wired to real providers, warehouse zero-copy, a per-tenant trained brand classifier (the deterministic floor under it ships), and any second sending channel. Those are named here so the gap is a decision rather than a discovery.
+Not built: warehouse zero-copy, a per-tenant trained brand classifier (the deterministic floor under it ships), and any second sending channel. The enrichment waterfall was on this list until it ran against a real provider. They are named here so the gap is a decision rather than a discovery.
 
 ## The agent layer
 
@@ -430,6 +430,32 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## The research dossier
+
+`docs/08` gives the Researcher a role and `docs/12` prices its output at 20 credits — the most expensive action in the list, and the last one the runtime could not execute. The word "dossier" appeared once in the code, as a local variable inside the copywriter holding evidence for one email.
+
+```
+research requested
+  └─ evidence assembled   the account, its contacts, its signals, and what has already been tried
+     └─ nothing known?    refused before a model is called — 20 credits buys no invention here
+        └─ current one?   served from storage, billed nothing: freshness is a comparison, not a clock
+           └─ budget      checked before the call; the largest single purchase in the product
+              └─ generate
+                 └─ provenance   every claim without a source is struck out — and kept, and shown
+                    └─ stored    with what it saw, so the next request knows whether it still holds
+```
+
+`built_through` is the newest signal the dossier read. A funding round arriving afterwards makes it stale with nobody having to remember to invalidate anything; an account that has done nothing for a month keeps the answer it has. `force` rewrites a current dossier and pays again, because an operator who does not believe one must be able to say so.
+
+A refusal — no evidence, no budget, no model — is stored and never billed. The next caller learns why without paying to find out, and it is visible that the runtime declined rather than failed.
+
+Struck-out claims are returned rather than hidden: a dossier that lost a sentence to the verifier is a document with a hole in it, and the hole is the finding. The prospects view shows which accounts have one and reports coverage beside staleness, because coverage alone lies (ADR-025).
+
+```sh
+python3 -m runtime.cli research --tenant … --limit 5 --dry-run   # what it would cost
+python3 -m runtime.cli research --tenant … --limit 5             # 20 credits each
+```
+
 ## Charging for the step
 
 `docs/12` prices program execution at 0.2 credits. It is the highest-volume action in the price list and the runtime billed none of it, so the base unit of the product's consumption was free: a six-step play over ten thousand accounts is twelve thousand credits nobody invoiced.
@@ -578,7 +604,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-773 tests. 252 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+792 tests. 271 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

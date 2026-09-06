@@ -142,3 +142,19 @@ class EnrichIn(BaseModel):
     # recorded against every value bought and cannot be reconstructed later.
     legal_basis: Literal["legitimate_interest", "consent", "contract"] = \
         "legitimate_interest"
+
+
+class ResearchIn(BaseModel):
+    """Asking for a research dossier on named accounts.
+
+    Named rather than "the whole book": at 20 credits it is the most expensive
+    action in the price list, and an endpoint that researches everything
+    unresearched is one nobody can predict the bill for.
+
+    `force` rewrites a dossier that is still current, and costs again. It
+    exists because an operator who does not believe one should be able to say
+    so, and it is off by default because the reason a dossier is reused is
+    that nothing has changed.
+    """
+    account_ids: list[str] = Field(min_length=1, max_length=25)
+    force: bool = False

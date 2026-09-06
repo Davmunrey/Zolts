@@ -247,15 +247,26 @@ def prospects_view(cur, limit: int = 200) -> dict[str, Any]:
     """
     from runtime.connectors.dataprovider import unresolved
 
+    # The dossier's state comes with the account rather than in a second pass:
+    # an operator picking accounts to research needs to see which ones already
+    # have one, and a screen that makes them click to find out is a screen that
+    # buys the same twenty-credit document twice.
     cur.execute(
-        "select a.*, count(m.person_id) as contacts"
-        "  from account a left join membership m on m.account_id = a.id"
-        " group by a.id order by a.created_at desc limit %s", (limit,))
+        "select a.*, count(m.person_id) as contacts, d.state as dossier_state,"
+        "       d.built_through as dossier_through"
+        "  from account a"
+        "  left join membership m on m.account_id = a.id"
+        "  left join lateral ("
+        "    select state, built_through from dossier"
+        "     where account_id = a.id order by seq desc limit 1) d on true"
+        " group by a.id, d.state, d.built_through"
+        " order by a.created_at desc limit %s", (limit,))
     accounts = [{
         "id": str(r["id"]), "name": r["name"], "domain": r["domain"],
         "country": r["country"], "employeeBand": r["employee_band"],
         "industry": r["industry_code"], "contacts": int(r["contacts"]),
         "missing": ["firmographics"] if unresolved(dict(r), "firmographics") else [],
+        "dossier": r["dossier_state"],
     } for r in cur.fetchall()]
 
     cur.execute(
@@ -278,8 +289,14 @@ def prospects_view(cur, limit: int = 200) -> dict[str, Any]:
                              .get("opted_out")),
         })
 
+    from runtime import research
+
     return {
         "accounts": accounts, "people": people,
+        # Coverage and staleness together, because coverage alone lies: a
+        # dossier on every account, all written before this quarter's news, is
+        # 100% coverage and no knowledge.
+        "research": research.coverage(cur),
         "missingCounts": {
             "firmographics": sum(1 for a in accounts if a["missing"]),
             "email": sum(1 for p in people if "email" in p["missing"]),

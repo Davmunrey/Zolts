@@ -19,8 +19,8 @@ from runtime.api.signin import SIGN_IN_CSP, sign_in_page
 from runtime.api.auth import CurrentPrincipal, Principal
 from runtime.api.schemas import (AccountIn, EnrichIn, EnrollmentOut, HealthOut,
                                  IngestOut, KeyIn, MeasurementOut, PersonIn,
-                                 ProgramIn, ProgramOut, SessionIn, SignalIn,
-                                 SignupIn)
+                                 ProgramIn, ProgramOut, ResearchIn, SessionIn,
+                                 SignalIn, SignupIn)
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
@@ -79,6 +79,10 @@ def create_app(db: Database, *, install_connectors: bool = True,
     signup_throttle = Throttle()
     app.state.signup_throttle = signup_throttle
     app.state.triage_factory = _triage_factory()
+    # The same pair the receiver uses. One definition of "the agent
+    # layer is configured", so a deployment cannot have a researcher
+    # and no triage, or the reverse.
+    app.state.agent_factory = app.state.triage_factory
 
     def _throttle(request: Request) -> None:
         caller = caller_of(request)
@@ -380,6 +384,71 @@ def create_app(db: Database, *, install_connectors: bool = True,
                 "creditsBilled": sum(r["credits"] for r in resolved),
                 "results": results,
                 "note": "misses are paid for and not billed to the tenant"}
+
+    @app.post("/v1/research")
+    def research_accounts(body: ResearchIn,
+                          principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Write a research dossier for named accounts.
+
+        The most expensive action in the price list, so it is deliberate on
+        both sides: named accounts rather than a sweep, a write scope, and a
+        dossier that is still current is served from storage rather than
+        rewritten. `force` costs again and says so in the result.
+        """
+        principal.require("write")
+        from runtime import research
+
+        made = app.state.agent_factory
+        client, guard, budget = (None, None, {}) if made is None else made(principal.tenant_id)
+        results = []
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute("select * from tenant where id = %s", (principal.tenant_id,))
+            tenant = dict(cur.fetchone())
+            for account_id in body.account_ids:
+                cur.execute("select * from account where id = %s", (account_id,))
+                row = cur.fetchone()
+                if row is None:
+                    continue
+                results.append(research.build(
+                    cur, tenant, dict(row), client=client, guard=guard,
+                    consumed_usd=budget.get("consumed_usd"),
+                    limit_usd=budget.get("limit_usd"), force=body.force).as_dict())
+
+        return {"asked": len(results),
+                "written": sum(1 for r in results if not r["reused"] and r["state"] != "refused"),
+                "reused": sum(1 for r in results if r["reused"]),
+                "creditsBilled": round(sum(r["credits"] for r in results), 4),
+                "results": results,
+                "note": "a dossier is reused while nothing new has happened on the "
+                        "account, and a refusal is never billed"}
+
+    @app.get("/v1/research/{account_id}")
+    def read_dossier(account_id: str,
+                     principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """The stored dossier for one account, with what was struck out of it.
+
+        The dropped claims are returned rather than hidden. What the model
+        wanted to say and could not support is the most useful thing on the
+        page for an operator deciding how much of it to believe.
+        """
+        from runtime import research
+
+        with db.tenant_tx(principal.tenant_id) as cur:
+            stored = research.latest(cur, account_id)
+            if stored is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                    "no dossier for that account yet")
+            cur.execute("select * from account where id = %s", (account_id,))
+            account = cur.fetchone()
+            _, newest, _ = research.evidence_for(cur, dict(account)) if account else (None, None, 0)
+        seen = stored["built_through"]
+        return {
+            "account": account_id, "state": stored["state"], "body": stored["body"],
+            "evidence": stored["evidence"], "dropped": stored["dropped"],
+            "model": stored["model"], "promptVersion": stored["prompt_version"],
+            "writtenAt": stored["created_at"].isoformat(),
+            "current": newest is None or (seen is not None and seen >= newest),
+        }
 
     @app.post("/v1/accounts", status_code=status.HTTP_201_CREATED)
     def upsert_account(body: AccountIn, principal: Principal = CurrentPrincipal) -> dict[str, Any]:

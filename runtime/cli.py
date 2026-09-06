@@ -11,6 +11,7 @@ import argparse
 import dataclasses
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -199,6 +200,20 @@ def main(argv: list[str] | None = None) -> int:
                              "this spends real money on the first run")
     enrich.add_argument("--dry-run", action="store_true",
                         help="report what would be bought and buy nothing")
+
+    dossier = sub.add_parser(
+        "research", help="write a research dossier for accounts that lack one")
+    dossier.add_argument("--tenant", required=True)
+    dossier.add_argument("--account", action="append",
+                         help="a specific account id; repeatable. Without any, the "
+                              "accounts with no current dossier are taken in order")
+    dossier.add_argument("--limit", type=int, default=10,
+                         help="how many to write. Bounded low on purpose: at 20 "
+                              "credits each this is the most expensive thing here")
+    dossier.add_argument("--force", action="store_true",
+                         help="rewrite a dossier that is still current, and pay again")
+    dossier.add_argument("--dry-run", action="store_true",
+                         help="report what would be written and write nothing")
 
     look = sub.add_parser(
         "watch", help="look for the signals live programs are waiting on")
@@ -619,6 +634,56 @@ def main(argv: list[str] | None = None) -> int:
             "note": "misses are paid for and not billed to the tenant",
         }, indent=2))
         return 0
+
+    if args.command == "research":
+        from runtime import research
+
+        with db.tenant_tx(args.tenant) as cur:
+            if args.account:
+                cur.execute("select * from account where id = any(%s)", (args.account,))
+            else:
+                # Accounts with no dossier at all come first. A stale one is
+                # still an answer; no answer is not.
+                cur.execute(
+                    "select a.* from account a"
+                    " where not exists (select 1 from dossier d where d.account_id = a.id)"
+                    " order by a.created_at limit %s", (args.limit,))
+            rows = [dict(r) for r in cur.fetchall()]
+            if args.dry_run:
+                print(json.dumps({
+                    "candidates": len(rows), "written": 0,
+                    "wouldCost": len(rows) * 20,
+                    "note": "dry run: nothing was written and nothing was billed"},
+                    indent=2))
+                return 0
+
+            client = guard = None
+            if os.environ.get("ZOLTS_AGENTS", "false").lower() == "true":
+                from runtime.agents.client import ModelClient
+                from runtime.agents.spend import SpendGuard
+
+                client, guard = ModelClient(), SpendGuard()
+
+            cur.execute("select * from tenant where id = %s", (args.tenant,))
+            tenant = one(cur)
+            results = [research.build(cur, tenant, row, client=client, guard=guard,
+                                      force=args.force) for row in rows]
+
+        written = [r for r in results if not r.reused and r.state != "refused"]
+        refused = [r for r in results if r.state == "refused"]
+        print(json.dumps({
+            "candidates": len(rows),
+            "written": len(written),
+            "reused": sum(1 for r in results if r.reused),
+            "refused": len(refused),
+            "creditsBilled": round(sum(r.credits for r in results), 4),
+            "results": [r.as_dict() for r in results],
+            "note": "a dossier is reused while nothing new has happened on the "
+                    "account, and a refusal is never billed",
+        }, indent=2))
+        # A run that produced nothing is a failure an operator must see, and a
+        # zero exit on it is how a cron job reports success forever.
+        return 1 if rows and not written and not any(r.reused for r in results) else 0
 
     if args.command == "watch":
         from runtime import watch as watcher
