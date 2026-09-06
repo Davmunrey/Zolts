@@ -98,6 +98,47 @@ Four path forms, and no fifth: `properties.email`, `emails[0].value`, `emails[pr
 
 Validation runs at three doors: `scripts/validate.py` in CI, the publish endpoint, and the CLI. All three raise the same `MappingError` — a caller handling a customer's document should not have to know which library rejected it. Beyond the schema, a document is refused for an unknown transform, a malformed path segment, a consent block that would mark everyone contactable, a `base_url` on loopback or link-local (the runtime's own network position, and the cloud metadata endpoint with it), and a provider name a built-in connector already owns.
 
+## Onboarding a partner
+
+Creating a tenant used to need a shell and the database URL, so every partner cost founder time. It now needs neither (ADR-015).
+
+```sh
+# The operator mints an invitation. This has no HTTP route: an operator
+# capability reachable from a tenant's key is a privilege escalation
+# waiting to be found.
+python3 -m runtime.cli invite --company "Northwind Traders" \
+  --email revops@northwind.example --blueprint b2b-saas-sales-led
+```
+
+The partner opens the link. `GET /v1/signup/{token}` shows what the form should say without consuming anything; `POST /v1/signup` turns the invitation into a tenant, a first API key and its starter programs. That is the **only** unauthenticated write path in this runtime.
+
+| Property | How |
+|---|---|
+| The token is never stored | sha256 at rest, shown once, unrecoverable — the same discipline as an API key |
+| Invalid, expired and redeemed are indistinguishable | One message, `this invitation is not valid`, for all three. Telling them apart tells a caller which tokens exist |
+| Redemption happens once, even concurrently | The row is locked with `for update`, the tenant is created, and only then is the invitation marked redeemed and its tenant named — both in one statement |
+| A half-redeemed row cannot commit | A check constraint refuses one. It caught the first implementation, which marked the invitation redeemed before the tenant existed |
+| Starter programs are drafts | A tenant contacting people before anyone has read a program is not onboarding, it is an incident |
+| An empty starter set says why | Seven of the eleven blueprints ship no example program. The response names what the blueprint declares instead of returning a bare `[]` |
+
+Invitations are operator state, not tenant state — they exist before their tenant does — so the table carries `redeemed_tenant_id` rather than `tenant_id`, and the role serving tenant requests has its access revoked.
+
+## Reading a reply
+
+Every reply used to be recorded as `reply_positive`. Somebody writing "take me off your list" was counted as a conversion, left contactable, and folded into the reported lift (ADR-016).
+
+The triage agent classifies the text and stops there — it does not suppress, does not record an outcome, and does not decide whether it is confident enough.
+
+| Verdict | What the runtime does |
+|---|---|
+| `unsubscribe` | The same suppression path a provider's unsubscribe event takes |
+| `negative`, `wrong_person`, `not_now` | Recorded as `reply_<verdict>`, which is not a conversion type |
+| `positive` | Recorded as `reply_positive`, which is |
+
+**A verdict must quote the reply**, and one whose quote is not in the text is discarded. A confident label with nothing behind it reads exactly like a correct one, and this decides whether somebody is contacted again.
+
+A blocked verdict is not a weaker signal, not a reason to fail the webhook, and not a default. Absent a usable one — agents off, no model, no body in the payload, the spend guard refusing — the reply is recorded as `reply_positive`, exactly as before. That over-counts, and it is registered rather than fixed: flipping it would move every tenant's measured lift on a deploy, silently.
+
 ## The console
 
 `GET /console` serves the operator surface with the tenant's live figures inlined, same origin as the API. That means no CORS to configure, no second origin in `connect-src`, and the same content security policy derivation the static build uses — `runtime/surface.py` holds both, because two copies would drift and the copy that drifts is the one that ships a policy the page violates.
@@ -190,6 +231,54 @@ It provisions the tenant, publishes and activates the four example programs, ope
 
 All three run the API and the worker from the same image, because they share the code and differ only in the command.
 
+### Fly plus a managed Postgres, end to end
+
+The database is deliberately not Fly's. `fly postgres attach` sets `DATABASE_URL`, which this runtime does not read: a database URL is named explicitly or it is absent, because a runtime that picks up whichever connection string happens to be in the environment will one day pick up the wrong one.
+
+```sh
+# 1. The database. Neon's console gives you an owner connection string.
+#    Take the DIRECT endpoint, not the one with -pooler in the host: this
+#    runtime pools client-side, and a pooler in front of a pool buys nothing.
+
+# 2. The second role, the one that serves requests. Run against the owner URL:
+psql "$OWNER_URL" -c "create role zolts_app login password '…'"
+
+# 3. Secrets. Never in the repository, never in the database they protect.
+fly secrets set \
+  ZOLTS_DATABASE_URL="postgresql://owner:…@ep-x.eu-central-1.aws.neon.tech/zolts?sslmode=require" \
+  ZOLTS_APP_DATABASE_URL="postgresql://zolts_app:…@ep-x.eu-central-1.aws.neon.tech/zolts?sslmode=require" \
+  ZOLTS_SECRET_KEY="$(openssl rand -hex 32)"
+
+# 4. Deploy. The release command migrates, then runs preflight, and a
+#    non-zero preflight aborts the release before any traffic reaches it.
+fly deploy
+```
+
+Three values need credentials nobody but the account owner has, and each belongs in `fly secrets`, never in a file, a chat message or an issue: the two database URLs and the secret key.
+
+### Preflight
+
+`python3 -m runtime.cli preflight` answers, against the database actually connected, whether this deployment may take traffic. It is the release command on Fly and the pre-deploy step on Render, so a misconfigured runtime fails the deploy instead of serving.
+
+| Check | Blocking in production when |
+|---|---|
+| Secret key | It is a value published in this repository, or shorter than 32 characters |
+| Database | It cannot be reached — and nothing below is then reported, because a cascade of failures hides the one that matters |
+| Encryption in transit | The connection is unencrypted **and** the database is not local. A loopback or Unix-socket connection needs no TLS, and calling that a failure makes the check noise |
+| Application role | `ZOLTS_APP_DATABASE_URL` is unset, or the role it names is a superuser or holds `BYPASSRLS` |
+| Migrations | Any migration on disk is not in the ledger |
+| Forced row-level security | Any table with a `tenant_id` lacks `FORCE` — `ENABLE` alone exempts the owner |
+| Unscoped reads | A query with no tenant returns rows instead of raising |
+| Dry run | `ZOLTS_DRY_RUN` is true. Correct for a rehearsal, silent for a launch |
+
+Outside production the same checks run and report as warnings, because a developer with a local database is not misconfigured.
+
+### A transaction pooler
+
+Neon, Supabase and RDS Proxy all offer a pooled endpoint, and Neon's console offers it first. The runtime recognises one (`-pooler.` in the host, `pgbouncer=true`, or port 6543) and disables prepared statements on those connections. psycopg names a prepared statement after the fifth execution of a query, and a transaction pooler hands the next transaction a different backend that has never seen that name — so an unadapted deployment works for a few minutes and then fails under exactly the load that made it worth deploying.
+
+Tenant scoping is unaffected either way: `set_config('zolts.tenant_id', …, true)` is transaction-local and cannot outlive the transaction that set it, whichever backend runs it.
+
 Two things need doing by hand on a managed host, and both are deliberate:
 
 **Create the application role.** A managed Postgres issues one role, and it owns the schema. `ZOLTS_APP_DATABASE_URL` must point at a second role that cannot bypass row-level security — `create role zolts_app login password '…'`, then re-run `migrate`, which re-grants. Leaving it unset makes the application connect as the owner. RLS is FORCED so the policies still apply, but the second lock is gone, and `GET /health` reports `isolation_enforced: false` so the state is visible rather than assumed.
@@ -223,6 +312,52 @@ directory and forgetting the Dockerfile fails the suite. And CI builds the image
 and runs it: migrate, quickstart (asserting the programs are non-empty), then
 `/health` and `/console` over HTTP against a container.
 
+## Operating it once a partner is real
+
+`/health` answers "can I reach the database". That is nearly always yes, including on the morning the worker died at 3am, the outbox has been growing for six hours and a paying partner's campaign has sent nothing. Both states report `"status": "ok"`, which makes the endpoint an alibi rather than a signal.
+
+`GET /health/liveness`, and `python3 -m runtime.cli liveness`, answer whether the deployment is doing its job. Point a monitor at it.
+
+| Signal | Fails when | Why it is silent otherwise |
+|---|---|---|
+| Outbox draining | Work is due and nothing has claimed it for 30 minutes | No request errors. The queue simply grows |
+| Actions completing | 10 or more actions exhausted their attempts in 24 hours | One is a bad address; each retry is logged individually and nothing looks at the pattern |
+| Connections healthy | A connection is in `error` | Every send through it fails, and each failure looks like an ordinary retry |
+| Tenants can send | A tenant has live programs and no working connection | The shape of an onboarding that stopped halfway: programs activated, connector never connected. It enrolls, plans, and sends nothing |
+
+The endpoint is unauthenticated and returns counts only, never a tenant's identifiers: it answers an operator's question, and returning identifiers would answer a different one.
+
+### Keys
+
+A key that leaks — pasted into a chat, committed to the partner's repository — has to stop working without a shell.
+
+| | |
+|---|---|
+| `GET /v1/keys` | Prefixes, scopes and `last_used_at`. Never a token; a token is shown once, at creation |
+| `POST /v1/keys` | Issue another |
+| `POST /v1/keys/{id}/rotate` | Issue a replacement, **then** revoke the original. Revoking first leaves a window with no working key, and a rotation that causes an outage is one nobody performs a second time |
+| `DELETE /v1/keys/{id}` | Revoke. Idempotent, and never deletes the row: `last_used_at` still answers "was this key used after it leaked", which is the first question anybody asks |
+
+A key cannot revoke itself — that locks the tenant out of their own account — and the error says to rotate instead.
+
+### Rate limiting
+
+`POST /v1/signup` is the only route that takes a write without a key. Its tokens are 32 random bytes and single-use, so guessing one is not the threat; volume is. A sliding window caps it at 20 requests per minute per caller.
+
+**The limiter is per process.** Two machines allow twice the traffic and a restart forgets everything. That is stated rather than hidden: at this scale a per-process ceiling is most of the value for none of the operational cost of shared state, and a limiter that needs Redis to exist is a limiter nobody turns on. When a second machine matters it is replaced by a counter in Postgres, not extended.
+
+### Restoring
+
+Neon takes the backups. The part that goes wrong is the restore, and it goes wrong quietly.
+
+`pg_dump` of one database emits `GRANT … TO zolts_app` and no `CREATE ROLE`, because roles are cluster-wide. Restored into a fresh project the role does not exist, every `GRANT` fails — and `psql` without `ON_ERROR_STOP=1` exits 0 anyway. The restore reports success, the API starts, connects, and cannot read a single row.
+
+```sh
+scripts/restore.sh backup.sql "$OWNER_URL" "$APP_PASSWORD"
+```
+
+Four steps: create the role if absent, restore with `ON_ERROR_STOP=1`, re-grant via `migrate`, then `preflight` the result. A restore that has not been preflighted is a backup nobody has tested.
+
 ## What would break first at scale
 
 | Limit | Bites at roughly | Fix when it does |
@@ -242,7 +377,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-512 tests. The runtime's 151 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+583 tests. The runtime's 224 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -267,3 +402,13 @@ What they assert, in the order that matters:
 19. A tenant-authored mapping is refused for an unknown transform, and for a consent block that would mark everyone contactable.
 20. A mapping belongs to one tenant: another tenant's key lists nothing and pushes nothing.
 21. Records pushed through a mapping land as the same canonical entities, with consent translated out of the CRM's own vocabulary.
+22. Every path the runtime reads is shipped in the image, and a missing directory raises rather than reading as an empty catalogue.
+23. Preflight blocks a production release on a published secret key, an application role that can bypass row-level security, a pending migration, or a query with no tenant that returns rows.
+24. An invitation is redeemed once, including by two requests racing, and invalid, expired and redeemed answer identically.
+25. The role that serves tenant requests cannot read the invitations table.
+26. A revoked key stops working, a key cannot revoke itself, and rotation issues the replacement before revoking the original.
+27. A stalled outbox is reported while `/health` still says ok.
+28. The signup route refuses a caller past its ceiling, and the window slides.
+29. A dump grants to a role it does not create, which is why the restore script creates it first.
+30. A reply verdict whose quote is not in the reply is discarded, and an unsubscribe written in prose suppresses.
+31. A webhook still lands a reply when the classifier is unavailable, raises, or is switched off.

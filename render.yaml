@@ -19,7 +19,12 @@ services:
     runtime: docker
     plan: starter
     healthCheckPath: /health
-    preDeployCommand: python3 -m runtime.cli migrate
+    # Migrate, then refuse to release a misconfigured runtime: preflight exits
+    # non-zero on a published secret key, an application role that can bypass
+    # row-level security, a pending migration, or a query with no tenant that
+    # returns rows instead of raising.
+    preDeployCommand: >-
+      sh -c 'python3 -m runtime.cli migrate && python3 -m runtime.cli preflight'
     envVars: &shared
       - key: ZOLTS_DATABASE_URL
         fromDatabase: {name: zolts-postgres, property: connectionString}

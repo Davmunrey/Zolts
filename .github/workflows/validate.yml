@@ -133,6 +133,20 @@ jobs:
           open("key.txt", "w").write(out["api_key"])
           PY
 
+      - name: Preflight must pass in the container, and must block a bad config
+        run: |
+          docker run --rm --network host -e ZOLTS_DATABASE_URL="$DB" \
+            -e ZOLTS_APP_DATABASE_URL="$APP_DB" -e ZOLTS_SECRET_KEY \
+            -e ZOLTS_ENV=development zolts:ci python3 -m runtime.cli preflight
+          # The same runtime, marked production with the CI secret, must refuse.
+          if docker run --rm --network host -e ZOLTS_DATABASE_URL="$DB" \
+               -e ZOLTS_APP_DATABASE_URL="$APP_DB" -e ZOLTS_SECRET_KEY \
+               -e ZOLTS_ENV=production zolts:ci python3 -m runtime.cli preflight; then
+            echo "::error::preflight passed a production deployment using the CI secret key"
+            exit 1
+          fi
+          echo "preflight blocks a production deploy with a published key"
+
       - name: The API and the console must answer from inside the container
         run: |
           docker run -d --name api --network host \

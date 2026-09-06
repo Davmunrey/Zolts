@@ -35,6 +35,7 @@
 | 18 | [Decision register](docs/18-decision-register.md) | 136 decisions with defaults; 12 blocking |
 | 19 | [Reference core](docs/19-reference-core.md) | Which claims are proven, and what building it changed |
 | 20 | [The runtime](docs/20-runtime.md) | What actually runs, how a signal becomes a gated action, what breaks first |
+| 21 | [The demo](docs/21-demo.md) | What is synthetic and what is not, the four beats, and what a buyer will push on |
 
 ## Technical artefacts
 
@@ -65,7 +66,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 512 tests, each backing a specific claim made in `docs/`; the 151 runtime tests run against a real Postgres and CI fails a run that skipped them
+- `tests/` — 583 tests, each backing a specific claim made in `docs/`; the 224 runtime tests run against a real Postgres and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -75,7 +76,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 512 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 583 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
@@ -83,6 +84,10 @@ PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 The reference core exists to test the plan; the runtime exists to run it. Building both has corrected thirteen defects so far. Ten came from the core: five in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written — four of them the same failure in different clothing, an opt-out path that silently did not work. Three came from the runtime: a schema named after a database role, which made a second migration run duplicate every table and report success; a migration runner whose version ledger rolled back while its DDL committed; and a connector branch that could never execute because the helper raised on the status it was meant to inspect. See [19](docs/19-reference-core.md) and [20](docs/20-runtime.md).
 
 Two more came from rendering the console against live data: the surface crashed on a program with no measurement yet — which is every program on day one — and it reported EUR 1.75m of incremental pipeline against a control arm with zero observed conversions, because its detectable effect had been computed from a floor rather than an estimate. That second one is now a rule in the core: no effect is declared while either arm carries fewer than five observed conversions.
+
+Deploying, onboarding and demonstrating it found a dozen more, every one of them silent. The container image carried the code and none of the data the code reads, so it started, reported healthy, and seeded a tenant with zero programs. A tenant-authored CRM mapping read an unmapped boolean as an opt-out flag, which inverted consent for every positively-phrased field and granted a legal basis the document never named. A customer-supplied `base_url` was unrestricted, so `169.254.169.254` would have written this runtime's own cloud credentials into a tenant's account table. An invitation marked redeemed before its tenant existed left a row nothing could interpret. The preflight isolation probe passed for the wrong reason, on an exception an outer catch was swallowing. A liveness check asked for a program status the schema does not allow, so it could never fire. And `pg_dump` grants to a role it does not create, which means a restore into a fresh managed project reports success and leaves the application unable to read a row.
+
+Not one was found by reading. Every one was found by running the thing and looking at what came back — which is why the deployment path, the signup path and the restore path are now executed in CI rather than described in a document.
 
 Wiring the agent layer to real data added two more: the provenance rule measured overlap across every content word, so an interpretive clause could sink a sentence whose exact fact was in evidence; and the retrieval split a company's name into its own citation, so no single source could support a sentence that named who did the thing.
 

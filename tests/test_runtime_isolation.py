@@ -109,3 +109,17 @@ def test_ci_never_reports_green_having_skipped_these():
     if os.environ.get("CI", "").lower() not in {"true", "1"}:
         pytest.skip("only enforced in CI")
     assert OWNER_URL, "ZOLTS_TEST_DATABASE_URL must be set in CI"
+
+
+def test_the_application_role_cannot_read_invitations(db):
+    """Invitations are operator state, not tenant state. They exist before
+    their tenant does and are only ever touched by the owner connection behind
+    the signup endpoint, so the role that serves tenant requests has no reason
+    to reach them — and a signup token hash is not something to leave lying
+    within reach of the request path."""
+    import psycopg
+
+    with db.pool.connection() as conn:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("select count(*) from invitation")
+        conn.rollback()

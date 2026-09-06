@@ -243,6 +243,8 @@ Usage rule: do not answer everything. Answer the 🔴, strike through the defaul
 | 12 | **B7/B8** paid pilot with signed criteria | Determines whether phase 1 feedback is real or polite |
 | 13 | **C1** unified CRM API vendor, or native connectors only | Default: buy the long tail once a prospect needs a third CRM. Native stays for the entry segment, because opt-out state is what unified APIs normalise worst. See ADR-013 |
 | 14 | **C2** who owns the correctness of a tenant-authored CRM mapping | Default: the tenant, stated in the sync report as a caveat on every run. Revisit if a mapping error reaches a sent message; the alternative is reviewing customer documents, which reintroduces the per-customer cost ADR-014 removes. See ADR-014 |
+| 15 | **B9** invitation-only signup, or open self-serve | Default: invitation, minted on the CLI. Revisit when the entry segment is small enough to self-serve at a price that does not justify a sales conversation; until then, control of who gets in is worth more than signup volume. See ADR-015 |
+| 16 | **M3** an unclassified reply counts as a conversion, or does not | Default: it counts, as it always has. Flipping it would move every tenant's measured lift on a deploy, silently. It closes as providers send reply bodies and tenants enable the agent layer; revisit if the share of replies arriving without text stays high enough that the over-count is material. See ADR-016 |
 
 ## Five actions for this week, independent of everything above
 
