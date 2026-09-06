@@ -1,0 +1,24 @@
+# New location opened
+#
+# Slow to decay: a new site stays new for two months.
+#
+# Every signal declares cost, decay and legal basis, because docs/06 says a
+# signal missing any of the three can be neither budgeted nor audited. The
+# cost is not here: a check is priced once per account-day in docs/12, not per
+# signal, so a definition cannot name its own price without contradicting it.
+apiVersion: zolts/v1
+kind: SignalDefinition
+metadata:
+  key: local.new_location_detected
+  name: New location opened
+  tier: "B"
+spec:
+  entity: account
+  source:
+    connector: places_feed
+    refresh: 24h
+  freshness_sla: 72h
+  half_life_h: 1440
+  base_strength: 0.7
+  legal_basis: legitimate_interest
+  dedupe_window: 60d

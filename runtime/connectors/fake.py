@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 
 from runtime.connectors.dataprovider import (DataCapabilities, Found, Lookup,
                                             ProviderError)
+from runtime.connectors.signalsource import (Detection, SignalSourceError,
+                                            SourceCapabilities)
 from runtime.connectors.base import Request, Result, TransientError
 
 
@@ -83,3 +85,45 @@ class FakeDataProvider:
         }[lookup.field]
         return Found(hit=True, values=self.values or default,
                      confidence=self.confidence, cost_micros=self.cost_micros)
+
+
+@dataclass
+class FakeSignalSource:
+    """A signal source whose detections the test chooses.
+
+    Deterministic, like the fake data provider and for the same reason: a
+    source that fires at random makes a watcher test that passes most of the
+    time, which is the kind that gets believed.
+    """
+    connector: str = "fake-feed"
+    entities: tuple[str, ...] = ("account",)
+    # None means every subject; an empty list means none of them. A single
+    # falsy sentinel for both would make "detect nothing" silently mean
+    # "detect everything", which is the wrong way round for a test to fail.
+    detects: "list[str] | None" = None
+    observed_at: "datetime | None" = None
+    confidence: float = 1.0
+    payload: dict[str, Any] = field(default_factory=dict)
+    asked: list[tuple[str, int]] = field(default_factory=list)
+    error_times: int = 0
+    _errors: int = 0
+
+    @property
+    def capabilities(self) -> SourceCapabilities:
+        return SourceCapabilities(connector=self.connector, entities=self.entities)
+
+    def detect(self, signal_key, subjects, credential, config) -> list[Detection]:
+        from datetime import datetime, timezone
+
+        if self._errors < self.error_times:
+            self._errors += 1
+            raise SignalSourceError(f"injected source error {self._errors}")
+        subjects = list(subjects)
+        self.asked.append((signal_key, len(subjects)))
+        wanted = ({s.entity_id for s in subjects} if self.detects is None
+                  else set(self.detects))
+        moment = self.observed_at or datetime.now(timezone.utc)
+        return [Detection(entity_id=s.entity_id, observed_at=moment,
+                          payload=self.payload or {"detected_by": self.connector},
+                          confidence=self.confidence)
+                for s in subjects if s.entity_id in wanted]

@@ -76,9 +76,42 @@ def validate_providers() -> int:
     return failed
 
 
+def validate_signals() -> int:
+    """A definition decides what a signal is worth and how fast it decays, so
+    an error here is a program acting on the wrong urgency for as long as it
+    lives. It also catches a program triggering on a signal nobody defined,
+    which is a program that will never fire."""
+    sys.path.insert(0, str(ROOT))
+    from zolts.signals import SignalDefinitionError, catalogue
+
+    try:
+        defined = catalogue()
+    except SignalDefinitionError as exc:
+        print("FAIL  examples/signals/")
+        print("     ", exc)
+        return 1
+
+    for key, definition in sorted(defined.items()):
+        print("OK    signal", f"{key:34}",
+              f"tier {definition.tier}  refresh {definition.refresh}  "
+              f"sla {definition.freshness_sla}")
+
+    failed = 0
+    for path in sorted(glob.glob("examples/programs/*.yaml")):
+        spec = (yaml.safe_load(open(path)) or {}).get("spec") or {}
+        for event in (spec.get("trigger") or {}).get("events") or []:
+            key = event.get("signal")
+            if key and key not in defined:
+                failed = 1
+                print("FAIL ", path)
+                print("      triggers on", key, "which no definition covers, so "
+                      "nothing looks for it")
+    return failed
+
+
 def main() -> int:
     schemas = max(_validate(schema, pattern) for schema, pattern in TARGETS)
-    return max(schemas, validate_mappings(), validate_providers())
+    return max(schemas, validate_mappings(), validate_providers(), validate_signals())
 
 
 if __name__ == "__main__":

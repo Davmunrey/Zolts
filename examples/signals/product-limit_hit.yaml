@@ -1,0 +1,24 @@
+# Product limit reached
+#
+# PLS: friction means budget unlocked. Contract basis — it is our own product's data.
+#
+# Every signal declares cost, decay and legal basis, because docs/06 says a
+# signal missing any of the three can be neither budgeted nor audited. The
+# cost is not here: a check is priced once per account-day in docs/12, not per
+# signal, so a definition cannot name its own price without contradicting it.
+apiVersion: zolts/v1
+kind: SignalDefinition
+metadata:
+  key: product.limit_hit
+  name: Product limit reached
+  tier: "A"
+spec:
+  entity: account
+  source:
+    connector: product_events
+    refresh: 1h
+  freshness_sla: 4h
+  half_life_h: 96
+  base_strength: 0.8
+  legal_basis: contract
+  dedupe_window: 7d
