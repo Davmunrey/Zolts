@@ -49,11 +49,17 @@ def build() -> None:
 
     vercel = {
         "$schema": "https://openapi.vercel.sh/vercel.json",
-        # The two dependencies come first. CI installs them globally, so CI
-        # can never notice they are missing here — which is how the first
-        # deploy failed with ModuleNotFoundError while every check was green.
-        "buildCommand": ("pip3 install --quiet pyyaml jsonschema"
-                         " && python3 scripts/build_site.py"),
+        # No build. `site/` is committed and CI regenerates it and fails on any
+        # difference, so the host has nothing left to do but serve the files.
+        #
+        # Rebuilding here cost two failed deploys for nothing. The first had no
+        # pyyaml, because CI installs it globally as its first step and so was
+        # structurally unable to notice its absence. The second added a `pip
+        # install` and hit PEP 668 — that image's Python is managed by uv and
+        # refuses to be modified. Each fix would have been a guess about
+        # somebody else's build image, to reproduce an artefact this repository
+        # has already built and checked.
+        "buildCommand": "",
         "outputDirectory": "site",
         "cleanUrls": True,
         "trailingSlash": False,

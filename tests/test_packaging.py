@@ -152,24 +152,40 @@ def _third_party_imports(entry: Path, root: Path) -> set[str]:
     return found
 
 
-def test_the_vercel_build_installs_what_the_site_build_imports():
-    """CI installs these globally, so CI can never notice their absence here.
+def test_the_deploy_either_builds_with_its_dependencies_or_does_not_build():
+    """Two ways to be right and one way to be broken.
 
-    That is exactly how the first deploy failed with ModuleNotFoundError while
-    every check was green: the build command ran `python3 scripts/build_site.py`
-    on an image that had no pyyaml. A test that reads the deploy configuration
-    is the only place this shows up before a deploy does.
+    Either the host rebuilds the site and installs what the build imports, or
+    it does not build and serves a directory this repository has committed and
+    CI keeps in sync. What cannot stand is a build command that runs the
+    generator without its dependencies — which shipped, and failed the deploy
+    while every check in CI was green, because CI installs those dependencies
+    globally as its first step and so was structurally unable to notice.
     """
     import json
+    import subprocess
 
     root = Path(__file__).resolve().parent.parent
-    command = json.loads((root / "vercel.json").read_text()).get("buildCommand", "")
-    assert "build_site.py" in command, "vercel.json no longer builds the site"
+    config = json.loads((root / "vercel.json").read_text())
+    command = config.get("buildCommand") or ""
+    output = config.get("outputDirectory")
 
-    needed = {DISTRIBUTIONS[m] for m in _third_party_imports(
-        root / "scripts" / "build_site.py", root)}
-    assert needed, "the site build imports nothing third-party; check the walker"
-    missing = {d for d in needed if d not in command}
-    assert not missing, (
-        f"vercel.json builds the site without installing {sorted(missing)}. "
-        f"CI installs them globally and will not catch this; the deploy will")
+    if "build_site" in command:
+        needed = {DISTRIBUTIONS[m] for m in _third_party_imports(
+            root / "scripts" / "build_site.py", root)}
+        assert needed, "the site build imports nothing third-party; check the walker"
+        missing = {d for d in needed if d not in command}
+        assert not missing, (
+            f"vercel.json builds the site without installing {sorted(missing)}. "
+            f"CI installs them globally and will not catch this; the deploy will")
+        return
+
+    # No build, so the committed output is what the world gets.
+    assert output, "vercel.json neither builds nor names an output directory"
+    tracked = subprocess.run(["git", "ls-files", output], cwd=root,
+                             capture_output=True, text=True).stdout.split()
+    assert tracked, (
+        f"vercel.json serves '{output}' without building it, and nothing in "
+        f"'{output}' is committed. The deploy would serve an empty directory")
+    assert f"{output}/index.html" in tracked, (
+        f"'{output}' is committed without an index.html to serve")
