@@ -47,11 +47,20 @@ def record_touch(cur, tenant_id: str, *, enrollment_id: str | None, channel: str
 
 def record_cost(cur, tenant_id: str, *, program_id: str | None, kind: str,
                 provider: str | None, units: float, cost_micros: int,
-                billed_credits: float = 0) -> None:
+                billed_credits: float = 0,
+                billing_period_id: str | None = None) -> None:
+    """What an action cost, in money and in credits.
+
+    `cost_micros` is what it cost this company; `billed_credits` is what the
+    customer owes. Every row written before `runtime.metering` existed carries
+    zero credits, which is accurate: nothing was billed.
+    """
     cur.execute(
         "insert into cost_event (tenant_id, program_id, kind, provider, units,"
-        " cost_micros, billed_credits) values (%s,%s,%s,%s,%s,%s,%s)",
-        (tenant_id, program_id, kind, provider, units, cost_micros, billed_credits),
+        " cost_micros, billed_credits, billing_period_id)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s)",
+        (tenant_id, program_id, kind, provider, units, cost_micros, billed_credits,
+         billing_period_id),
     )
 
 

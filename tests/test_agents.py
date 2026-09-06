@@ -347,9 +347,15 @@ def test_a_generation_records_its_cost_against_the_program(db, tenant, fake, gua
     tid, worker, _ = _seed(db, tenant, fake, guard, StubClient(text=WIRED_DRAFT))
     worker.tick([tid])
     with db.tenant_tx(tid) as cur:
-        cur.execute("select kind, cost_micros from cost_event where kind = 'llm'")
+        cur.execute("select kind, cost_micros, billed_credits, billing_period_id"
+                    " from cost_event where kind = 'agent.generate'")
         row = cur.fetchone()
-    assert row and row["cost_micros"] > 0, "an LLM call is never accounted as free"
+    # The kind is the one the price list names. It used to be 'llm', which had
+    # no price, so the credits column stayed zero on every row ever written.
+    assert row, "a generation was not metered at all"
+    assert row["cost_micros"] > 0, "an LLM call is never accounted as free"
+    assert float(row["billed_credits"]) == 3.0, "a generation is three credits"
+    assert row["billing_period_id"], "a cost event outside a period cannot be invoiced"
 
 
 @has_guard

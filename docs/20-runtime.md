@@ -351,6 +351,24 @@ directory and forgetting the Dockerfile fails the suite. And CI builds the image
 and runs it: migrate, quickstart (asserting the programs are non-empty), then
 `/health` and `/console` over HTTP against a container.
 
+## Billing what a tenant uses
+
+`cost_event.billed_credits` existed from the first migration and no caller ever set it. `docs/12` prices eight actions and four plans in full, and the runtime billed nothing (ADR-017).
+
+`zolts/billing.py` holds the price list; `runtime/metering.py` holds which period a tenant is in and what they have spent. What something costs is arithmetic, when and to whom is a database.
+
+| | |
+|---|---|
+| Meter | Every send and every generation, priced at the moment it happens — not conditional on knowing our own COGS |
+| Ceiling | Checked **before** the spend and before anything about the particular action. A tenant who has run out is held, not cancelled: the action returns to pending, due when the period turns |
+| Period | One open period per tenant, enforced by a partial unique index. Its terms are copied in at open time, so a mid-month upgrade does not restate the month being consumed |
+| Close | `zolts close-period --tenant …` produces a statement. Idempotent: closing twice returns the first one rather than restating it |
+| Read | `GET /v1/billing/current` for consumption and what is left; `GET /v1/billing/statements` for closed periods |
+
+Seats are counted from live API keys at close time rather than from a number somebody maintains, because a seat count nobody maintains undercharges forever.
+
+**The overage rate is not computed.** The statement reports overage credits and says the rate is contractual. Inventing one here produces an invoice nobody signed — decision 17, open by design.
+
 ## Operating it once a partner is real
 
 `/health` answers "can I reach the database". That is nearly always yes, including on the morning the worker died at 3am, the outbox has been growing for six hours and a paying partner's campaign has sent nothing. Both states report `"status": "ok"`, which makes the endpoint an alibi rather than a signal.
@@ -416,7 +434,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-616 tests. The runtime's 256 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+631 tests. The runtime's 271 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -458,3 +476,6 @@ What they assert, in the order that matters:
 36. The review queue carries what every gate said, agrees with the rail's count, and is tenant-scoped.
 37. A real browser opens the queue, approves a draft, and the proposal is decided in Postgres.
 38. An unread reply counts and is marked unread; a read one records who read it; the measurement reports the share and the console renders it beside the lift.
+39. Every price in `docs/12` matches `zolts/billing.py`, for every action and every plan.
+40. An unpriced action raises rather than costing nothing, and enterprise has no default terms.
+41. A tenant at its ceiling holds its work instead of losing it, and a closed period keeps the terms it was sold.

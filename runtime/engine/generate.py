@@ -148,11 +148,13 @@ def run(cur, tenant_id: str, action: dict[str, Any], program: dict[str, Any], *,
     if proposal is None:
         return Generated(None, "superseded", "a proposal for this step already exists")
 
-    if result.cost_micros:
-        ledger.record_cost(cur, tenant_id,
-                           program_id=str(action["program_id"]) if action["program_id"] else None,
-                           kind="llm", provider=result.model, units=1,
-                           cost_micros=result.cost_micros)
+    # A generation is three credits whether or not the model reported a price.
+    from runtime import metering
+
+    cur.execute("select * from tenant where id = %s", (tenant_id,))
+    metering.meter(cur, cur.fetchone(), kind="agent.generate", units=1,
+                   program_id=str(action["program_id"]) if action["program_id"] else None,
+                   provider=result.model, cost_micros=result.cost_micros or 0)
 
     ledger.audit(cur, tenant_id, actor="agent:copywriter", action="proposal.created",
                  subject=str(proposal["id"]),

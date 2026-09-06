@@ -129,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("liveness", help="is this deployment draining its outbox?")
 
+    close = sub.add_parser("close-period", help="close a tenant's billing period")
+    close.add_argument("--tenant", required=True)
+
     invite = sub.add_parser("invite", help="mint a signup invitation; token shown once")
     invite.add_argument("--company", required=True)
     invite.add_argument("--email")
@@ -256,6 +259,23 @@ def main(argv: list[str] | None = None) -> int:
                                  "mapping imports is unreachable until a basis is "
                                  "established elsewhere")
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "close-period":
+        from runtime import metering
+
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute("select * from tenant where id = %s", (args.tenant,))
+            tenant = cur.fetchone()
+            if tenant is None:
+                print(f"no tenant {args.tenant}", file=sys.stderr)
+                return 2
+            period = metering.open_period(cur, tenant)
+            closed = metering.close_period(cur, tenant, str(period["id"]))
+        print(json.dumps({"period": str(closed["id"]),
+                          "from": closed["starts_at"].isoformat(),
+                          "to": closed["ends_at"].isoformat(),
+                          "statement": closed["statement"]}, indent=2))
         return 0
 
     if args.command == "liveness":

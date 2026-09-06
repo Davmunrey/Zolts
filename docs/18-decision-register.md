@@ -245,6 +245,7 @@ Usage rule: do not answer everything. Answer the 🔴, strike through the defaul
 | 14 | **C2** who owns the correctness of a tenant-authored CRM mapping | Default: the tenant, stated in the sync report as a caveat on every run. Revisit if a mapping error reaches a sent message; the alternative is reviewing customer documents, which reintroduces the per-customer cost ADR-014 removes. See ADR-014 |
 | 15 | **B9** invitation-only signup, or open self-serve | Default: invitation, minted on the CLI. Revisit when the entry segment is small enough to self-serve at a price that does not justify a sales conversation; until then, control of who gets in is worth more than signup volume. See ADR-015 |
 | 16 | ~~**M3** an unclassified reply counts as a conversion~~ | **Closed: it counts, and the measurement says how many.** Deflating it silently would move every tenant's lift on a deploy; a footnote nobody reaches is not a disclosure. The console reports conversions read of conversions total beside the lift, and the share falls on its own as providers send bodies and tenants enable the agent layer. See ADR-016 |
+| 17 | **P4** the overage rate per credit | Default: none — the statement reports overage credits and says the rate is contractual. A number invented here becomes an invoice nobody signed. Closes at the first contract that has one, and the code refuses to guess until then. See ADR-017 |
 
 ## Five actions for this week, independent of everything above
 
