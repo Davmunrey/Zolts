@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sync = sub.add_parser("sync", help="pull a CRM into the canonical entities")
     sync.add_argument("--tenant", required=True)
-    sync.add_argument("--provider", default="hubspot", choices=["hubspot"])
+    sync.add_argument("--provider", default="hubspot")
     sync.add_argument("--limit", type=int, default=100)
 
     hook = sub.add_parser("webhook", help="create an inbound endpoint; secret shown once")
@@ -171,8 +171,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "sync":
-        from runtime.connectors.sync import hubspot_to_entities
+        from runtime.connectors.crm import sources
+        from runtime.connectors.sync import pull
         from runtime.crypto import open_sealed
+
+        install_default_connectors()
+        if args.provider not in sources():
+            print(f"no CRM source for '{args.provider}'; registered: "
+                  f"{', '.join(sources())}", file=sys.stderr)
+            return 2
 
         with db.tenant_tx(args.tenant) as cur:
             cur.execute("select secret_enc from connection where provider = %s"
@@ -182,10 +189,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"no active {args.provider} connection for this tenant; run 'connect' first",
                   file=sys.stderr)
             return 2
-        report = hubspot_to_entities(db, args.tenant,
-                                     open_sealed(row["secret_enc"], settings.secret_key),
-                                     limit=args.limit)
-        print(json.dumps(dataclasses.asdict(report)))
+        report = pull(db, args.tenant,
+                      open_sealed(row["secret_enc"], settings.secret_key),
+                      provider=args.provider, batch_size=args.limit)
+        print(json.dumps(dataclasses.asdict(report), indent=2))
         return 0
 
     if args.command == "webhook":
