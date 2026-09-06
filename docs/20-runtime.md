@@ -430,6 +430,28 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## Buying a missing field
+
+`docs/12` prices eight billable actions and two of them ran. The three enrichment actions are the bulk of the consumption the pricing model assumes, and `zolts/waterfall.py` — the optimiser `docs/07` calls the margin lever — was imported by nothing (ADR-021).
+
+| | |
+|---|---|
+| Order | `runtime/enrichment.py` asks `zolts.waterfall` which provider is cheapest for this cohort and stops on the first hit. The premium provider is not called for a field the cheap one found |
+| Learn | Every attempt is recorded. Below 30 calls in a cohort a provider is scored on its registered default; above it, on its own record. The matrix is the asset `docs/15` says a competitor cannot buy |
+| Absorb | A miss costs us and is not billed. An error is not a miss: a 401 raises rather than teaching the optimiser that a broken integration has poor coverage |
+| Defend | Every resolved value records the provider, the confidence and the legal basis. `enrichment.provenance()` answers the DPO's question from the same rows the matrix is built from |
+| Refuse | A value that already belongs to another person is not written. Three colleagues and one shared address merges two identities, which is worse than an empty field |
+
+```sh
+zolts data-provider --tenant … --key acme-data --fields email,phone   --cost-micros 28000 --mapping examples/providers/example-enrichment.yaml   --connection <connection-id>
+zolts enrich --tenant … --field email --limit 50 --dry-run
+zolts hit-rates --tenant …
+```
+
+A provider registered with a `--mapping` needs no connector written: the document is the integration, the same decision the CRM mappings make and for the same reason — a per-field abstraction that requires an engineer before it can be exercised arrives a sprint after the provider shock it exists to absorb.
+
+**Enrichment is never automatic.** Buying data mid-send would spend a budget nobody authorised; decision 22 holds that open with a default of no.
+
 ## Sending capacity, and what stops a send
 
 `zolts/deliverability.py` modelled warm-up curves, reputation factors, the `docs/09` thresholds and per-provider segregation since the reference core existed. Nothing in the runtime imported it, and the `mailbox` table had columns for warm-up and four rates that no code ever wrote or read (ADR-020).
@@ -513,7 +535,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-712 tests. 205 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+740 tests. 226 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

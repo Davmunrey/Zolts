@@ -1,0 +1,41 @@
+# A data provider nobody in this repository has written a connector for, which
+# is the point: this document is the integration.
+#
+# The same decision the CRM mappings make. `docs/15` names per-field
+# abstraction with two providers behind every critical field as the mitigation
+# for a provider shock, and a mitigation that needs an engineer before it can
+# be exercised arrives a sprint after the shock.
+apiVersion: zolts/v1
+kind: DataProvider
+metadata:
+  provider: example-enrichment
+  name: Example enrichment API
+  owner: revops@acme.example
+  description: Resolves a work email and a mobile from a name and a company domain
+spec:
+  transport:
+    base_url: https://api.enrichment.example/v2
+    auth: {kind: header, name: x-api-key}
+  # What one call costs us, in micros of EUR. The waterfall optimises against
+  # the registration rather than this, and this is what the connector reports
+  # so a per-call price that differs from the contract is visible.
+  unit_cost_micros: 28000
+  lookups:
+    email:
+      path: /resolve/email
+      method: GET
+      query:
+        name: full_name
+        company_domain: account.domain
+      response:
+        email: data.work_email
+      confidence: data.confidence
+    phone:
+      path: /resolve/phone
+      method: POST
+      body:
+        name: full_name
+        company: account.name
+      response:
+        phone: data.mobile
+      default_confidence: 0.75

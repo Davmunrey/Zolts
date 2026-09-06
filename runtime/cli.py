@@ -17,6 +17,8 @@ from typing import Any
 
 from runtime.config import Settings
 from runtime.connectors import install_default_connectors
+from runtime.connectors.dataprovider import iter_fields as _iter_fields
+from runtime.connectors.dataprovider import providers as providers_registered
 from runtime.db import Database, one
 from runtime.engine.worker import Worker
 from runtime.provision import (create_tenant, create_webhook_endpoint, issue_api_key,
@@ -77,6 +79,10 @@ def quickstart(db: Database, *, secret_key: str, slug: str, name: str, region: s
         ],
         "note": "the API key and the webhook secret are shown once and are not recoverable",
     }
+
+
+def dataprovider_fields() -> tuple[str, ...]:
+    return tuple(_iter_fields())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -156,6 +162,48 @@ def main(argv: list[str] | None = None) -> int:
                           "the cautious reading and sends less")
     box.add_argument("--pause", action="store_true")
     box.add_argument("--resume", action="store_true")
+
+    dp = sub.add_parser("data-provider", help="register a data provider to buy fields from")
+    dp.add_argument("--tenant", required=True)
+    dp.add_argument("--key", required=True, help="must match a registered connector")
+    dp.add_argument("--fields", required=True,
+                    help="comma-separated: email, phone, firmographics")
+    dp.add_argument("--cost-micros", type=int, required=True,
+                    help="what one call costs us, in micros of EUR. The waterfall "
+                         "optimises against this, so a wrong number buys the wrong order")
+    dp.add_argument("--accuracy", type=float, default=0.90)
+    dp.add_argument("--hit-rate", type=float, default=0.30,
+                    help="conservative starting estimate, used only until this "
+                         "provider has made enough calls to be measured")
+    dp.add_argument("--billed-on-miss", action="store_true")
+    dp.add_argument("--disable", action="store_true")
+    dp.add_argument("--connection",
+                    help="id of a stored connection holding this provider's "
+                         "credential. Without one every lookup is unauthenticated")
+    dp.add_argument("--mapping",
+                    help="path to a DataProvider document. With one, this "
+                         "registration is the whole integration and no connector "
+                         "has to be written")
+
+    enrich = sub.add_parser(
+        "enrich", help="buy a missing field for entities that lack it")
+    enrich.add_argument("--tenant", required=True)
+    enrich.add_argument("--field", required=True,
+                        choices=["email", "phone", "firmographics"])
+    enrich.add_argument("--basis", default="legitimate_interest",
+                        choices=["legitimate_interest", "consent", "contract"],
+                        help="why this lookup is lawful; recorded against every "
+                             "value bought and not reconstructable afterwards")
+    enrich.add_argument("--limit", type=int, default=50,
+                        help="how many entities to buy for. Bounded on purpose: "
+                             "this spends real money on the first run")
+    enrich.add_argument("--dry-run", action="store_true",
+                        help="report what would be bought and buy nothing")
+
+    hits = sub.add_parser("hit-rates",
+                          help="the measured per-provider per-cohort matrix")
+    hits.add_argument("--tenant", required=True)
+    hits.add_argument("--field", choices=["email", "phone", "firmographics"])
 
     caps = sub.add_parser("capacity", help="what the sending fleet can do today")
     caps.add_argument("--tenant", required=True)
@@ -449,6 +497,127 @@ def main(argv: list[str] | None = None) -> int:
             "note": None if registered else
                     f"the domain {row['domain']} is not registered, so this "
                     f"mailbox has no capacity until it is"}, indent=2))
+        return 0
+
+    if args.command == "data-provider":
+        mapping = None
+        if args.mapping:
+            import yaml
+
+            from runtime.connectors.declarative_provider import (ProviderDocumentError,
+                                                                 validate)
+            try:
+                mapping = validate(yaml.safe_load(Path(args.mapping).read_text()))
+            except ProviderDocumentError as exc:
+                # Refused on the way in: the first lookup happens against a real
+                # endpoint with a real credential.
+                print(f"the provider document is not usable: {exc}", file=sys.stderr)
+                return 2
+
+        fields = [f.strip() for f in args.fields.split(",") if f.strip()]
+        unknown = set(fields) - set(dataprovider_fields())
+        if unknown:
+            print(f"unpriced fields: {', '.join(sorted(unknown))}; known: "
+                  f"{', '.join(dataprovider_fields())}", file=sys.stderr)
+            return 2
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute(
+                "insert into data_provider (tenant_id, key, fields, unit_cost_micros,"
+                " accuracy, default_hit_rate, billed_on_miss, enabled, config,"
+                " connection_id) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                " on conflict (tenant_id, key) do update set"
+                "   fields = excluded.fields,"
+                "   unit_cost_micros = excluded.unit_cost_micros,"
+                "   accuracy = excluded.accuracy,"
+                "   default_hit_rate = excluded.default_hit_rate,"
+                "   billed_on_miss = excluded.billed_on_miss,"
+                "   enabled = excluded.enabled,"
+                "   config = excluded.config,"
+                "   connection_id = coalesce(excluded.connection_id,"
+                "                            data_provider.connection_id) returning *",
+                (args.tenant, args.key, fields, args.cost_micros, args.accuracy,
+                 args.hit_rate, args.billed_on_miss, not args.disable,
+                 json.dumps({"mapping": mapping} if mapping else {}),
+                 args.connection))
+            row = one(cur)
+        registered = bool(mapping) or args.key in providers_registered()
+        print(json.dumps({
+            "provider": row["key"], "fields": list(row["fields"]),
+            "unitCostEur": int(row["unit_cost_micros"]) / 1_000_000,
+            "enabled": row["enabled"],
+            "authenticated": row["connection_id"] is not None,
+            "note": None if registered else
+                    f"no connector named '{args.key}' is registered in this "
+                    f"process, so every lookup through it will error until one is"},
+            indent=2))
+        return 0
+
+    if args.command == "enrich":
+        from runtime import enrichment
+
+        table = "account" if args.field == "firmographics" else "person"
+        missing = {
+            "email": "email is null",
+            "phone": "phone is null",
+            "firmographics": "(employee_band is null or industry_code is null)",
+        }[args.field]
+
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute(f"select * from {table} where {missing}"
+                        f" order by created_at limit %s", (args.limit,))
+            rows = [dict(r) for r in cur.fetchall()]
+            if args.dry_run:
+                print(json.dumps({
+                    "field": args.field, "candidates": len(rows), "bought": 0,
+                    "note": "dry run: nothing was asked and nothing was paid"},
+                    indent=2))
+                return 0
+
+            enrichment.install_declared(cur)
+            cur.execute("select * from tenant where id = %s", (args.tenant,))
+            tenant = one(cur)
+            results = []
+            for row in rows:
+                account = None
+                if table == "person":
+                    # The cohort is the account's, not the person's: hit rates
+                    # move with country and company size.
+                    cur.execute(
+                        "select a.* from account a join membership m"
+                        " on m.account_id = a.id where m.person_id = %s limit 1",
+                        (row["id"],))
+                    found = cur.fetchone()
+                    account = dict(found) if found else None
+                results.append(enrichment.resolve(
+                    cur, tenant, field_name=args.field, entity=row, account=account,
+                    legal_basis=args.basis, secret_key=settings.secret_key))
+
+        hits_found = [r for r in results if r.hit]
+        spent = sum(r.cost_micros for r in results)
+        billed = sum(r.credits for r in hits_found)
+        print(json.dumps({
+            "field": args.field,
+            "candidates": len(rows),
+            "resolved": len(hits_found),
+            "hitRate": round(len(hits_found) / len(rows), 3) if rows else None,
+            "spendEur": round(spent / 1_000_000, 4),
+            "creditsBilled": billed,
+            "byProvider": {k: sum(1 for r in hits_found if r.provider == k)
+                           for k in sorted({r.provider for r in hits_found if r.provider})},
+            "note": "misses are paid for and not billed to the tenant",
+        }, indent=2))
+        return 0
+
+    if args.command == "hit-rates":
+        from runtime import enrichment
+
+        with db.tenant_tx(args.tenant) as cur:
+            rows = enrichment.matrix(cur, args.field)
+        print(json.dumps({
+            "minObservations": enrichment.MIN_OBSERVATIONS,
+            "note": "a cell below the sample floor is reported untrusted: four "
+                    "observations and four thousand look identical as a percentage",
+            "matrix": rows}, indent=2))
         return 0
 
     if args.command == "capacity":
