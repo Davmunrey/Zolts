@@ -70,7 +70,7 @@ def quickstart(db: Database, *, secret_key: str, slug: str, name: str, region: s
         "console": f"{base_url}/console",
         "webhook": {"url": f"{base_url}/v1{hook['path']}", "secret": hook["secret"]},
         "next": [
-            f"open the console:  curl -H 'x-api-key: {key.token}' {base_url}/console",
+            f"open the console:  {base_url}/console  (sign in with the key above)",
             "connect a provider: printf %s \"$TOKEN\" | python3 -m runtime.cli connect"
             f" --tenant {tenant_id} --provider smartlead --config '{{\"campaign_id\":\"...\"}}'",
             "run the worker:     python3 -m runtime.cli worker",

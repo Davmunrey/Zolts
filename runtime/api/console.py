@@ -114,6 +114,10 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
 
     metadata = program.get("metadata") or {}
     return {
+        # The console could render a program and not address one: without an
+        # id there is no button to activate a draft, which is the first thing a
+        # partner must do after signup.
+        "id": str(program["id"]),
         "key": program["key"], "version": program["version"],
         "blueprint": metadata.get("blueprint"),
         "status": program["status"], "holdout": holdout,
@@ -183,7 +187,19 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     live = programs.live(cur)
     cur.execute("select * from program where status <> 'live' order by key")
     other = [dict(r) for r in cur.fetchall()]
-    views = [program_view(cur, p) for p in live]
+
+    # Drafts belong in the list, not only in a side panel of names.
+    #
+    # This rendered live programs alone, and signup publishes a tenant's
+    # starter programs as drafts on purpose — so a partner who had just signed
+    # up opened the console, saw nothing at all, and had no way to activate the
+    # one thing they were given. The surface was built against a fixture in
+    # which everything was already live, so nothing caught it.
+    #
+    # `plannedPrograms` keeps its meaning: what a blueprint promises and no
+    # file implements. A draft this tenant actually holds is a program.
+    drafts = [p for p in other if p["status"] in ("draft", "staged", "paused")]
+    views = [program_view(cur, p) for p in live + drafts]
     decisions = decisions_view(cur)
 
     cur.execute("select count(*) as n from action where state in ('pending','leased')")
@@ -199,12 +215,18 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     llm_micros = int(cur.fetchone()["m"])
 
     return {
+        # The one flag that separates the served console from the static build.
+        # The static build inlines a fixture and keeps connect-src at 'none',
+        # so its buttons must stay inert: a button that silently does nothing
+        # is worse than no button, and both pages render from one file.
+        "live": True,
         "note": f"Live data for {tenant['name']}.",
         "tenant": {"name": tenant["name"], "slug": tenant["slug"],
                    "region": tenant["region"], "blueprint": tenant["blueprint_id"]},
         "programs": views,
         "plannedPrograms": [{"key": p["key"], "version": p["version"],
-                             "status": p["status"]} for p in other],
+                             "status": p["status"]}
+                            for p in other if p not in drafts],
         "decisions": decisions,
         "jurisdictions": sorted(decisions.keys()),
         "blueprints": [],

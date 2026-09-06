@@ -14,11 +14,12 @@ from typing import Any
 import jsonschema
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 
-from runtime.api import console, webhooks
+from runtime.api import auth, console, webhooks
+from runtime.api.signin import SIGN_IN_CSP, sign_in_page
 from runtime.api.auth import CurrentPrincipal, Principal
 from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
                                  MeasurementOut, PersonIn, ProgramIn, ProgramOut,
-                                 KeyIn, SignalIn, SignupIn)
+                                 KeyIn, SessionIn, SignalIn, SignupIn)
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
@@ -180,6 +181,59 @@ def create_app(db: Database, *, install_connectors: bool = True,
                 ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
                              action="api_key.revoked", subject=key_id, detail={})
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # -- the browser session ---------------------------------------------
+
+    @app.post("/v1/console/session", status_code=status.HTTP_201_CREATED)
+    def sign_in(body: SessionIn, request: Request, response: Response) -> dict[str, Any]:
+        """Exchange an API key for a browser session.
+
+        The cookie is not the key. A key is a long-lived bearer credential
+        shown once; putting it in a cookie puts it in browser storage, in
+        history, and on every request to this origin forever.
+        """
+        from runtime.api import session as console_session
+        from runtime.crypto import hash_token as _hash
+
+        with db.admin_tx() as cur:
+            cur.execute("select * from zolts_internal.resolve_api_key(%s)",
+                        (_hash(body.api_key),))
+            row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid API key")
+
+        opened = console_session.open_session(
+            db, str(row["tenant_id"]), str(row["key_id"]),
+            ip=(request.client.host if request.client else None))
+        secure = request.url.scheme == "https"
+        response.set_cookie(
+            console_session.COOKIE, opened.token, httponly=True, secure=secure,
+            samesite="strict", path="/", max_age=console_session.TTL_HOURS * 3600)
+        # Readable by the page on purpose: the double-submit token has to be
+        # echoed in a header, and nothing cross-origin can read this origin's
+        # cookies to do it.
+        response.set_cookie(
+            console_session.CSRF_COOKIE, opened.csrf, httponly=False, secure=secure,
+            samesite="strict", path="/", max_age=console_session.TTL_HOURS * 3600)
+        with db.tenant_tx(str(row["tenant_id"])) as cur:
+            ledger.audit(cur, str(row["tenant_id"]), actor=f"key:{row['key_id']}",
+                         action="console.signed_in", subject=opened.session_id, detail={})
+        return {"expires_at": opened.expires_at.isoformat(),
+                "csrf": opened.csrf}
+
+    @app.delete("/v1/console/session", status_code=status.HTTP_204_NO_CONTENT)
+    def sign_out(response: Response,
+                 principal: Principal = CurrentPrincipal) -> Response:
+        from runtime.api import session as console_session
+
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute("update console_session set revoked_at = now()"
+                        " where api_key_id = %s and revoked_at is null",
+                        (principal.key_id,))
+        out = Response(status_code=status.HTTP_204_NO_CONTENT)
+        out.delete_cookie(console_session.COOKIE, path="/")
+        out.delete_cookie(console_session.CSRF_COOKIE, path="/")
+        return out
 
     # -- onboarding ------------------------------------------------------
 
@@ -527,7 +581,7 @@ def create_app(db: Database, *, install_connectors: bool = True,
     # -- the console -----------------------------------------------------
 
     @app.get("/console", response_class=Response)
-    def serve_console(principal: Principal = CurrentPrincipal) -> Response:
+    async def serve_console(request: Request) -> Response:
         """The operator surface, with this tenant's live data inlined.
 
         Same origin as the API, so there is no CORS to configure and no second
@@ -535,6 +589,20 @@ def create_app(db: Database, *, install_connectors: bool = True,
         build injects the fixture, which means one rendering path rather than
         two and a policy derived from the bytes actually served.
         """
+        try:
+            principal = await auth.principal(request,
+                                             request.headers.get("authorization"),
+                                             request.headers.get("x-api-key"))
+        except HTTPException:
+            # A browser typing the URL sends no key and cannot. Answering 401
+            # made the operator surface unopenable by an operator, which is how
+            # it shipped with no button on it.
+            return Response(content=sign_in_page(), media_type="text/html; charset=utf-8",
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            headers={"cache-control": "no-store",
+                                     "content-security-policy": SIGN_IN_CSP,
+                                     "x-content-type-options": "nosniff"})
+
         with db.tenant_tx(principal.tenant_id) as cur:
             cur.execute("select * from tenant where id = %s", (principal.tenant_id,))
             tenant = cur.fetchone()

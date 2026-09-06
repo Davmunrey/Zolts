@@ -251,6 +251,29 @@ var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
    minimum detectable effect on screen is computed by the same function the test
    suite covers rather than by a second copy of the formula living here. */
 var D = /*__FIXTURE__*/ {"programs":[],"decisions":{},"jurisdictions":[],"plannedPrograms":[]};
+
+/* ── acting ────────────────────────────────────────────────────────────
+   The static build inlines a fixture and keeps connect-src at 'none', so
+   nothing here may call out. The served console sets D.live, and only then
+   are the actions wired: a button that silently does nothing is worse than
+   no button, and both pages are rendered from this one file. */
+var LIVE = D.live === true;
+
+function csrfToken(){
+  var hit = document.cookie.match(/(?:^|;\s*)zolts_csrf=([^;]*)/);
+  return hit ? decodeURIComponent(hit[1]) : "";
+}
+
+function act(path, method){
+  /* The cookie is ambient — the browser attaches it to whatever this page
+     asks for — so every state-changing call carries the double-submit token
+     that nothing cross-origin can read. */
+  return fetch(path, {
+    method: method || "POST",
+    headers: {"x-zolts-csrf": csrfToken(), "content-type": "application/json"},
+    credentials: "same-origin"
+  });
+}
 var P = D.programs;
 
 function sig(p){ return p.significant === true; }
@@ -338,6 +361,16 @@ function renderChrome(){
 
 /* ── detail ────────────────────────────────────────────────────────── */
 var detail = document.getElementById("detail");
+function primaryAction(p){
+  /* Signup publishes a tenant's starter programs as drafts on purpose: a
+     tenant contacting people before anyone has read a program is not
+     onboarding, it is an incident. Activating one is therefore the first
+     thing a partner must do, and until now there was no button for it. */
+  if (!LIVE) return '<button class="btn btn-p" disabled title="Static preview">Publish</button>';
+  if (p.status === "live") return '<button class="btn btn-p" disabled>Live</button>';
+  return '<button class="btn btn-p" id="activate" data-id="' + p.id + '">Activate</button>';
+}
+
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
@@ -387,7 +420,7 @@ function renderDetail(){
     '<div class="dhead">'
       + '<div class="k">' + p.key + ' · v' + p.version + ' · ' + p.specHash + '</div>'
       + '<h2>' + p.name + '</h2>'
-      + '<div class="dactions"><button class="btn btn-p">Publish</button>'
+      + '<div class="dactions">' + primaryAction(p)
       + '<button class="btn btn-s">Open in editor</button></div>'
     + '</div>'
     + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
@@ -424,6 +457,22 @@ function renderDetail(){
     if (!b) return;
     state.jur = b.dataset.j;
     renderDetail();
+  });
+
+  var go = document.getElementById("activate");
+  if (go) go.addEventListener("click", function(){
+    go.disabled = true;
+    go.textContent = "Activating…";
+    act("/v1/programs/" + go.dataset.id + "/activate").then(function(res){
+      if (res.ok) { window.location.reload(); return; }
+      /* Named, not swallowed. A button that fails quietly is the reason the
+         console shipped with buttons that did nothing at all. */
+      go.disabled = false;
+      go.textContent = res.status === 403 ? "Session expired" : "Failed (" + res.status + ")";
+    }).catch(function(){
+      go.disabled = false;
+      go.textContent = "Failed (network)";
+    });
   });
 }
 

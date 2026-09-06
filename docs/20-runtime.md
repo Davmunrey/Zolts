@@ -123,6 +123,26 @@ The partner opens the link. `GET /v1/signup/{token}` shows what the form should 
 
 Invitations are operator state, not tenant state — they exist before their tenant does — so the table carries `redeemed_tenant_id` rather than `tenant_id`, and the role serving tenant requests has its access revoked.
 
+## Opening the console
+
+The console authenticated by the `x-api-key` header, which a browser cannot send when somebody types the URL. It answered 401 to the person it was built for, and the quickstart's own instruction was to `curl` it — which renders the page and can click nothing on it. Every check passed; nobody had opened it.
+
+An operator now goes to `/console`, gets a sign-in page, and pastes the key they were given at signup.
+
+| | |
+|---|---|
+| The cookie is not the API key | A key is a long-lived bearer credential shown once. In a cookie it is in browser storage, in history, and on every request to this origin forever. The session token is separate, 12 hours, revocable |
+| Revoking a key ends its sessions | Otherwise revocation stops the credential and leaves the browser holding a working door |
+| A cookie write carries a CSRF token | The cookie is `SameSite=Strict`; the double-submit token is the second lock and costs a header. Requests carrying `x-api-key` are exempt — nothing ambient sent them |
+| A session cannot widen a key | It carries the scopes of the key that opened it |
+| The sign-in page's CSP hash is derived from the bytes served | A hash written by hand drifts, and the failure is a page whose script silently never runs |
+
+**Drafts are programs.** Signup publishes starter programs as drafts on purpose, and the console rendered only live ones — so a partner who had just signed up opened it, saw nothing, and had no way to activate the one thing they held. The surface had been built against a fixture in which everything was already live.
+
+**One flag separates the two pages.** The static build inlines a fixture and keeps `connect-src` at `'none'`, so its buttons stay inert; the served view model sets `live`, and only then are the actions wired. A button that silently does nothing is worse than no button, and both pages render from one file.
+
+`scripts/browser_console.py` drives a real browser against a real server against a real database: type the URL, get the door, paste the key, land in the console, click Activate, and check in Postgres that the program is live. It runs in CI.
+
 ## Reading a reply
 
 Every reply used to be recorded as `reply_positive`. Somebody writing "take me off your list" was counted as a conversion, left contactable, and folded into the reported lift (ADR-016).
@@ -377,7 +397,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-583 tests. The runtime's 224 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+603 tests. The runtime's 244 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -412,3 +432,7 @@ What they assert, in the order that matters:
 29. A dump grants to a role it does not create, which is why the restore script creates it first.
 30. A reply verdict whose quote is not in the reply is discarded, and an unsubscribe written in prose suppresses.
 31. A webhook still lands a reply when the classifier is unavailable, raises, or is switched off.
+32. A browser typing `/console` gets a sign-in page, and the page's CSP hash matches the script actually served.
+33. A cookie-authenticated write without the CSRF token is refused; the same write with `x-api-key` is not.
+34. Revoking a key ends the sessions it opened, and a session cannot carry scopes its key lacked.
+35. A draft appears in the console's program list, carries an id, and a real browser can click it live.

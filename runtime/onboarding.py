@@ -186,7 +186,7 @@ def redeem(db: Database, token: str, *, name: str | None = None,
                 "review each program and activate the ones you want running: "
                 "POST /v1/programs/{id}/activate",
                 "connect your CRM: POST /v1/crm/mappings, or use a built-in provider",
-                "open the console: GET /console with this key",
+                "open the console at /console and sign in with the key above",
             ],
             "note": "the API key is shown once and is not recoverable"}
 
