@@ -430,6 +430,21 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## Charging for the step
+
+`docs/12` prices program execution at 0.2 credits. It is the highest-volume action in the price list and the runtime billed none of it, so the base unit of the product's consumption was free: a six-step play over ten thousand accounts is twelve thousand credits nobody invoiced.
+
+The price list says *execution*, and that word decides where the meter goes. The planner queues one step at a time and an exit rule cancels what is still pending, so a step billed at the queue is a step a reply or an opt-out correctly threw away — charged for. It is billed when the action reaches `succeeded`, and that single condition gives the four cases without a branch having to remember any of them.
+
+| Disposition | Charged |
+|---|---|
+| Sent, generated, or handed to a person | 0.2 credits — a manual step is not a no-op; creating the task was the job |
+| Refused by the policy gate | Nothing. Charging for it would make the safest configuration the most expensive one to run |
+| Held for budget or capacity | Nothing. A tenant out of credits has done nothing wrong |
+| In the holdout | Nothing, and it never reaches the outbox at all |
+
+The mark is `action.billed_at`, on the step's own row: the action already carries the idempotency key that makes the step unique within its enrollment, so at-least-once execution cannot become at-least-once billing. An auto-sent email step therefore costs 1.2 credits — 0.2 for the orchestration and 1 for the send — which is what `docs/12` lists as two lines and the runtime charged as one (ADR-024).
+
 ## The console an operator sits in front of
 
 Three views worked — Programs, Review queue, Sending — and the rail offered five more that did nothing. A nav entry with no surface behind it is worse than an absent one: it teaches an operator that clicking things here is pointless. Worse still, `/v1/accounts` and `/v1/people` were **POST-only**, so a tenant could create a prospect and had no way to read one back; the list they would live in was not unbuilt, it was unbuildable.
@@ -563,7 +578,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-765 tests. 244 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+773 tests. 252 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
