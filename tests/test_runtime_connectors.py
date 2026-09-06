@@ -209,3 +209,89 @@ def test_a_dry_run_reaches_no_provider(monkeypatch):
     _patched(monkeypatch, handler)
     result = SmartleadConnector().execute(_request(config={"campaign_id": "c1"}, dry_run=True))
     assert result.ok and result.cost_micros == 0 and result.detail["dry_run"] is True
+
+
+# -- pulling a CRM in ----------------------------------------------------
+
+def test_a_sync_is_a_no_op_the_second_time(db, tenant, monkeypatch):
+    """A sync is not an import: it runs repeatedly, and the second run must
+    produce no new rows. It was written and never called until an audit found
+    it had no caller — so this is the test that proves it works."""
+    from runtime.connectors.sync import hubspot_to_entities
+
+    class Stub:
+        def companies(self, token, limit=100):
+            yield {"id": "c1", "properties": {"name": "Northwind", "domain": "northwind.test",
+                                              "country": "ES", "numberofemployees": "120"}}
+
+        def contacts(self, token, limit=100):
+            yield {"id": "p1", "properties": {"email": "dana@northwind.test",
+                                              "firstname": "Dana", "lastname": "Cruz",
+                                              "jobtitle": "RevOps Lead",
+                                              "associatedcompanyid": "c1"}}
+
+    tid = str(tenant["id"])
+    first = hubspot_to_entities(db, tid, "token", connector=Stub())
+    second = hubspot_to_entities(db, tid, "token", connector=Stub())
+    assert first.accounts == 1 and first.people == 1 and first.links == 1
+    with db.tenant_tx(tid) as cur:
+        cur.execute("select count(*) as n from account")
+        accounts = cur.fetchone()["n"]
+        cur.execute("select count(*) as n from person")
+        people = cur.fetchone()["n"]
+    assert accounts == 1 and people == 1, "the second run must not duplicate"
+    assert second.accounts == 1, "it still reports what it saw"
+
+
+def test_a_crm_opt_out_becomes_a_suppression_not_just_a_flag(db, tenant):
+    """One-way and recorded twice: consent state and the suppression list are
+    consulted by different rules, and recording only one leaves a path that
+    still allows."""
+    from runtime.connectors.sync import hubspot_to_entities
+    from runtime.repo import entities
+
+    class Stub:
+        def companies(self, token, limit=100):
+            return iter(())
+
+        def contacts(self, token, limit=100):
+            yield {"id": "p9", "properties": {"email": "gone@northwind.test",
+                                              "hs_email_optout": "true"}}
+
+    tid = str(tenant["id"])
+    hubspot_to_entities(db, tid, "token", connector=Stub())
+    with db.tenant_tx(tid) as cur:
+        assert entities.suppressed_keys(cur, "gone@northwind.test", None)
+        cur.execute("select consent_state from person where email = %s",
+                    ("gone@northwind.test",))
+        assert cur.fetchone()["consent_state"]["email"]["opted_out"] is True
+
+
+def test_a_sync_commits_per_batch_not_once_at_the_end(db, tenant):
+    """A portal with fifty thousand contacts would otherwise hold one
+    transaction open for minutes, and a failure at the end would lose every row
+    before it. Found by wiring dead code up and asking what it does at scale."""
+    from runtime.connectors.sync import hubspot_to_entities
+
+    class Stub:
+        def __init__(self):
+            self.failed = False
+
+        def companies(self, token, limit=100):
+            for n in range(5):
+                yield {"id": f"c{n}", "properties": {"name": f"Co {n}",
+                                                     "domain": f"co{n}.test"}}
+
+        def contacts(self, token, limit=100):
+            yield {"id": "p0", "properties": {"email": "first@co0.test"}}
+            # The provider dies half-way through the crawl.
+            raise ConnectionError("the portal hung up")
+
+    tid = str(tenant["id"])
+    with pytest.raises(ConnectionError):
+        hubspot_to_entities(db, tid, "token", connector=Stub(), batch_size=2)
+
+    with db.tenant_tx(tid) as cur:
+        cur.execute("select count(*) as n from account")
+        accounts = cur.fetchone()["n"]
+    assert accounts == 5, "the companies committed before the contacts failed"

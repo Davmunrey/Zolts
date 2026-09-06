@@ -85,15 +85,3 @@ class SmartleadConnector:
         return Result(ok=True, provider_ref=str(result.get("bulk_email_id") or email),
                       cost_micros=cost,
                       detail={"campaign_id": campaign_id, "uploaded": uploaded})
-
-    # -- deliverability feedback ----------------------------------------
-
-    def mailbox_metrics(self, api_key: str, campaign_id: str) -> list[dict[str, Any]]:
-        """Per-mailbox counters, which is the grain the sending model needs.
-
-        `zolts.deliverability` treats the domain as the unit that burns, so an
-        aggregate across mailboxes would hide the one domain to pause.
-        """
-        payload = body(request("GET", f"{self.base}/campaigns/{campaign_id}/analytics-by-date",
-                               params={"api_key": api_key}))
-        return payload.get("data") or []

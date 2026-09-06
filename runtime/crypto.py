@@ -7,9 +7,7 @@ when the database is managed by someone else.
 
 from __future__ import annotations
 
-import base64
 import hashlib
-import hmac
 import os
 import secrets
 
@@ -50,9 +48,3 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def token_matches(token: str, stored_hash: str) -> bool:
-    return hmac.compare_digest(hash_token(token), stored_hash)
-
-
-def b64(blob: bytes) -> str:
-    return base64.b64encode(blob).decode()

@@ -117,7 +117,3 @@ def content_security_policy(rendered: str, *, connect_src: str = "'none'") -> st
         "object-src 'none'; "
         "base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
     )
-
-
-def inline_hash_count(policy: str) -> int:
-    return policy.count("'sha256-") // 3  # the same set appears in three directives

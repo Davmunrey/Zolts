@@ -12,7 +12,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | Step planning and the transactional outbox | `runtime/engine/planner.py`, `runtime/repo/actions.py` | Running |
 | Policy gate at dispatch time | `runtime/engine/gate.py` | Running |
 | Leased worker with backoff and dead-letter | `runtime/engine/worker.py` | Running |
-| HubSpot CRM, in and out | `runtime/connectors/hubspot.py` | Written, not yet run against a live portal |
+| HubSpot CRM, in and out | `runtime/connectors/hubspot.py`, `runtime/connectors/sync.py` | Written, not yet run against a live portal |
 | Smartlead sending | `runtime/connectors/smartlead.py` | Written, not yet run against a live account |
 | HTTP API with API-key tenancy | `runtime/api/` | Running |
 | CLI: migrate, provision, worker, serve | `runtime/cli.py` | Running |
@@ -163,12 +163,13 @@ On Fly, do not enable `auto_stop_machines` for the worker: it holds leases, and 
 | Misattribution across sources is not caught deterministically | Whenever a model borrows a real figure for the wrong subject | The factuality judge in `docs/08`; the regex layer catches fabrication, not misattribution, and says so |
 | Provider rate limits are the connector's problem | First large tenant | A shared token bucket per (tenant, provider) in the claim path |
 | Webhooks are interpreted inline on the request | A provider bursting a backlog | The events are already stored first; move the interpretation to the worker |
+| A CRM sync re-crawls the whole portal each run | A portal past a few hundred thousand records | HubSpot's incremental search by `hs_lastmodifieddate`; the writes are already idempotent, so only the read is wasteful |
 
 None is load-bearing before the first paying customers, and each is a contained change. They are listed so that the first one to bite is a known cost rather than an outage.
 
 ## Tests
 
-420 tests. The runtime's 114 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+423 tests. The runtime's 117 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 

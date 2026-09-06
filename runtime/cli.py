@@ -8,6 +8,7 @@ before a tenant does, plus the two long-running processes.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import logging
 import sys
@@ -111,6 +112,11 @@ def main(argv: list[str] | None = None) -> int:
     quick.add_argument("--blueprint", default="b2b-saas-sales-led")
     quick.add_argument("--base-url", default="http://localhost:8000")
 
+    sync = sub.add_parser("sync", help="pull a CRM into the canonical entities")
+    sync.add_argument("--tenant", required=True)
+    sync.add_argument("--provider", default="hubspot", choices=["hubspot"])
+    sync.add_argument("--limit", type=int, default=100)
+
     hook = sub.add_parser("webhook", help="create an inbound endpoint; secret shown once")
     hook.add_argument("--tenant", required=True)
     hook.add_argument("--provider", required=True)
@@ -162,6 +168,24 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(quickstart(
             db, secret_key=settings.secret_key, slug=args.slug, name=args.name,
             region=args.region, blueprint=args.blueprint, base_url=args.base_url), indent=2))
+        return 0
+
+    if args.command == "sync":
+        from runtime.connectors.sync import hubspot_to_entities
+        from runtime.crypto import open_sealed
+
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute("select secret_enc from connection where provider = %s"
+                        " and status = 'active' limit 1", (args.provider,))
+            row = cur.fetchone()
+        if row is None:
+            print(f"no active {args.provider} connection for this tenant; run 'connect' first",
+                  file=sys.stderr)
+            return 2
+        report = hubspot_to_entities(db, args.tenant,
+                                     open_sealed(row["secret_enc"], settings.secret_key),
+                                     limit=args.limit)
+        print(json.dumps(dataclasses.asdict(report)))
         return 0
 
     if args.command == "webhook":
