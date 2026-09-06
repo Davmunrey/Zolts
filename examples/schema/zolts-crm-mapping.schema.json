@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zolts.com/schema/zolts-crm-mapping.schema.json",
+  "title": "Zolts CRM mapping",
+  "description": "Connects a CRM this runtime has never seen. Authoring one of these replaces writing a connector, so a partner's in-house system is a document rather than a deploy.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {"const": "zolts/v1"},
+    "kind": {"const": "CrmMapping"},
+    "metadata": {
+      "type": "object",
+      "required": ["provider", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+          "description": "The tenant's own name for this system. It becomes the crm_id prefix, so it must be stable."
+        },
+        "name": {"type": "string", "minLength": 3, "maxLength": 80},
+        "owner": {"type": "string"},
+        "description": {"type": "string"}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["transport", "accounts", "contacts"],
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind", "base_url", "accounts", "contacts"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {"const": "http"},
+                "base_url": {"type": "string", "format": "uri"},
+                "auth": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {"enum": ["bearer", "header", "query"]},
+                    "name": {"type": "string", "description": "Header or query parameter name, for the header and query kinds."}
+                  },
+                  "required": ["kind"]
+                },
+                "accounts": {"$ref": "#/$defs/endpoint"},
+                "contacts": {"$ref": "#/$defs/endpoint"}
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {"const": "push"},
+                "records": {"type": "string", "description": "Where the record array sits inside a posted body."}
+              },
+              "description": "For a CRM this runtime cannot reach: behind a firewall, or with no API at all. The tenant posts batches instead."
+            }
+          ]
+        },
+        "accounts": {
+          "type": "object",
+          "required": ["external_id", "name"],
+          "additionalProperties": false,
+          "properties": {
+            "external_id": {"$ref": "#/$defs/path"},
+            "name": {"$ref": "#/$defs/path"},
+            "domain": {"$ref": "#/$defs/path"},
+            "country": {"$ref": "#/$defs/path"},
+            "employee_band": {"$ref": "#/$defs/path"},
+            "industry": {"$ref": "#/$defs/path"}
+          }
+        },
+        "contacts": {
+          "type": "object",
+          "required": ["external_id", "email"],
+          "additionalProperties": false,
+          "properties": {
+            "external_id": {"$ref": "#/$defs/path"},
+            "email": {"$ref": "#/$defs/path"},
+            "full_name": {"$ref": "#/$defs/path"},
+            "title": {"$ref": "#/$defs/path"},
+            "country": {"$ref": "#/$defs/path"},
+            "account_external_id": {"$ref": "#/$defs/path"},
+            "consent": {
+              "type": "object",
+              "required": ["field"],
+              "additionalProperties": false,
+              "description": "Omitting this block is a statement, not an oversight: the source cannot say whether a contact opted out, every contact is stored with consent unknown, and the policy engine denies until a basis is established elsewhere.",
+              "properties": {
+                "field": {"$ref": "#/$defs/path"},
+                "values": {
+                  "type": "object",
+                  "additionalProperties": {"enum": ["allowed", "opted_out", "unknown"]},
+                  "description": "The CRM's own vocabulary, translated. A state nobody maps resolves to the default, which is unknown unless the tenant declares otherwise."
+                },
+                "default": {"enum": ["allowed", "opted_out", "unknown"], "default": "unknown"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "A field path: dotted for nesting, [n] for a position, [flag] for the array element where flag is truthy, and | for a transform pipeline (trim, lower, upper, join, str, domain)."
+    },
+    "endpoint": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "records": {"type": "string", "description": "Where the array sits in the response. Omit only when the body is the array."},
+        "params": {"type": "object", "additionalProperties": {"type": "string"}},
+        "pagination": {
+          "oneOf": [
+            {"type": "object", "required": ["kind"], "additionalProperties": false,
+             "properties": {"kind": {"const": "none"}}},
+            {"type": "object", "required": ["kind", "param"], "additionalProperties": false,
+             "properties": {"kind": {"const": "offset"}, "param": {"type": "string"},
+                            "size_param": {"type": "string"},
+                            "size": {"type": "integer", "minimum": 1, "maximum": 1000},
+                            "more_path": {"type": "string"}}},
+            {"type": "object", "required": ["kind", "param", "cursor_path"],
+             "additionalProperties": false,
+             "properties": {"kind": {"const": "cursor"}, "param": {"type": "string"},
+                            "cursor_path": {"type": "string"},
+                            "size_param": {"type": "string"},
+                            "size": {"type": "integer", "minimum": 1, "maximum": 1000}}}
+          ]
+        }
+      }
+    }
+  }
+}

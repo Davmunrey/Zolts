@@ -117,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
     sync.add_argument("--provider", default="hubspot")
     sync.add_argument("--limit", type=int, default=100)
 
+    mapping = sub.add_parser("crm-mapping", help="publish a CRM mapping from a file")
+    mapping.add_argument("--tenant", required=True)
+    mapping.add_argument("--file", required=True)
+
     hook = sub.add_parser("webhook", help="create an inbound endpoint; secret shown once")
     hook.add_argument("--tenant", required=True)
     hook.add_argument("--provider", required=True)
@@ -172,14 +176,26 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "sync":
         from runtime.connectors.crm import sources
+        from runtime.connectors.generic import GenericSource
         from runtime.connectors.sync import pull
         from runtime.crypto import open_sealed
+        from runtime.repo import mappings
 
         install_default_connectors()
+        source = None
         if args.provider not in sources():
-            print(f"no CRM source for '{args.provider}'; registered: "
-                  f"{', '.join(sources())}", file=sys.stderr)
-            return 2
+            # Not a connector this repository ships. It may still be a mapping
+            # the tenant authored, which is the ordinary case for an in-house
+            # CRM and must not read as "unsupported".
+            with db.tenant_tx(args.tenant) as cur:
+                stored = mappings.get(cur, args.provider)
+            if stored is None:
+                print(f"no CRM source or mapping for '{args.provider}'; built in: "
+                      f"{', '.join(sources())}. Publish a mapping with "
+                      f"POST /v1/crm/mappings to connect anything else.",
+                      file=sys.stderr)
+                return 2
+            source = GenericSource(stored["document"])
 
         with db.tenant_tx(args.tenant) as cur:
             cur.execute("select secret_enc from connection where provider = %s"
@@ -191,8 +207,34 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         report = pull(db, args.tenant,
                       open_sealed(row["secret_enc"], settings.secret_key),
-                      provider=args.provider, batch_size=args.limit)
+                      provider=args.provider, source=source, batch_size=args.limit)
         print(json.dumps(dataclasses.asdict(report), indent=2))
+        return 0
+
+    if args.command == "crm-mapping":
+        from runtime.repo import mappings
+        from zolts.mapping import load
+
+        from runtime.connectors.crm import sources
+
+        install_default_connectors()
+        document = load(args.file)
+        provider = document["metadata"]["provider"]
+        if provider in sources():
+            print(f"'{provider}' is a connector this runtime ships; a mapping cannot "
+                  f"claim its name — choose another", file=sys.stderr)
+            return 2
+        reads_opt_out = bool(document["spec"]["contacts"].get("consent"))
+        with db.tenant_tx(args.tenant) as cur:
+            row = mappings.publish(cur, args.tenant, document,
+                                   reads_opt_out=reads_opt_out, created_by="cli")
+        result = {"provider": row["provider"], "spec_hash": row["spec_hash"],
+                  "reads_opt_out": reads_opt_out}
+        if not reads_opt_out:
+            result["warning"] = ("no consent field declared: every contact this "
+                                 "mapping imports is unreachable until a basis is "
+                                 "established elsewhere")
+        print(json.dumps(result, indent=2))
         return 0
 
     if args.command == "webhook":

@@ -45,7 +45,7 @@ jobs:
         run: |
           psql "$ZOLTS_TEST_DATABASE_URL" -c \
             "create role zolts_app login password 'zolts_app'"
-      - name: Validate GTM programs against the JSON Schema
+      - name: Validate GTM programs, blueprints and CRM mappings against their schemas
         run: python3 scripts/validate.py
       - name: Run the test suite
         run: python3 -m pytest tests/ -q

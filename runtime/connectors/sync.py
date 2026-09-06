@@ -104,6 +104,16 @@ def _sync_contacts(db: Database, tenant_id: str, source: CrmSource, credential: 
                     report.links += 1
 
 
+def pull_staged(db: Database, tenant_id: str, source: CrmSource,
+                batch_size: int = 200) -> SyncReport:
+    """Records already in hand rather than fetched.
+
+    A CRM behind a firewall posts batches; everything downstream is identical,
+    which is the whole reason the transport is not part of the contract.
+    """
+    return pull(db, tenant_id, credential="", source=source, batch_size=batch_size)
+
+
 def pull(db: Database, tenant_id: str, credential: str, *, provider: str = "hubspot",
          source: CrmSource | None = None, batch_size: int = 200) -> SyncReport:
     """Read a CRM into the canonical entities.

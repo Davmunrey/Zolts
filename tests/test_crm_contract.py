@@ -21,6 +21,7 @@ import pytest
 
 from runtime.connectors import crm
 from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
+from runtime.connectors.generic import GenericSource
 from runtime.connectors.hubspot import HubSpotConnector
 from runtime.connectors.pipedrive import PipedriveConnector
 
@@ -77,9 +78,67 @@ def _pipedrive_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"data": []})
 
 
+# A tenant's own CRM, defined by a document rather than by code. It is in this
+# suite for the reason it exists: a mapping is not a lesser integration with a
+# separate code path, it is a source that answers the same questions.
+IN_HOUSE_MAPPING = {
+    "apiVersion": "zolts/v1", "kind": "CrmMapping",
+    "metadata": {"provider": "acme-internal", "name": "Acme internal CRM"},
+    "spec": {
+        "transport": {
+            "kind": "http", "base_url": "https://crm.acme.internal/api",
+            "auth": {"kind": "header", "name": "x-acme-key"},
+            "accounts": {"path": "/companies", "records": "data.items",
+                         "pagination": {"kind": "none"}},
+            "contacts": {"path": "/people", "records": "data.items",
+                         "pagination": {"kind": "none"}},
+        },
+        "accounts": {"external_id": "id | str", "name": "legal_name",
+                     "domain": "website | domain",
+                     "country": "address.country_code | upper"},
+        "contacts": {"external_id": "id | str",
+                     "email": "emails[primary].address | trim | lower",
+                     "full_name": "name_parts | join", "title": "role",
+                     "account_external_id": "company.id | str",
+                     "consent": {"field": "mail_pref",
+                                 "values": {"opted_in": "allowed",
+                                            "opted_out": "opted_out",
+                                            "never_asked": "unknown"},
+                                 "default": "unknown"}},
+    },
+}
+
+IN_HOUSE_PAGES = {
+    "companies": {"data": {"items": [
+        {"id": 11, "legal_name": "Northwind SL", "website": "https://www.northwind.test/",
+         "address": {"country_code": "es"}},
+        {"id": 12, "legal_name": None},                        # unnamed
+    ]}},
+    "people": {"data": {"items": [
+        {"id": 21, "name_parts": ["Dana", "Cruz"], "role": "RevOps Lead",
+         "emails": [{"address": "old@northwind.test"},
+                    {"address": " DANA@NORTHWIND.TEST ", "primary": True}],
+         "company": {"id": 11}, "mail_pref": "opted_in"},
+        {"id": 22, "name_parts": ["Gone"], "mail_pref": "opted_out",
+         "emails": [{"address": "gone@northwind.test", "primary": True}]},
+        {"id": 23, "name_parts": ["Never Asked"], "mail_pref": "never_asked",
+         "emails": [{"address": "quiet@northwind.test", "primary": True}]},
+        {"id": 24, "name_parts": ["No Email"], "emails": []},
+    ]}},
+}
+
+
+def _in_house_handler(request: httpx.Request) -> httpx.Response:
+    for resource, payload in IN_HOUSE_PAGES.items():
+        if request.url.path.endswith(f"/{resource}"):
+            return httpx.Response(200, json=payload)
+    return httpx.Response(200, json={"data": {"items": []}})
+
+
 SOURCES = {
     "hubspot": (HubSpotConnector, _hubspot_handler),
     "pipedrive": (PipedriveConnector, _pipedrive_handler),
+    "in-house-mapping": (lambda: GenericSource(IN_HOUSE_MAPPING), _in_house_handler),
 }
 
 
@@ -96,6 +155,7 @@ def source(request, monkeypatch):
 
     monkeypatch.setattr("runtime.connectors.hubspot.request", routed)
     monkeypatch.setattr("runtime.connectors.pipedrive.request", routed)
+    monkeypatch.setattr("runtime.connectors.generic.request", routed)
     return factory()
 
 
@@ -204,3 +264,62 @@ def test_a_source_is_re_readable(source):
     """The sync walks accounts and contacts in separate passes; a generator
     that can only be consumed once would silently produce an empty second pass."""
     assert list(source.accounts("credential")) == list(source.accounts("credential"))
+
+
+# -- a mapping is a first-class source ------------------------------------
+
+def test_a_mapping_applies_its_transforms(source):
+    """The in-house fixture stores an address as ' DANA@NORTHWIND.TEST ' and a
+    name as two parts. What reaches the runtime is neither."""
+    if source.capabilities.provider != "acme-internal":
+        pytest.skip("mapping-specific")
+    contacts = {c.email: c for c in source.contacts("credential")}
+    assert "dana@northwind.test" in contacts
+    assert contacts["dana@northwind.test"].full_name == "Dana Cruz"
+    accounts = list(source.accounts("credential"))
+    assert accounts[0].domain == "northwind.test", "a URL became a domain"
+    assert accounts[0].country == "ES", "a lowercase code became a country"
+
+
+def test_a_mapping_with_no_consent_block_cannot_claim_to_read_opt_out():
+    """Omitting the block is a statement, not an oversight."""
+    silent = {**IN_HOUSE_MAPPING}
+    silent["spec"] = {**IN_HOUSE_MAPPING["spec"]}
+    silent["spec"]["contacts"] = {k: v for k, v in IN_HOUSE_MAPPING["spec"]["contacts"].items()
+                                  if k != "consent"}
+    source = GenericSource(silent)
+    assert source.capabilities.reads_opt_out is False
+    assert any("consent unknown" in c for c in source.capabilities.caveats)
+
+
+def test_a_mapping_names_itself_as_tenant_authored():
+    """An operator reading a sync report must be able to tell a connector this
+    repository maintains from a document their own team wrote."""
+    source = GenericSource(IN_HOUSE_MAPPING)
+    assert any("tenant-authored" in c for c in source.capabilities.caveats)
+
+
+def test_a_mapping_that_never_terminates_is_a_bug_not_a_big_portal(monkeypatch):
+    """Offset pagination with a server that always returns a full page would
+    otherwise walk forever."""
+    from runtime.connectors.generic import MAX_PAGES
+
+    endless = {**IN_HOUSE_MAPPING}
+    endless["spec"] = {**IN_HOUSE_MAPPING["spec"]}
+    endless["spec"]["transport"] = {**IN_HOUSE_MAPPING["spec"]["transport"]}
+    endless["spec"]["transport"]["contacts"] = {
+        "path": "/people", "records": "data.items",
+        "pagination": {"kind": "offset", "param": "offset", "size": 4}}
+
+    client = httpx.Client(transport=httpx.MockTransport(_in_house_handler))
+    import runtime.connectors.http as http_module
+
+    original = http_module.request
+    monkeypatch.setattr("runtime.connectors.generic.request",
+                        lambda m, u, **kw: original(m, u, client=client, **kw))
+
+    from zolts.mapping import MappingError
+
+    with pytest.raises(MappingError, match="without terminating"):
+        list(GenericSource(endless).contacts("credential"))
+    assert MAX_PAGES < 100_000, "the ceiling must be reachable in a test"
