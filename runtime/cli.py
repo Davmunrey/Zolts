@@ -43,8 +43,14 @@ def quickstart(db: Database, *, secret_key: str, slug: str, name: str, region: s
 
     tenant = create_tenant(db, slug=slug, name=name, region=region, blueprint_id=blueprint)
     tenant_id = str(tenant["id"])
+    program_dir = Path(__file__).resolve().parent.parent / "examples" / "programs"
+    if not program_dir.is_dir():
+        raise FileNotFoundError(
+            f"{program_dir} does not exist, so this first run would create a tenant "
+            "with no programs and report success; the image was built without the "
+            "example programs")
     published = []
-    for path in sorted((Path(__file__).resolve().parent.parent / "examples/programs").glob("*.yaml")):
+    for path in sorted(program_dir.glob("*.yaml")):
         program = dsl.load(path)
         findings = dsl.lint(program)
         with db.tenant_tx(tenant_id) as cur:

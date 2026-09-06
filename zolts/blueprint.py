@@ -143,8 +143,17 @@ class Resolution:
 
 def load_blueprints(directory: Path | None = None) -> list[Blueprint]:
     """Load every blueprint on disk, sorted by key for deterministic ordering."""
+    source = directory or BLUEPRINT_DIR
+    if not source.is_dir():
+        # An absent directory and an empty one are not the same fact. Globbing
+        # a path that does not exist returns nothing and reads as "this product
+        # has no blueprints", which is how a container shipped without them
+        # reported success and seeded an empty tenant.
+        raise FileNotFoundError(
+            f"blueprint directory {source} does not exist; the package or image "
+            "was built without it")
     out: list[Blueprint] = []
-    for path in sorted((directory or BLUEPRINT_DIR).glob("*.yaml")):
+    for path in sorted(source.glob("*.yaml")):
         raw = yaml.safe_load(path.read_text())
         if raw.get("kind") != "Blueprint":
             raise ValueError(f"{path}: expected kind Blueprint, got {raw.get('kind')!r}")

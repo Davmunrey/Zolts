@@ -13,8 +13,15 @@ RUN pip install --no-cache-dir -r runtime/requirements.txt
 
 COPY zolts/ zolts/
 COPY runtime/ runtime/
-COPY examples/schema/ examples/schema/
 COPY scripts/ scripts/
+
+# Data the runtime reads at run time, not just at test time. Without these the
+# image starts, answers /health with "ok", and seeds a tenant with no programs:
+# the quickstart reported success and the product was empty.
+COPY examples/schema/ examples/schema/
+COPY examples/programs/ examples/programs/
+COPY blueprints/ blueprints/
+COPY design/ design/
 
 # Nothing here runs as root. A connector compromise should not also be a
 # container compromise.

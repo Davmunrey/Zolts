@@ -74,3 +74,81 @@ jobs:
           ZOLTS_DATABASE_URL: postgresql://zolts:zolts@127.0.0.1:5432/zolts
           ZOLTS_APP_DATABASE_URL: postgresql://zolts_app:zolts_app@127.0.0.1:5432/zolts
           ZOLTS_SECRET_KEY: ci-only-not-a-real-key
+
+  # The image was shipped once without the data the runtime reads. It started,
+  # reported healthy, and seeded a tenant with no programs. Nothing failed.
+  # So the image is now built and run, not just written.
+  image:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: zolts
+          POSTGRES_PASSWORD: zolts
+          POSTGRES_DB: zolts
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
+    env:
+      DB: postgresql://zolts:zolts@127.0.0.1:5432/zolts
+      APP_DB: postgresql://zolts_app:zolts_app@127.0.0.1:5432/zolts
+      ZOLTS_SECRET_KEY: ci-only-not-a-real-key
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the image
+        run: docker build -t zolts:ci .
+
+      # The compose stack creates this role from an initdb script. A service
+      # container has no initdb hook, and `migrate` grants to it, so without
+      # this the first command inside the image fails.
+      - name: Create the non-owning application role
+        run: psql "$DB" -c "create role zolts_app login password 'zolts_app'"
+
+      - name: Migrate from inside the container
+        run: |
+          docker run --rm --network host -e ZOLTS_DATABASE_URL="$DB" \
+            -e ZOLTS_APP_DATABASE_URL="$APP_DB" \
+            -e ZOLTS_SECRET_KEY zolts:ci python3 -m runtime.cli migrate
+
+      - name: A first run inside the container must seed the programs it claims
+        run: |
+          docker run --rm --network host -e ZOLTS_DATABASE_URL="$DB" \
+            -e ZOLTS_APP_DATABASE_URL="$APP_DB" \
+            -e ZOLTS_SECRET_KEY zolts:ci \
+            python3 -m runtime.cli quickstart --slug ci-demo > quickstart.json
+          python3 - <<'PY'
+          import json, sys
+          out = json.load(open("quickstart.json"))
+          programs = out["programs"]
+          if not programs:
+              sys.exit("::error::quickstart seeded no programs and still reported "
+                       "success — the image is missing examples/programs")
+          print(f"seeded {len(programs)}: {[p['key'] for p in programs]}")
+          open("key.txt", "w").write(out["api_key"])
+          PY
+
+      - name: The API and the console must answer from inside the container
+        run: |
+          docker run -d --name api --network host \
+            -e ZOLTS_DATABASE_URL="$DB" -e ZOLTS_APP_DATABASE_URL="$APP_DB" \
+            -e ZOLTS_SECRET_KEY zolts:ci
+          for i in $(seq 1 20); do
+            curl -fsS http://127.0.0.1:8000/health > /dev/null && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/health | tee /dev/stderr | grep -q '"status":"ok"'
+          code=$(curl -s -o console.html -w '%{http_code}' \
+            -H "x-api-key: $(cat key.txt)" http://127.0.0.1:8000/console)
+          test "$code" = "200" || { echo "::error::/console returned $code"; docker logs api; exit 1; }
+          test -s console.html || { echo "::error::/console returned an empty body"; exit 1; }
+          echo "console rendered $(wc -c < console.html) bytes"
+
+      - name: Show the container's logs on failure
+        if: failure()
+        run: docker logs api || true
