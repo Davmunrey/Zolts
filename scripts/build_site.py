@@ -49,7 +49,11 @@ def build() -> None:
 
     vercel = {
         "$schema": "https://openapi.vercel.sh/vercel.json",
-        "buildCommand": "python3 scripts/build_site.py",
+        # The two dependencies come first. CI installs them globally, so CI
+        # can never notice they are missing here — which is how the first
+        # deploy failed with ModuleNotFoundError while every check was green.
+        "buildCommand": ("pip3 install --quiet pyyaml jsonschema"
+                         " && python3 scripts/build_site.py"),
         "outputDirectory": "site",
         "cleanUrls": True,
         "trailingSlash": False,

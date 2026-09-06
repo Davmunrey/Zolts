@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "python3 scripts/build_site.py",
+  "buildCommand": "pip3 install --quiet pyyaml jsonschema && python3 scripts/build_site.py",
   "outputDirectory": "site",
   "cleanUrls": true,
   "trailingSlash": false,

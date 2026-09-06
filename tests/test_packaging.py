@@ -113,3 +113,63 @@ def test_the_documents_do_not_overstate_the_test_suite():
         assert re.search(rf"\b{against_postgres}\b", text), (
             f"{document.name} does not state that {against_postgres} tests run "
             f"against a real Postgres")
+
+
+# -- the deploy path installs what the build imports ---------------------
+
+# Module name to the distribution that provides it. Two entries, and both are
+# here because a module and its package share a name only by convention.
+DISTRIBUTIONS = {"yaml": "pyyaml", "jsonschema": "jsonschema"}
+
+
+def _third_party_imports(entry: Path, root: Path) -> set[str]:
+    """Top-level third-party modules reachable from a script in this repo."""
+    import ast
+
+    seen: set[Path] = set()
+    found: set[str] = set()
+    queue = [entry]
+    local = {p.stem for p in (root / "scripts").glob("*.py")}
+    while queue:
+        path = queue.pop()
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        for node in ast.walk(ast.parse(path.read_text())):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                names = [node.module]
+            for name in names:
+                top = name.split(".")[0]
+                if top in ("zolts", "runtime"):
+                    queue += list((root / top).glob("*.py"))
+                elif top in local:
+                    queue.append(root / "scripts" / f"{top}.py")
+                elif top in DISTRIBUTIONS:
+                    found.add(top)
+    return found
+
+
+def test_the_vercel_build_installs_what_the_site_build_imports():
+    """CI installs these globally, so CI can never notice their absence here.
+
+    That is exactly how the first deploy failed with ModuleNotFoundError while
+    every check was green: the build command ran `python3 scripts/build_site.py`
+    on an image that had no pyyaml. A test that reads the deploy configuration
+    is the only place this shows up before a deploy does.
+    """
+    import json
+
+    root = Path(__file__).resolve().parent.parent
+    command = json.loads((root / "vercel.json").read_text()).get("buildCommand", "")
+    assert "build_site.py" in command, "vercel.json no longer builds the site"
+
+    needed = {DISTRIBUTIONS[m] for m in _third_party_imports(
+        root / "scripts" / "build_site.py", root)}
+    assert needed, "the site build imports nothing third-party; check the walker"
+    missing = {d for d in needed if d not in command}
+    assert not missing, (
+        f"vercel.json builds the site without installing {sorted(missing)}. "
+        f"CI installs them globally and will not catch this; the deploy will")
