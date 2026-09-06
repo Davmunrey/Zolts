@@ -31,6 +31,35 @@ from zolts import dsl, experiment
 SURFACE = Path(__file__).resolve().parent.parent.parent / "design" / "console.html"
 
 
+def _triage_factory():
+    """How the webhook receiver reaches the agent layer, or does not.
+
+    Both halves are required together, as everywhere else: a model with no
+    spend guard generates against no ceiling, and a guard with no model has
+    nothing to price. Absent either, the receiver gets None and a reply is
+    recorded exactly as it was before the agent layer existed.
+    """
+    if os.environ.get("ZOLTS_AGENTS", "false").lower() != "true":
+        return None
+    try:
+        from runtime.agents.client import ModelClient
+        from runtime.agents.spend import SpendGuard
+    except Exception:  # noqa: BLE001 - the API must start without the agent layer
+        return None
+
+    client, guard = ModelClient(), SpendGuard()
+    if not guard.available:
+        return None
+
+    def factory(_tenant_id: str):
+        # The per-tenant budget the guard prices against. Absent a stored
+        # ceiling the guard answers `cannot-tell` and the call is refused,
+        # which is the fail-closed direction.
+        return client, guard, {"consumed_usd": None, "limit_usd": None}
+
+    return factory
+
+
 def create_app(db: Database, *, install_connectors: bool = True,
                secret_key: str | None = None) -> FastAPI:
     app = FastAPI(title="Zolts", version="0.1.0",
@@ -47,6 +76,7 @@ def create_app(db: Database, *, install_connectors: bool = True,
 
     signup_throttle = Throttle()
     app.state.signup_throttle = signup_throttle
+    app.state.triage_factory = _triage_factory()
 
     def _throttle(request: Request) -> None:
         caller = caller_of(request)

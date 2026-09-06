@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
@@ -21,6 +22,8 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 from runtime.crypto import open_sealed
 from runtime.db import Database
 from runtime.engine import inbound
+
+log = logging.getLogger(__name__)
 
 
 def verify(provider: str, secret: str, body: bytes, headers: dict[str, str],
@@ -84,6 +87,38 @@ def router(db: Database, secret_key: str) -> APIRouter:
 
         tenant_id = str(endpoint["tenant_id"])
         applied, duplicates = [], 0
+
+        def _read_reply(tid: str, stored: dict):
+            """Classify a reply's text, or return nothing and change nothing.
+
+            Every failure here — agents switched off, no model configured, no
+            body in the payload, the spend guard refusing — returns None, and
+            `apply` then behaves exactly as it did before the agent layer
+            existed. An inbound webhook must not start failing because a model
+            is unavailable.
+            """
+            try:
+                from runtime.agents.triage import classify
+                from runtime.engine.inbound import REPLY, _reply_text
+            except Exception:  # noqa: BLE001 - the effects layer stands alone
+                return None
+            if str(stored.get("event_type") or "").lower() not in REPLY:
+                return None
+            text = _reply_text(stored.get("payload") or {})
+            if not text:
+                return None
+            factory = getattr(request.app.state, "triage_factory", None)
+            if factory is None:
+                return None
+            try:
+                client, guard, budget = factory(tid)
+                return classify(client=client, guard=guard, text=text,
+                                consumed_usd=budget.get("consumed_usd"),
+                                limit_usd=budget.get("limit_usd"))
+            except Exception as exc:  # noqa: BLE001 - a reply must still land
+                log.warning("reply triage unavailable: %s", exc)
+                return None
+
         with db.tenant_tx(tenant_id) as cur:
             cur.execute("update webhook_endpoint set last_seen_at = now() where id = %s",
                         (endpoint["endpoint_id"],))
@@ -95,7 +130,8 @@ def router(db: Database, secret_key: str) -> APIRouter:
                 if stored is None:
                     duplicates += 1
                     continue
-                result = inbound.apply(cur, tenant_id, stored)
+                result = inbound.apply(cur, tenant_id, stored,
+                                       triage=_read_reply(tenant_id, stored))
                 applied.append({"event": result.event_id, "matched": result.matched,
                                 "effects": result.effects})
         return {"received": len(events), "applied": applied, "duplicates": duplicates}

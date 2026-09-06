@@ -123,6 +123,22 @@ The partner opens the link. `GET /v1/signup/{token}` shows what the form should 
 
 Invitations are operator state, not tenant state — they exist before their tenant does — so the table carries `redeemed_tenant_id` rather than `tenant_id`, and the role serving tenant requests has its access revoked.
 
+## Reading a reply
+
+Every reply used to be recorded as `reply_positive`. Somebody writing "take me off your list" was counted as a conversion, left contactable, and folded into the reported lift (ADR-016).
+
+The triage agent classifies the text and stops there — it does not suppress, does not record an outcome, and does not decide whether it is confident enough.
+
+| Verdict | What the runtime does |
+|---|---|
+| `unsubscribe` | The same suppression path a provider's unsubscribe event takes |
+| `negative`, `wrong_person`, `not_now` | Recorded as `reply_<verdict>`, which is not a conversion type |
+| `positive` | Recorded as `reply_positive`, which is |
+
+**A verdict must quote the reply**, and one whose quote is not in the text is discarded. A confident label with nothing behind it reads exactly like a correct one, and this decides whether somebody is contacted again.
+
+A blocked verdict is not a weaker signal, not a reason to fail the webhook, and not a default. Absent a usable one — agents off, no model, no body in the payload, the spend guard refusing — the reply is recorded as `reply_positive`, exactly as before. That over-counts, and it is registered rather than fixed: flipping it would move every tenant's measured lift on a deploy, silently.
+
 ## The console
 
 `GET /console` serves the operator surface with the tenant's live figures inlined, same origin as the API. That means no CORS to configure, no second origin in `connect-src`, and the same content security policy derivation the static build uses — `runtime/surface.py` holds both, because two copies would drift and the copy that drifts is the one that ships a policy the page violates.
@@ -361,7 +377,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-565 tests. The runtime's 206 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+583 tests. The runtime's 224 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -394,3 +410,5 @@ What they assert, in the order that matters:
 27. A stalled outbox is reported while `/health` still says ok.
 28. The signup route refuses a caller past its ceiling, and the window slides.
 29. A dump grants to a role it does not create, which is why the restore script creates it first.
+30. A reply verdict whose quote is not in the reply is discarded, and an unsubscribe written in prose suppresses.
+31. A webhook still lands a reply when the classifier is unavailable, raises, or is switched off.

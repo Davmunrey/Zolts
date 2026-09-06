@@ -20,6 +20,11 @@ Three rules govern everything here:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # the effects layer must import without the agent layer
+    from runtime.agents.triage import Triage
+
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -50,6 +55,29 @@ class Applied:
     matched: bool = False
 
 
+# Where each provider puts the words a person actually wrote. Several never
+# send them, which is why an absent body leaves the existing behaviour alone
+# rather than being read as a verdict of its own.
+_TEXT_PATHS = (
+    ("reply_message", "text"), ("reply_message", "html"), ("reply", "text"),
+    ("message", "text"), ("email", "body"), ("body_text",), ("reply_body",),
+    ("text",), ("body",),
+)
+
+
+def _reply_text(payload: dict[str, Any]) -> str | None:
+    for path in _TEXT_PATHS:
+        current: Any = payload
+        for key in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(key)
+        if isinstance(current, str) and current.strip():
+            return current
+    return None
+
+
 def _normalise(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Reduce a provider payload to the fields the runtime acts on.
 
@@ -59,6 +87,7 @@ def _normalise(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
     """
     if provider == "smartlead":
         return {
+            "text": _reply_text(payload),
             "type": str(payload.get("event_type") or payload.get("event") or "").lower(),
             "email": payload.get("to_email") or payload.get("lead_email")
                      or (payload.get("lead") or {}).get("email"),
@@ -79,6 +108,7 @@ def _normalise(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
             "value_micros": _euros_to_micros(properties.get("amount")),
         }
     return {
+        "text": _reply_text(payload),
         "type": str(payload.get("type") or "").lower(),
         "email": payload.get("email"),
         "external_id": payload.get("id"),
@@ -122,8 +152,21 @@ def store(cur, tenant_id: str, *, provider: str, payload: dict[str, Any],
     return one(cur)
 
 
-def apply(cur, tenant_id: str, event: dict[str, Any]) -> Applied:
-    """Interpret one stored event. Idempotent, and safe to re-run on a replay."""
+def apply(cur, tenant_id: str, event: dict[str, Any],
+          triage: "Triage | None" = None) -> Applied:
+    """Interpret one stored event. Idempotent, and safe to re-run on a replay.
+
+    `triage` is a reading of the reply's text, produced by the agent layer and
+    passed in rather than fetched here: this module performs the effects and
+    does not decide what a message means, and it must keep working with the
+    agent layer switched off.
+
+    Without a usable verdict a reply is recorded exactly as it was before —
+    `reply_positive`. That over-counts, and it is a decision rather than an
+    oversight: changing it silently would move every tenant's measured lift on
+    a deploy, and a provider that reports a reply with no body has told us only
+    that a human responded.
+    """
     provider = event["provider"]
     fields = _normalise(provider, event["payload"])
     result = Applied(event_id=str(event["id"]))
@@ -155,8 +198,8 @@ def apply(cur, tenant_id: str, event: dict[str, Any]) -> Applied:
         if touch:
             cur.execute("update touch set status = 'replied' where id = %s", (touch["id"],))
             result.effects.append("touch.replied")
-        _outcome(cur, tenant_id, enrollment_id, "reply_positive", None, occurred,
-                 provider, event, result)
+        _reply(cur, tenant_id, person, enrollment_id, occurred, provider, event,
+               triage, result)
     elif event_type in CONVERSION:
         _outcome(cur, tenant_id, enrollment_id, CONVERSION[event_type],
                  fields.get("value_micros"), occurred, provider, event, result)
@@ -164,6 +207,27 @@ def apply(cur, tenant_id: str, event: dict[str, Any]) -> Applied:
     cur.execute("update inbound_event set handled = true, handled_at = now() where id = %s",
                 (event["id"],))
     return result
+
+
+def _reply(cur, tenant_id: str, person: dict[str, Any] | None,
+           enrollment_id: str | None, occurred: Any, provider: str,
+           event: dict[str, Any], triage: "Triage | None", result: Applied) -> None:
+    """Record what the reply was, rather than assuming it was a win."""
+    if triage is None or not triage.usable:
+        _outcome(cur, tenant_id, enrollment_id, "reply_positive", None, occurred,
+                 provider, event, result)
+        return
+
+    result.effects.append(f"triage.{triage.verdict}")
+    if triage.verdict == "unsubscribe":
+        # The same path a provider's unsubscribe event takes. An opt-out
+        # written in prose is an opt-out, and routing it anywhere else would
+        # mean two suppression mechanisms that have to agree forever.
+        _opt_out(cur, tenant_id, person, enrollment_id, provider, result)
+        return
+
+    _outcome(cur, tenant_id, enrollment_id, f"reply_{triage.verdict}", None, occurred,
+             provider, event, result)
 
 
 def _opt_out(cur, tenant_id: str, person: dict[str, Any] | None, enrollment_id: str | None,
