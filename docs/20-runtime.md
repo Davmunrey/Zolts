@@ -174,7 +174,9 @@ The triage agent classifies the text and stops there — it does not suppress, d
 
 **A verdict must quote the reply**, and one whose quote is not in the text is discarded. A confident label with nothing behind it reads exactly like a correct one, and this decides whether somebody is contacted again.
 
-A blocked verdict is not a weaker signal, not a reason to fail the webhook, and not a default. Absent a usable one — agents off, no model, no body in the payload, the spend guard refusing — the reply is recorded as `reply_positive`, exactly as before. That over-counts, and it is registered rather than fixed: flipping it would move every tenant's measured lift on a deploy, silently.
+A blocked verdict is not a weaker signal, not a reason to fail the webhook, and not a default. Absent a usable one — agents off, no model, no body in the payload, the spend guard refusing — the reply is recorded as `reply_positive`, exactly as before. That over-counts, and flipping it would move every tenant's measured lift on a deploy, silently.
+
+**So it is counted rather than hidden.** Every outcome records whether anybody read the words behind it, and the measurement shows *conversions read of conversions total* beside the lift — on the same screen, not in a footnote, because a caveat nobody reaches is not a disclosure. A program whose number rests on 62% unread replies says so where the number is read. The share falls on its own as providers send bodies and tenants enable the agent layer: nothing to migrate, nothing to announce. Decision 16, closed.
 
 ## The console
 
@@ -414,7 +416,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-609 tests. The runtime's 249 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+616 tests. The runtime's 256 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -455,3 +457,4 @@ What they assert, in the order that matters:
 35. A draft appears in the console's program list, carries an id, and a real browser can click it live.
 36. The review queue carries what every gate said, agrees with the rail's count, and is tenant-scoped.
 37. A real browser opens the queue, approves a draft, and the proposal is decided in Postgres.
+38. An unread reply counts and is marked unread; a read one records who read it; the measurement reports the share and the console renders it beside the lift.

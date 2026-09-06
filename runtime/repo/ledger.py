@@ -58,14 +58,23 @@ def record_cost(cur, tenant_id: str, *, program_id: str | None, kind: str,
 def record_outcome(cur, tenant_id: str, *, enrollment_id: str | None,
                    account_id: str | None, type: str, value_micros: int | None,
                    occurred_at: datetime, source: str,
-                   dedupe_key: str | None = None) -> dict[str, Any] | None:
+                   dedupe_key: str | None = None,
+                   verified_by: str | None = None) -> dict[str, Any] | None:
+    """Record an outcome, and whether anybody read what established it.
+
+    `source` is which provider sent the event. `verified_by` is a different
+    question: whether the words behind it were read. A reply that arrives with
+    no body is a real event from a real provider and still tells us only that
+    a human responded — the measurement needs to know the difference.
+    """
     cur.execute(
         "insert into outcome (tenant_id, enrollment_id, account_id, type, value_micros,"
-        " occurred_at, source, dedupe_key) values (%s,%s,%s,%s,%s,%s,%s,%s)"
+        " occurred_at, source, dedupe_key, verified_by)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s)"
         " on conflict (tenant_id, dedupe_key) where dedupe_key is not null do nothing"
         " returning *",
         (tenant_id, enrollment_id, account_id, type, value_micros, occurred_at,
-         source, dedupe_key),
+         source, dedupe_key, verified_by),
     )
     return one(cur)
 

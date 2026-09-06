@@ -30,6 +30,25 @@ AVG_OPPORTUNITY_EUR = 24_000
 HOLDOUT_CURVE = range(5, 26)
 
 
+def _unverified(cur, program_id: str) -> tuple[int, int]:
+    """Conversions nobody read, and conversions in total.
+
+    A reply that arrives without a body is a real event and tells us only that
+    a human responded. It is still counted — flipping that would move every
+    tenant's measured lift on a deploy, silently — so the share it represents
+    is reported instead of hidden. See decision 16.
+    """
+    cur.execute(
+        "select count(distinct o.enrollment_id) filter (where o.verified_by is null"
+        "   and o.type = 'reply_positive') as unread,"
+        " count(distinct o.enrollment_id) as total"
+        " from enrollment e join outcome o on o.enrollment_id = e.id"
+        " where e.program_id = %s and o.type = any(%s)",
+        (program_id, CONVERSION_TYPES))
+    row = cur.fetchone()
+    return int(row["unread"] or 0), int(row["total"] or 0)
+
+
 def _rates(cur, program_id: str) -> tuple[int, int, int, int]:
     counts = enrollments.variant_counts(cur, program_id)
     cur.execute(
@@ -97,6 +116,7 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
     movement = lift(treat_rate, control_rate) if measurable else {}
     abs_lift = round(movement.get("absolute", 0.0) * 100, 2) if measurable else None
     spend, p95 = _spend_and_latency(cur, program_id)
+    unread, converted_total = _unverified(cur, program_id)
 
     # Pipeline is reported only when the lift clears the effect the sample can
     # detect. A number that reads as a result and is not one is the failure the
@@ -128,6 +148,13 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
         "budget": (spec.get("budget") or {}).get("monthly_credits"),
         "specHash": program["spec_hash"],
         "name": metadata.get("name") or program["key"].replace("-", " ").capitalize(),
+        # How much of this number rests on replies nobody read. Reported rather
+        # than corrected: correcting it silently would move every tenant's
+        # measured lift on a deploy. Decision 16.
+        "unverifiedConversions": unread,
+        "conversions": converted_total,
+        "unverifiedShare": (round(unread / converted_total, 3)
+                            if converted_total else None),
         "enrolled": enrolled, "nTreat": n_treat, "nControl": n_control,
         # Null, not zero. A program with no outcomes has no conversion rate,
         # and rendering one as 0.00% is a measurement the data does not carry.

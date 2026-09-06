@@ -504,6 +504,23 @@ function primaryAction(p){
   return '<button class="btn btn-p" id="activate" data-id="' + p.id + '">Activate</button>';
 }
 
+function unverifiedRow(p){
+  /* What this number rests on. A reply that arrives without a body is a real
+     event and tells us only that a human responded — an unsubscribe written in
+     prose looks exactly like interest. Those still count, deliberately:
+     correcting it silently would move every tenant's measured lift on a
+     deploy. So the share is shown beside the lift rather than mentioned in a
+     footnote nobody reaches. Decision 16. */
+  if (p.unverifiedShare == null) return "";
+  if (!p.unverifiedConversions){
+    return '<dt>Conversions read</dt><dd>all ' + nf(p.conversions) + '</dd>';
+  }
+  var pct = Math.round(p.unverifiedShare * 100);
+  return '<dt>Conversions read</dt><dd class="' + (pct >= 25 ? "hi" : "") + '">'
+    + nf(p.conversions - p.unverifiedConversions) + ' of ' + nf(p.conversions)
+    + ' · ' + pct + '% unread</dd>';
+}
+
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
@@ -528,6 +545,7 @@ function renderDetail(){
       + '<dt>Absolute lift</dt><dd class="hi">' + (d > 0 ? "+" : "") + d.toFixed(2) + ' pp</dd>'
       + '<dt>Minimum detectable effect</dt><dd class="hi">' + p.mde.toFixed(2) + ' pp</dd>'
       + '<dt>Treatment · control</dt><dd>' + nf(p.nTreat) + ' · ' + nf(p.nControl) + '</dd>'
+      + unverifiedRow(p)
       + '<dt>Incremental pipeline</dt><dd>'
         + (ok ? "€" + nf(p.pipeline) : "not reported") + '</dd>'
     + '</dl>'

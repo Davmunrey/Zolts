@@ -214,6 +214,9 @@ def _reply(cur, tenant_id: str, person: dict[str, Any] | None,
            event: dict[str, Any], triage: "Triage | None", result: Applied) -> None:
     """Record what the reply was, rather than assuming it was a win."""
     if triage is None or not triage.usable:
+        # Unchanged, and now counted. Nobody read this reply; the measurement
+        # says how much of the reported lift rests on ones like it rather than
+        # deflating every tenant's number on a deploy.
         _outcome(cur, tenant_id, enrollment_id, "reply_positive", None, occurred,
                  provider, event, result)
         return
@@ -227,7 +230,7 @@ def _reply(cur, tenant_id: str, person: dict[str, Any] | None,
         return
 
     _outcome(cur, tenant_id, enrollment_id, f"reply_{triage.verdict}", None, occurred,
-             provider, event, result)
+             provider, event, result, verified_by="triage")
 
 
 def _opt_out(cur, tenant_id: str, person: dict[str, Any] | None, enrollment_id: str | None,
@@ -287,12 +290,13 @@ def _bounce(cur, tenant_id: str, touch: dict[str, Any] | None,
 
 def _outcome(cur, tenant_id: str, enrollment_id: str | None, outcome_type: str,
              value_micros: int | None, occurred_at: datetime, provider: str,
-             event: dict[str, Any], result: Applied) -> None:
+             event: dict[str, Any], result: Applied,
+             verified_by: str | None = None) -> None:
     # Keyed on the stored event, so a provider retry that reached a second
     # worker cannot record the conversion twice and move the measured lift.
     recorded = ledger.record_outcome(
         cur, tenant_id, enrollment_id=enrollment_id, account_id=None, type=outcome_type,
         value_micros=value_micros, occurred_at=occurred_at, source=provider,
-        dedupe_key=f"{provider}:{event['id']}")
+        dedupe_key=f"{provider}:{event['id']}", verified_by=verified_by)
     if recorded:
         result.effects.append(f"outcome.{outcome_type}")
