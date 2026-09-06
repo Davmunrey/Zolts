@@ -13,7 +13,7 @@ from typing import Any
 
 from runtime.engine import triggers
 from runtime.repo import actions, enrollments
-from zolts import expr
+from zolts import expr, schedule
 
 # Channels the runtime can act on. A step naming anything else is queued as a
 # human task rather than silently skipped, because a skipped step in a
@@ -58,6 +58,53 @@ def idempotency_key(program_key: str, enrollment_id: str, step_key: str) -> str:
     return f"{program_key}/{enrollment_id}/{step_key}"
 
 
+def engagement(cur, enrollment_id: str) -> dict[str, Any]:
+    """What this contact has done so far, for a step to branch on.
+
+    Read from touches and outcomes rather than kept as a counter: a counter is
+    a second source of truth that drifts, and these two tables are already the
+    record an audit reads.
+    """
+    cur.execute(
+        "select count(*) filter (where status = 'opened') as opened,"
+        " count(*) filter (where status = 'replied') as replied,"
+        " count(*) filter (where status = 'bounced') as bounced,"
+        " count(*) filter (where status = 'sent') as sent"
+        " from touch where enrollment_id = %s", (enrollment_id,))
+    touches = cur.fetchone() or {}
+    cur.execute("select count(*) as n from outcome where enrollment_id = %s"
+                " and type = any(%s)",
+                (enrollment_id, ["opp_created", "meeting", "reply_positive"]))
+    converted = int((cur.fetchone() or {}).get("n") or 0)
+
+    opened = int(touches.get("opened") or 0)
+    replied = int(touches.get("replied") or 0)
+    return {
+        "opened": opened, "replied": replied,
+        "bounced": int(touches.get("bounced") or 0),
+        "sent": int(touches.get("sent") or 0),
+        "converted": converted,
+        # The two a play actually branches on, named so a program reads as
+        # English rather than as arithmetic on counters.
+        "has_replied": replied > 0,
+        "has_opened": opened > 0,
+        "no_response": replied == 0 and opened == 0,
+    }
+
+
+def _admits(step: dict[str, Any], scope: dict[str, Any]) -> bool:
+    """Whether a step's own condition lets it run.
+
+    A step with no `when` always runs, which is every step written before this
+    existed. The same evaluator the triggers and exit rules use: a second
+    condition language is a second set of rules to get wrong.
+    """
+    when = step.get("when")
+    if not when:
+        return True
+    return bool(expr.evaluate(when, scope))
+
+
 def plan_next(cur, tenant_id: str, enrollment: dict[str, Any],
               program: dict[str, Any], now: datetime | None = None) -> Planned | None:
     """Queue the enrollment's next step, or return None when the play is done.
@@ -77,11 +124,36 @@ def plan_next(cur, tenant_id: str, enrollment: dict[str, Any],
         enrollments.exit_enrollment(cur, str(enrollment["id"]), "sequence_complete")
         return None
 
+    # Walk past steps this contact's behaviour excludes. A breakup email to
+    # somebody who already replied is the shape of automation a buyer points at
+    # when they say these tools embarrass them.
+    scope = {"engagement": engagement(cur, str(enrollment["id"])),
+             "tier": enrollment["tier"]}
+    skipped = 0
+    while index < len(steps) and not _admits(steps[index], scope):
+        index += 1
+        skipped += 1
+    if skipped:
+        # Advance past them in one write rather than a tick each: a sequence
+        # whose remaining steps are all excluded would otherwise take one tick
+        # per step to notice it had finished. Written before the exit below, so
+        # a record that says "exited at step 1" is not describing an enrollment
+        # that evaluated through step 3.
+        enrollments.advance(cur, str(enrollment["id"]), step_index=index,
+                            state="running", next_run_at=None)
+    if index >= len(steps):
+        enrollments.exit_enrollment(cur, str(enrollment["id"]), "sequence_complete")
+        return None
+
     step = steps[index]
     step_key = step.get("step") or f"step_{index}"
     channel = step.get("channel", "task")
     wait = step.get("wait", "0d")
     scheduled = now + (triggers.parse_duration(wait) if wait else timedelta(0))
+    # Move the send into the program's declared window. It moves; it never
+    # cancels: discarding a step because it fell on a Sunday would throw away
+    # work over a scheduling detail. A program with no window is unaffected.
+    scheduled = schedule.next_open(scheduled, schedule.window_for(spec))
 
     key = idempotency_key(program["key"], str(enrollment["id"]), step_key)
     payload = {

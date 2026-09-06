@@ -173,6 +173,40 @@ Approving queues an action. It does not send: the policy gate still runs on the 
 
 `scripts/browser_console.py` drives a real browser against a real server against a real database: type the URL, get the door, paste the key, click Activate, open the review queue, click Approve — then check in Postgres that the program is live and the proposal decided. It runs in CI.
 
+## What a play can say
+
+Two things a program declares, both versioned configuration and neither a new language (ADR-019).
+
+**A step may branch on what the contact did.**
+
+```yaml
+- step: email_2
+  channel: email
+  wait: 4d
+  when: not engagement.has_replied
+- step: email_3
+  channel: email
+  wait: 6d
+  when: engagement.no_response
+```
+
+`engagement` is read from touches and outcomes rather than from a counter, and carries `has_replied`, `has_opened`, `no_response`, `opened`, `replied`, `bounced`, `sent` and `converted`. The expression language is the one triggers and exit rules already use.
+
+`no_response` is not `not has_replied`. Flattening them sends a breakup to somebody who is reading.
+
+**A program may declare when its steps land.**
+
+```yaml
+schedule:
+  send_window:
+    days: [mon, tue, wed, thu, fri]
+    opens: "08:00"
+    closes: "18:00"
+    timezone: Europe/Madrid
+```
+
+This moves a send; it never cancels one, and never moves one earlier. The window is the customer's local time, so it does not drift across daylight saving. A program that declares none lands wherever its waits land, exactly as before.
+
 ## Reading a reply
 
 Every reply used to be recorded as `reply_positive`. Somebody writing "take me off your list" was counted as a conversion, left contactable, and folded into the reported lift (ADR-016).
@@ -447,7 +481,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-656 tests. The runtime's 296 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+676 tests. The runtime's 302 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -494,3 +528,5 @@ What they assert, in the order that matters:
 41. A tenant at its ceiling holds its work instead of losing it, and a closed period keeps the terms it was sold.
 42. Salesforce follows the page URL the server returns, terminates on a repeated one, and refuses to read without an instance_url.
 43. A boolean opt-out reports OPTED_OUT for true and legitimate interest for false, and never claims to know 'never asked'.
+44. A step whose condition excludes this contact is skipped, and a sequence whose remaining steps are all excluded finishes in one write.
+45. A send lands inside the declared window, is never brought forward, and follows the customer's local time across daylight saving.
