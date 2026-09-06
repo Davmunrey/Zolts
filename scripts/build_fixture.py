@@ -191,21 +191,31 @@ def _prospects() -> dict[str, object]:
         ("Diego Sastre", "diego@kestrel.example", "+34600333444", "Kestrel Data", []),
         ("Eve Lindqvist", None, "+46700555666", "Harbour Systems", ["email"]),
     ]
+    # The last column is the dossier: one complete, one thin because the
+    # verifier struck claims out of it, and two with none. A demo where every
+    # account is researched shows nothing about what researching costs.
     accounts = [
-        ("Northwind Traders", "northwind.example", "ES", "51-200", "62.01", 2, []),
-        ("Vireo Labs", "vireo.example", "FR", "11-50", "72.19", 1, []),
-        ("Kestrel Data", "kestrel.example", "DE", None, None, 1, ["firmographics"]),
-        ("Harbour Systems", "harbour.example", "GB", "201-500", "61.90", 1, []),
+        ("Northwind Traders", "northwind.example", "ES", "51-200", "62.01", 2, [], "complete"),
+        ("Vireo Labs", "vireo.example", "FR", "11-50", "72.19", 1, [], "thin"),
+        ("Kestrel Data", "kestrel.example", "DE", None, None, 1, ["firmographics"], None),
+        ("Harbour Systems", "harbour.example", "GB", "201-500", "61.90", 1, [], None),
     ]
     return {
         "accounts": [{"id": f"acct-{i}", "name": n, "domain": d, "country": c,
                       "employeeBand": b, "industry": ind, "contacts": k,
-                      "missing": m}
-                     for i, (n, d, c, b, ind, k, m) in enumerate(accounts, 1)],
+                      "missing": m, "dossier": dos}
+                     for i, (n, d, c, b, ind, k, m, dos) in enumerate(accounts, 1)],
         "people": [{"id": f"person-{i}", "name": n, "email": e, "phone": ph,
                     "account": a, "country": "ES", "missing": m,
                     "optedOut": n.startswith("Diego")}
                    for i, (n, e, ph, a, m) in enumerate(people, 1)],
+        # One of the two researched accounts has had a signal since, so the
+        # demo shows the number that matters beside the one that flatters.
+        "research": {"accounts": len(accounts),
+                     "withDossier": sum(1 for a in accounts if a[7]),
+                     "stale": 1,
+                     "byState": {"complete": {"count": 1, "stale": 1},
+                                 "thin": {"count": 1, "stale": 0}}},
         "missingCounts": {
             "firmographics": sum(1 for a in accounts if a[6]),
             "email": sum(1 for p in people if "email" in p[4]),

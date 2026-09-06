@@ -853,12 +853,23 @@ function renderProspects(){
   }
 
   var m = P2.missingCounts || {};
+  var R = P2.research || {accounts: 0, withDossier: 0, stale: 0};
   var head = '<div class="row" role="row"><span></span>'
     + '<span class="nm">' + nf(accounts.length) + ' accounts, ' + nf(people.length)
     + ' contacts</span>'
     + '<span class="mono">' + nf(m.email || 0) + ' need email</span>'
     + '<span class="mono">' + nf(m.phone || 0) + ' need phone</span>'
     + '<span class="mono">' + nf(m.firmographics || 0) + ' need firmographics</span>'
+    + '</div>'
+    // Coverage and staleness on one line, because coverage alone lies: a
+    // dossier on every account, all written before this quarter's news, is
+    // full coverage and no knowledge.
+    + '<div class="row" role="row"><span></span>'
+    + '<span class="nm" style="color:var(--ink-secondary)">research</span>'
+    + '<span class="mono">' + nf(R.withDossier || 0) + ' of ' + nf(R.accounts || 0)
+    + ' researched</span>'
+    + '<span class="mono">' + nf(R.stale || 0) + ' stale</span>'
+    + '<span class="mono">20 credits each</span>'
     + '</div>';
 
   var rows = people.map(function(c){
@@ -881,7 +892,8 @@ function renderProspects(){
       + '<span class="nm" style="color:var(--ink-secondary)">' + esc(a.name) + '</span>'
       + '<span class="mono">' + esc(a.domain || "—") + '</span>'
       + '<span class="mono">' + nf(a.contacts) + ' contacts</span>'
-      + '<span class="mono">' + esc(a.missing.join(", ") || "complete") + '</span>'
+      + '<span class="mono">' + esc(a.dossier ? ("dossier " + a.dossier) : "no dossier")
+      + (a.missing.length ? " · " + esc(a.missing.join(", ")) : "") + '</span>'
       + '</div>';
   }).join("");
 
