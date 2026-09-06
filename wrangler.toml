@@ -1,0 +1,12 @@
+# Cloudflare Pages project for the Zolts product surface.
+#
+# Deploy from a local checkout:
+#   npx wrangler pages deploy site --project-name=zolts
+#
+# Or connect the repository in the Cloudflare dashboard with:
+#   Build command:        (none)
+#   Build output:         site
+#   Production branch:    main
+name = "zolts"
+pages_build_output_dir = "site"
+compatibility_date = "2026-09-05"

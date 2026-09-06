@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#08090a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Zolts — Program Console">
+<meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Crect width='18' height='18' rx='4' fill='%237d4bf5'/%3E%3Cpath d='M4 4h10L4 14h10' stroke='white' stroke-width='2' stroke-linecap='square' fill='none'/%3E%3C/svg%3E">
+<title>Zolts — Program Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;450;500&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+<style>
+/* Zolts product surface — implements DESIGN.md.
+   Rebuilt as an operator surface rather than a report. The list is the page:
+   no cards, no metric-tile row, no section headings with subtitles. Content
+   sits on canvas separated by hairlines, the way a tool people live in for
+   eight hours a day is built. Chrome carries the violet accent; it never
+   enters a data region. */
+:root{
+  --canvas:#08090a; --surface-1:#0e1011; --surface-2:#141618; --surface-3:#1a1d1f; --raised:#1f2325;
+  --hairline:#1c1f22; --hairline-strong:#2b2f34;
+  --ink:#f2f4f5; --ink-muted:#c2c8cc; --ink-subtle:#8b9297; --ink-tertiary:#5c6367; --ink-inverse:#fff;
+  --accent:#7d4bf5; --accent-hover:#9670f7; --accent-dim:#1a1230; --accent-ring:#8f66f7;
+  --lift:#3ecf7e; --control:#7d8590; --deny:#f4645a; --review:#d9a441; --live:#3bc4d4;
+  --deny-dim:#331614; --review-dim:#31250e; --lift-dim:#123322;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ease:cubic-bezier(.23,1,.32,1); --ease-in-out:cubic-bezier(.77,0,.175,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+body{
+  margin:0; background:var(--canvas); color:var(--ink); font-family:var(--sans);
+  font-size:13px; line-height:1.5; letter-spacing:-.06px; -webkit-font-smoothing:antialiased;
+}
+.mono,code,pre,.n{font-family:var(--mono); font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+:focus-visible{outline:2px solid var(--accent-ring); outline-offset:1px; border-radius:3px}
+[hidden]{display:none !important}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ── three panes: rail, list, detail. The list is the protagonist. ─────── */
+.app{display:grid; grid-template-columns:216px minmax(0,1fr) 340px; height:100vh; overflow:hidden}
+
+/* ── rail ─────────────────────────────────────────────────────────────── */
+.rail{border-right:1px solid var(--hairline); display:flex; flex-direction:column; padding:10px 8px; gap:18px; overflow-y:auto}
+.ws{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;width:100%;text-align:left;
+    transition:background 90ms var(--ease)}
+
+.ws .glyph{width:18px;height:18px;border-radius:5px;background:var(--accent);display:grid;place-items:center;flex:none}
+.ws .glyph svg{width:11px;height:11px}
+.ws .name{font-weight:550;font-size:13px;letter-spacing:-.2px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws .chev{color:var(--ink-tertiary);flex:none}
+nav{display:flex;flex-direction:column;gap:1px}
+.sec{font-size:11px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);padding:8px 8px 4px}
+nav a{display:flex;align-items:center;gap:8px;height:26px;padding:0 8px;border-radius:5px;
+      color:var(--ink-subtle);text-decoration:none;transition:background 90ms var(--ease),color 90ms var(--ease)}
+
+nav a[aria-current="page"]{background:var(--accent-dim);color:var(--ink)}
+nav svg{width:13px;height:13px;flex:none;opacity:.9}
+nav .c{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-tertiary)}
+.rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding:0 6px}
+.hint{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-tertiary)}
+kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface-2);
+    border:1px solid var(--hairline);border-bottom-width:2px;border-radius:3px;padding:3px 4px}
+
+/* ── centre: filter bar + list, both full-bleed on canvas ─────────────── */
+.centre{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--hairline)}
+.bar{display:flex;align-items:center;gap:8px;height:44px;padding:0 14px;border-bottom:1px solid var(--hairline);flex:none}
+.bar h1{margin:0;font-size:13px;font-weight:550;letter-spacing:-.1px}
+.count{font-family:var(--mono);font-size:11px;color:var(--ink-tertiary)}
+.grow{flex:1}
+.chipbtn{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:5px;
+         font-size:12px;color:var(--ink-subtle);border:1px solid transparent;transition:background 90ms var(--ease)}
+
+.chipbtn[aria-pressed="true"]{background:var(--surface-2);color:var(--ink);border-color:var(--hairline)}
+.chipbtn svg{width:11px;height:11px}
+
+.head{display:grid;grid-template-columns:22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px;
+      gap:12px;align-items:center;height:28px;padding:0 14px;border-bottom:1px solid var(--hairline);
+      font-size:11px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);flex:none}
+.head .r{text-align:right}
+.list{overflow-y:auto;flex:1}
+.row{display:grid;cursor:pointer;grid-template-columns:22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px;
+     gap:12px;align-items:center;height:36px;padding:0 14px;width:100%;text-align:left;
+     border-bottom:1px solid var(--hairline);position:relative;
+     transition:background 90ms var(--ease)}
+
+.row[aria-selected="true"]{background:var(--surface-2)}
+.row[aria-selected="true"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
+.st{width:9px;height:9px;border-radius:50%;flex:none;justify-self:center}
+.st.live{background:var(--lift)}
+.st.paused{background:var(--ink-tertiary)}
+.st.draft{background:transparent;border:1.5px dashed var(--ink-tertiary)}
+.pname{display:flex;flex-direction:column;gap:1px;min-width:0}
+.pname b{font-weight:450;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pname span{font-family:var(--mono);font-size:10.5px;color:var(--ink-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bp{font-family:var(--mono);font-size:11px;color:var(--ink-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .n{font-size:12px;color:var(--ink-muted);text-align:right}
+.lift{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.lift.up{color:var(--lift)} .lift.flat{color:var(--control)} .lift.down{color:var(--deny)} .lift.none{color:var(--ink-tertiary)}
+.sig{justify-self:center;width:14px;height:14px}
+.owner{width:20px;height:20px;border-radius:50%;justify-self:center;display:grid;place-items:center;
+       font-size:9.5px;font-weight:550;color:var(--ink);background:var(--surface-3);border:1px solid var(--hairline)}
+
+/* ── detail: a property list, not a stack of cards ────────────────────── */
+.foot{display:flex;align-items:center;gap:16px;height:30px;padding:0 14px;flex:none;
+      border-top:1px solid var(--hairline);font-size:11.5px;color:var(--ink-tertiary)}
+.foot b{font-family:var(--mono);font-weight:450;color:var(--ink-muted)}
+.detail{display:flex;flex-direction:column;min-width:0;overflow-y:auto}
+.dhead{padding:14px 16px 12px;border-bottom:1px solid var(--hairline)}
+.dhead .k{font-family:var(--mono);font-size:11px;color:var(--ink-tertiary);margin-bottom:6px}
+.dhead h2{margin:0 0 8px;font-size:15px;font-weight:550;letter-spacing:-.3px;line-height:1.25}
+.dactions{display:flex;gap:6px}
+.btn{height:26px;padding:0 10px;border-radius:5px;font-size:12px;font-weight:500;
+     transition:background 90ms var(--ease), transform 160ms var(--ease)}
+.btn:active{transform:scale(.97)}
+.chipbtn:active,.row:active,.pitem:active{transform:scale(.99)}
+.btn-p{background:var(--accent);color:var(--ink-inverse)}
+
+.btn-s{background:var(--surface-2);color:var(--ink);border:1px solid var(--hairline)}
+
+.block{padding:12px 16px;border-bottom:1px solid var(--hairline)}
+.blabel{font-size:11px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);margin-bottom:9px}
+.props{display:grid;grid-template-columns:1fr auto;gap:7px 12px;font-size:12px;align-items:baseline}
+.props dt{color:var(--ink-subtle);min-width:0}
+.props dd{margin:0;font-family:var(--mono);color:var(--ink-muted);text-align:right;white-space:nowrap}
+.props dd.hi{color:var(--ink)}
+.arm{display:grid;grid-template-columns:64px 1fr 54px;gap:9px;align-items:center;font-size:12px;margin-bottom:7px}
+.arm em{font-style:normal;color:var(--ink-subtle)}
+.track{height:4px;border-radius:9999px;background:var(--surface-3);overflow:hidden}
+.track i{display:block;height:100%;width:100%;border-radius:9999px;transform-origin:left;
+         transition:transform 380ms var(--ease)}
+.arm.t .track i{background:var(--lift)} .arm.c .track i{background:var(--control)}
+.arm .v{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.arm.t .v{color:var(--lift)} .arm.c .v{color:var(--control)}
+.note{display:flex;gap:8px;padding:9px 10px;border-radius:5px;font-size:12px;line-height:1.45;margin-top:10px}
+.note svg{width:13px;height:13px;flex:none;margin-top:2px}
+.note.fail{background:var(--deny-dim);color:var(--ink-muted)} .note.fail svg{color:var(--deny)}
+.note.pass{background:var(--lift-dim);color:var(--ink-muted)} .note.pass svg{color:var(--lift)}
+.act{display:grid;grid-template-columns:14px 1fr auto;gap:9px;align-items:baseline;font-size:12px;padding:5px 0;color:var(--ink-subtle)}
+.act time{font-family:var(--mono);font-size:11px;color:var(--ink-tertiary)}
+.act .g{width:6px;height:6px;border-radius:50%;justify-self:center;margin-top:5px}
+
+/* ── command palette ──────────────────────────────────────────────────── */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:start center;padding-top:14vh;z-index:20}
+/* No open animation: ⌘K is a keyboard action run a hundred times a day, and
+   animating it makes the tool feel slower than it is. */
+.pal{width:min(560px,92vw);background:var(--raised);border:1px solid var(--hairline-strong);border-radius:9px;
+     box-shadow:0 18px 48px -14px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.05);overflow:hidden}
+.pal input{width:100%;height:44px;padding:0 14px;background:transparent;border:0;outline:0;
+           color:var(--ink);font:400 14px/1 var(--sans);letter-spacing:-.1px;border-bottom:1px solid var(--hairline)}
+.pal input::placeholder{color:var(--ink-tertiary)}
+.pres{max-height:290px;overflow-y:auto;padding:5px}
+.pgroup{font-size:10.5px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);padding:7px 9px 4px}
+.pitem{display:flex;cursor:pointer;align-items:center;gap:9px;width:100%;height:32px;padding:0 9px;border-radius:5px;
+       text-align:left;color:var(--ink-muted);font-size:13px}
+.pitem[data-on="1"]{background:var(--accent-dim);color:var(--ink)}
+.pitem .pk{font-family:var(--mono);font-size:10.5px;color:var(--ink-tertiary);margin-left:auto}
+.pitem .st{width:7px;height:7px}
+.pempty{padding:16px 10px;color:var(--ink-tertiary);font-size:12.5px}
+
+@media (hover:hover) and (pointer:fine){
+  .ws:hover{background:var(--surface-2)}
+  nav a:hover{background:var(--surface-2);color:var(--ink-muted)}
+  .chipbtn:hover{background:var(--surface-2);color:var(--ink-muted)}
+  .row:hover{background:var(--surface-1)}
+  .btn-p:hover{background:var(--accent-hover)}
+  .btn-s:hover{background:var(--surface-3)}
+}
+
+@media (max-width:1180px){ .app{grid-template-columns:200px minmax(0,1fr)} .detail{display:none} }
+@media (max-width:820px){ .app{grid-template-columns:1fr} .rail{display:none} }
+@media (prefers-reduced-motion:reduce){
+  /* Fewer and gentler, not zero: colour and opacity aid comprehension and
+     stay; movement is what causes sickness, so only that is removed. */
+  .btn:active,.chipbtn:active,.row:active,.pitem:active{transform:none}
+  .track i{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div>
+      <button class="ws">
+        <span class="glyph"><svg viewBox="0 0 18 18" fill="none"><path d="M4 4h10L4 14h10" stroke="#fff" stroke-width="2" stroke-linecap="square"/></svg></span>
+        <span class="name" id="ws-name">Northbeam</span>
+        <svg class="chev" width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2.2 3.6L4.5 5.9 6.8 3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <nav aria-label="Primary">
+      <p class="sec">Run</p>
+      <a href="#" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
+      <p class="sec">Prove</p>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 11V5.5M6.5 11V2M11 11V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Experiments<span class="c" id="nav-experiments">6</span></a>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend</a>
+      <p class="sec">Govern</p>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1.6l4.2 1.9v3.2c0 2.4-1.8 4.1-4.2 4.7-2.4-.6-4.2-2.3-4.2-4.7V3.5l4.2-1.9z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Policy</a>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2.8 2.2h7.4v8.6H2.8z" stroke="currentColor" stroke-width="1.1"/><path d="M4.6 5h3.8M4.6 7.4h2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Audit log</a>
+    </nav>
+
+    <div class="rail-foot">
+      <span class="hint"><kbd>⌘</kbd><kbd>K</kbd> Command</span>
+      <span class="hint"><kbd>J</kbd><kbd>K</kbd> Move</span>
+    </div>
+  </aside>
+
+  <section class="centre">
+    <div class="bar">
+      <h1>Programs</h1>
+      <span class="count" id="shown">7</span>
+      <span class="grow"></span>
+      <button class="chipbtn" id="f-live" aria-pressed="false">
+        <span class="st live" style="width:7px;height:7px"></span>Live only
+      </button>
+      <button class="chipbtn" id="f-sig" aria-pressed="false">
+        <svg viewBox="0 0 11 11" fill="none"><path d="M1.5 8.5l2.4-3.2 2.4 2 3.2-4.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Significant
+      </button>
+      <button class="chipbtn" id="open-pal"><kbd style="border:0;background:none;padding:0;color:var(--ink-tertiary)">⌘K</kbd></button>
+    </div>
+
+    <div class="head" role="row">
+      <span></span><span>Program</span><span>Blueprint</span>
+      <span class="r">Enrolled</span><span class="r">Lift</span><span class="r">Holdout</span>
+      <span class="r">p95</span><span></span>
+    </div>
+    <div class="list" id="list" role="listbox" aria-label="Programs" tabindex="0"
+         aria-activedescendant=""></div>
+    <div class="foot" id="foot"></div>
+  </section>
+
+  <aside class="detail" id="detail"></aside>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="pal" role="dialog" aria-modal="true" data-state="closed"
+       aria-labelledby="pal-title" aria-describedby="pal-desc">
+    <h2 id="pal-title" class="sr">Command palette</h2>
+    <p id="pal-desc" class="sr">Search for a program or a command. Use the arrow keys to move and Enter to run.</p>
+    <input id="q" type="text" placeholder="Jump to a program, or run a command…"
+           autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true"
+           aria-controls="pres" aria-activedescendant="" aria-autocomplete="list">
+    <div class="pres" id="pres" role="listbox" aria-labelledby="pal-title"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* Data comes from the repository, not from this file. build_fixture.py derives
+   every figure from the real programs, blueprints and reference core, so the
+   minimum detectable effect on screen is computed by the same function the test
+   suite covers rather than by a second copy of the formula living here. */
+var D = {"tenant":{"name":"Northbeam","slug":"northbeam","region":"eu","blueprint":"b2b-saas-sales-led"},"queue":{"pending":42,"dead":0},"note":"Generated by scripts/build_fixture.py from the repository's own programs, blueprints and reference core. Observed rates are illustrative; every derived figure is computed.","programs":[{"key":"new-site-and-reputation","version":"1.0.0","blueprint":"local-services-multisite","status":"live","holdout":10.0,"metric":"signed_contract_60d","signals":["local.new_location_detected","local.review_velocity_drop","local.ads_activity_started"],"tiers":["t1","t2"],"autoSend":{"t1":false,"t2":true},"budget":6000,"specHash":"b533364a89adc888","name":"New site and reputation","enrolled":412,"nTreat":371,"nControl":41,"treat":14.6,"ctrl":5.1,"absLift":9.5,"relLift":2.86,"mde":null,"significant":false,"neededHoldout":null,"unresolvedReason":"fewer than 5 conversions in an arm; the baseline is not established","p95":22,"spend":980.4,"pipeline":null,"mdeCurve":{"5":13.81,"6":12.72,"7":11.87,"8":11.19,"9":10.62,"10":10.14,"11":9.73,"12":9.38,"13":9.0,"14":8.73,"15":8.49,"16":8.28,"17":8.09,"18":7.91,"19":7.75,"20":7.61,"21":7.44,"22":7.32,"23":7.21,"24":7.11,"25":7.01}},{"key":"replenishment-winback","version":"1.2.0","blueprint":"ecommerce-dtc","status":"live","holdout":10.0,"metric":"net_revenue_28d","signals":["commerce.replenishment_due","commerce.cart_abandoned"],"tiers":["t1","t2"],"autoSend":{"t1":true,"t2":true},"budget":8000,"specHash":"3c12de132950a26c","name":"Replenishment winback","enrolled":8930,"nTreat":8037,"nControl":893,"treat":21.4,"ctrl":18.8,"absLift":2.6,"relLift":1.14,"mde":3.86,"significant":false,"neededHoldout":28,"unresolvedReason":null,"p95":12,"spend":611.4,"pipeline":null,"mdeCurve":{"5":5.32,"6":4.88,"7":4.54,"8":4.27,"9":4.05,"10":3.86,"11":3.7,"12":3.56,"13":3.44,"14":3.34,"15":3.24,"16":3.16,"17":3.08,"18":3.02,"19":2.95,"20":2.9,"21":2.84,"22":2.8,"23":2.75,"24":2.71,"25":2.68}},{"key":"series-a-hiring-surge","version":"2.1.0","blueprint":"b2b-saas-sales-led","status":"live","holdout":10.0,"metric":"opportunity_created_90d","signals":["funding.round","hiring.role_opened"],"tiers":["t1","t2","t3"],"autoSend":{"t1":false,"t2":true,"t3":false},"budget":40000,"specHash":"1f0a46d4476b7d11","name":"Series A hiring surge","enrolled":1284,"nTreat":1156,"nControl":128,"treat":8.4,"ctrl":3.6,"absLift":4.8,"relLift":2.33,"mde":4.86,"significant":false,"neededHoldout":11,"unresolvedReason":null,"p95":41,"spend":3426.32,"pipeline":null,"mdeCurve":{"5":6.69,"6":6.13,"7":5.7,"8":5.36,"9":5.08,"10":4.86,"11":4.66,"12":4.48,"13":4.33,"14":4.2,"15":4.08,"16":3.98,"17":3.88,"18":3.79,"19":3.71,"20":3.64,"21":3.57,"22":3.52,"23":3.46,"24":3.41,"25":3.36}},{"key":"workspace-expansion-trigger","version":"1.4.0","blueprint":"b2b-saas-plg","status":"live","holdout":15.0,"metric":"paid_conversion_30d","signals":["product.limit_hit","product.multi_user_signup"],"tiers":["t1","t2"],"autoSend":{"t1":false,"t2":true},"budget":12000,"specHash":"1fa40d773438578e","name":"Workspace expansion trigger","enrolled":2140,"nTreat":1819,"nControl":321,"treat":11.9,"ctrl":6.4,"absLift":5.5,"relLift":1.86,"mde":4.15,"significant":true,"neededHoldout":15,"unresolvedReason":null,"p95":9,"spend":842.16,"pipeline":2401080,"mdeCurve":{"5":6.8,"6":6.25,"7":5.81,"8":5.47,"9":5.17,"10":4.94,"11":4.74,"12":4.56,"13":4.41,"14":4.27,"15":4.15,"16":4.05,"17":3.95,"18":3.86,"19":3.78,"20":3.71,"21":3.64,"22":3.58,"23":3.52,"24":3.47,"25":3.42}}],"blueprints":["b2b-enterprise","b2b-saas-plg","b2b-saas-sales-led","ecommerce-dtc","fintech-regulated","healthtech-lifesci","industrial-b2b","local-services-multisite","marketplace-2sided","public-sector","services-agency"],"plannedPrograms":["activation-stall-recovery","champion-job-change","committee-orchestration","competitor-displacement","distributor-coordination","exec-change-entry","first-purchase-nurture","framework-renewal-watch","geo-liquidity-rebalance","in-house-team-build","licence-granted-entry","partner-warm-intro","plant-expansion-entry","proof-of-work-outbound","provider-reactivation","regulatory-deadline-play","renewal-window-expansion","review-recovery","rfp-window","scarce-side-acquisition","tender-response","territory-coverage-sweep","trial-ending-consult","trial-site-activation","vip-retention"],"decisions":{"CA":[{"account":"Vireo Labs","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"voice requires consent, contact holds legitimate_interest"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"DE":[{"account":"Vireo Labs","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.DE.channel_blocked","rationale":"voice is blocked by default in DE"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"ES":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.ES.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"suppression.robinson_list_es","rationale":"contact present on robinson_list_es"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.ES.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"FR":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"GB":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"US":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"voice requires consent, contact holds legitimate_interest"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}]},"jurisdictions":["CA","DE","ES","FR","GB","US"],"assignmentSample":{"entity":"acct-demo-1","bucket":4531,"variant":"treatment"}};
+var P = D.programs;
+
+function sig(p){ return p.significant === true; }
+function nf(n){ return n.toLocaleString("en-US"); }
+
+var ICON_SIG = '<svg viewBox="0 0 14 14" fill="none"><path d="M2.4 7.6l2.6 2.6 6.6-6.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="9.8" r=".7" fill="currentColor"/></svg>';
+
+var state = { sel: (P[0] || {}).key, live: false, onlySig: false, jur: "ES" };
+
+function visible(){
+  return P.filter(function(p){
+    if (state.live && p.status !== "live") return false;
+    if (state.onlySig && !sig(p)) return false;
+    return true;
+  });
+}
+
+/* ── list ──────────────────────────────────────────────────────────── */
+var list = document.getElementById("list");
+function renderList(){
+  var rows = visible();
+  document.getElementById("shown").textContent = rows.length;
+
+  var live = rows.filter(function(p){ return p.status === "live"; });
+  var proven = rows.filter(sig);
+  var enrolled = rows.reduce(function(a, p){ return a + p.enrolled; }, 0);
+  var spend = rows.reduce(function(a, p){ return a + p.spend; }, 0);
+  document.getElementById("foot").innerHTML =
+      '<span><b>' + live.length + '</b> live</span>'
+    + '<span><b>' + proven.length + '</b> with proven lift</span>'
+    + '<span><b>' + nf(enrolled) + '</b> accounts enrolled</span>'
+    + '<span style="margin-left:auto"><b>€' + nf(Math.round(spend)) + '</b> spend, quarter to date</span>';
+  list.innerHTML = "";
+  rows.forEach(function(p, i){
+    var d = p.absLift;
+    var cls = d == null ? "none" : p.significant ? "up" : d > 0 ? "flat" : "down";
+    var b = document.createElement("div");
+    b.className = "row";
+    b.id = "row-" + p.key;
+    b.setAttribute("role", "option");
+    b.setAttribute("aria-selected", String(p.key === state.sel));
+    b.dataset.k = p.key;
+    b.innerHTML =
+      '<span class="st ' + p.status + '" title="' + p.status + '"></span>'
+    + '<span class="pname"><b>' + p.name + '</b><span>' + p.key + ' · v' + p.version + '</span></span>'
+    + '<span class="bp">' + (p.blueprint || "—") + '</span>'
+    + '<span class="n">' + (p.enrolled ? nf(p.enrolled) : "—") + '</span>'
+    + '<span class="lift ' + cls + '">' + (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2) + " pp") + '</span>'
+    + '<span class="n">' + p.holdout + '%</span>'
+    + '<span class="n">' + (p.p95 == null ? "—" : p.p95 + " m") + '</span>'
+    + '<span class="sig" style="color:' + (d == null ? "var(--ink-tertiary)" : sig(p) ? "var(--lift)" : "var(--review)") + '">'
+      + (d == null ? "" : sig(p) ? ICON_SIG : ICON_UND) + '</span>';
+    b.addEventListener("click", function(){ state.sel = p.key; renderList(); renderDetail(); });
+    list.appendChild(b);
+  });
+  // The listbox owns focus and names its active option, so a screen reader
+  // announces the selection without every row being a tab stop.
+  list.setAttribute("aria-activedescendant", rows.length ? "row-" + state.sel : "");
+}
+
+/* ── chrome ────────────────────────────────────────────────────────── */
+// The rail carried fixed counts from the design pass. On a live tenant a
+// wrong number is worse than no number, because it is one a customer acts on.
+function renderChrome(){
+  function put(id, value){
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (value == null){ el.remove(); return; }
+    el.textContent = nf(value);
+  }
+  var t = D.tenant;
+  if (t && t.name) document.getElementById("ws-name").textContent = t.name;
+  put("nav-programs", P.length);
+  // Distinct trigger signals armed across every live program: what the tenant
+  // is actually listening for, not a catalogue size.
+  var signals = {};
+  P.forEach(function(p){ (p.signals || []).forEach(function(s){ if (s) signals[s] = 1; }); });
+  put("nav-signals", Object.keys(signals).length);
+  put("nav-review", D.queue ? D.queue.pending : null);
+  put("nav-experiments", P.filter(function(p){ return p.holdout > 0; }).length);
+}
+
+/* ── detail ────────────────────────────────────────────────────────── */
+var detail = document.getElementById("detail");
+function renderDetail(){
+  var p = P.find(function(x){ return x.key === state.sel; });
+  if (!p){ detail.innerHTML = ""; return; }
+  var has = p.treat != null, d = p.absLift, ok = p.significant;
+  var resolvable = has && d != null && p.mde != null;
+
+  var evidence = !resolvable
+    ? '<p style="margin:0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">'
+      + (p.unresolvedReason
+           // Say why. A bare dash reads as a rendering fault, and an operator
+           // who cannot tell "not yet" from "broken" stops trusting the screen.
+           ? 'No effect resolvable: ' + p.unresolvedReason + '.'
+           : 'No enrollments yet. Evidence appears once the control group fills.')
+      + '</p>'
+    : '<div class="arm t"><em>Treatment</em><span class="track"><i style="transform:scaleX('
+        + Math.min(1, p.treat / 25).toFixed(3) + ')"></i></span><span class="v">'
+        + p.treat.toFixed(2) + '%</span></div>'
+    + '<div class="arm c"><em>Control</em><span class="track"><i style="transform:scaleX('
+        + Math.min(1, p.ctrl / 25).toFixed(3) + ')"></i></span><span class="v">'
+        + p.ctrl.toFixed(2) + '%</span></div>'
+    + '<dl class="props" style="margin-top:11px">'
+      + '<dt>Absolute lift</dt><dd class="hi">' + (d > 0 ? "+" : "") + d.toFixed(2) + ' pp</dd>'
+      + '<dt>Minimum detectable effect</dt><dd class="hi">' + p.mde.toFixed(2) + ' pp</dd>'
+      + '<dt>Treatment · control</dt><dd>' + nf(p.nTreat) + ' · ' + nf(p.nControl) + '</dd>'
+      + '<dt>Incremental pipeline</dt><dd>'
+        + (ok ? "€" + nf(p.pipeline) : "not reported") + '</dd>'
+    + '</dl>'
+    + '<div class="note ' + (ok ? "pass" : "fail") + '">'
+      + (ok ? ICON_SIG : ICON_UND)
+      + '<span>' + (ok
+          ? 'Lift clears the detectable effect. <b style="color:var(--ink)">€' + nf(p.pipeline)
+            + '</b> reported as incremental against a concurrent control.'
+          : 'Lift sits below what this design can resolve, so it is not reported as '
+            + 'incremental. A <b style="color:var(--ink)">' + (p.neededHoldout || "larger")
+            + '%</b> holdout would resolve it at this sample size.')
+      + '</span></div>';
+
+  var trace = (D.decisions[state.jur] || []).map(function(r){
+    return '<div class="act"><span class="g" style="background:var(--'
+         + (r.decision === "allow" ? "lift" : "deny") + ')"></span>'
+         + '<span>' + r.account + ' · <span class="mono" style="font-size:11px">'
+         + r.channel + '</span></span>'
+         + '<time>' + r.rule + '</time></div>';
+  }).join("");
+
+  detail.innerHTML =
+    '<div class="dhead">'
+      + '<div class="k">' + p.key + ' · v' + p.version + ' · ' + p.specHash + '</div>'
+      + '<h2>' + p.name + '</h2>'
+      + '<div class="dactions"><button class="btn btn-p">Publish</button>'
+      + '<button class="btn btn-s">Open in editor</button></div>'
+    + '</div>'
+    + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
+    + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
+      + '<dt>Status</dt><dd class="hi">' + p.status + '</dd>'
+      + '<dt>Blueprint</dt><dd>' + p.blueprint + '</dd>'
+      + '<dt>Primary metric</dt><dd>' + p.metric + '</dd>'
+      + '<dt>Holdout</dt><dd class="hi">' + p.holdout + '%</dd>'
+      + '<dt>Enrolled</dt><dd>' + (p.enrolled ? nf(p.enrolled) : "—") + '</dd>'
+      + '<dt>Signal → action p95</dt><dd>' + (p.p95 == null ? "—" : p.p95 + " min") + '</dd>'
+      + '<dt>Spend (QTD)</dt><dd>€' + p.spend.toFixed(2) + '</dd>'
+      + '<dt>Monthly budget</dt><dd>' + nf(p.budget) + ' credits</dd>'
+    + '</dl></div>'
+    + '<div class="block"><div class="blabel">Triggers</div><dl class="props">'
+      + p.signals.map(function(sg){
+          return '<dt style="font-family:var(--mono);font-size:11.5px">' + sg + '</dt>'
+               + '<dd>armed</dd>'; }).join("")
+    + '</dl></div>'
+    + '<div class="block" style="border-bottom:0">'
+      + '<div class="blabel" style="display:flex;align-items:center;gap:8px">Policy decisions'
+      + '<span class="seg" style="margin-left:auto" id="jur">'
+      + D.jurisdictions.map(function(j){
+          return '<button data-j="' + j + '" aria-pressed="' + (j === state.jur) + '">'
+               + j + '</button>'; }).join("")
+      + '</span></div>' + trace
+      + '<p style="margin:10px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
+      + 'Evaluated by the policy engine, not transcribed. Switching jurisdiction '
+      + 'replays the same actions against that pack.</p>'
+    + '</div>';
+
+  var seg = document.getElementById("jur");
+  if (seg) seg.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-j]");
+    if (!b) return;
+    state.jur = b.dataset.j;
+    renderDetail();
+  });
+}
+
+/* ── filters ───────────────────────────────────────────────────────── */
+function toggle(id, key){
+  var b = document.getElementById(id);
+  b.addEventListener("click", function(){
+    state[key] = !state[key];
+    b.setAttribute("aria-pressed", String(state[key]));
+    var rows = visible();
+    if (rows.length && !rows.some(function(p){ return p.key === state.sel; })) state.sel = rows[0].key;
+    renderList(); renderDetail();
+  });
+}
+toggle("f-live", "live");
+toggle("f-sig", "onlySig");
+
+/* ── keyboard: j/k move, enter opens, ⌘K palette ───────────────────── */
+function move(step){
+  var rows = visible();
+  if (!rows.length) return;
+  var i = rows.findIndex(function(p){ return p.key === state.sel; });
+  state.sel = rows[Math.max(0, Math.min(rows.length - 1, (i < 0 ? 0 : i) + step))].key;
+  renderList(); renderDetail();
+  var el = list.querySelector('[aria-selected="true"]');
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+var scrim = document.getElementById("scrim"),
+    q = document.getElementById("q"),
+    pres = document.getElementById("pres"),
+    palIndex = 0, palItems = [];
+
+var lastFocus = null;
+var appEl = document.querySelector(".app");
+
+function palOpen(){
+  lastFocus = document.activeElement;
+  scrim.hidden = false;
+  scrim.querySelector(".pal").dataset.state = "open";
+  document.body.style.overflow = "hidden";        // scroll lock
+  appEl.setAttribute("aria-hidden", "true");      // background out of the a11y tree
+  appEl.setAttribute("inert", "");
+  q.value = ""; palIndex = 0; palRender(); q.focus();
+}
+
+function palClose(){
+  scrim.hidden = true;
+  scrim.querySelector(".pal").dataset.state = "closed";
+  document.body.style.overflow = "";
+  appEl.removeAttribute("aria-hidden");
+  appEl.removeAttribute("inert");
+  // Focus returns where it came from; losing it to <body> strands keyboard users.
+  if (lastFocus && lastFocus.focus) lastFocus.focus();
+  lastFocus = null;
+}
+
+function palRender(){
+  var term = q.value.trim().toLowerCase();
+  var progs = P.filter(function(p){
+    return !term || p.name.toLowerCase().indexOf(term) > -1 || p.key.indexOf(term) > -1 || p.blueprint.indexOf(term) > -1;
+  });
+  var cmds = [
+    { label: "Toggle live only", key: "L", run: function(){ document.getElementById("f-live").click(); } },
+    { label: "Toggle significant only", key: "S", run: function(){ document.getElementById("f-sig").click(); } },
+    { label: "New program from blueprint", key: "N", run: function(){} }
+  ].filter(function(c){ return !term || c.label.toLowerCase().indexOf(term) > -1; });
+
+  palItems = progs.map(function(p){ return { kind: "p", p: p }; })
+    .concat(cmds.map(function(c){ return { kind: "c", c: c }; }));
+  if (palIndex >= palItems.length) palIndex = Math.max(0, palItems.length - 1);
+
+  var html = "";
+  if (progs.length){
+    html += '<div class="pgroup">Programs</div>';
+    progs.forEach(function(p){
+      var i = palItems.findIndex(function(x){ return x.kind === "p" && x.p.key === p.key; });
+      html += '<div class="pitem" role="option" id="pal-' + i + '" data-i="' + i + '"'
+            + ' aria-selected="' + (i === palIndex) + '" data-on="' + (i === palIndex ? 1 : 0) + '">'
+            + '<span class="st ' + p.status + '"></span><span>' + p.name + '</span>'
+            + '<span class="pk">' + p.blueprint + '</span></div>';
+    });
+  }
+  if (cmds.length){
+    html += '<div class="pgroup">Commands</div>';
+    cmds.forEach(function(c){
+      var i = palItems.findIndex(function(x){ return x.kind === "c" && x.c.label === c.label; });
+      html += '<div class="pitem" role="option" id="pal-' + i + '" data-i="' + i + '"'
+            + ' aria-selected="' + (i === palIndex) + '" data-on="' + (i === palIndex ? 1 : 0) + '">'
+            + '<span style="width:7px"></span><span>' + c.label + '</span>'
+            + '<span class="pk">' + c.key + '</span></div>';
+    });
+  }
+  pres.innerHTML = html || '<div class="pempty" role="status">No match for “' + q.value + '”</div>';
+  q.setAttribute("aria-activedescendant", palItems.length ? "pal-" + palIndex : "");
+  var active = pres.querySelector('[data-on="1"]');
+  if (active) active.scrollIntoView({ block: "nearest" });
+}
+
+function palRun(){
+  var it = palItems[palIndex];
+  if (!it) return;
+  if (it.kind === "p"){ state.sel = it.p.key; state.live = false; state.onlySig = false;
+    document.getElementById("f-live").setAttribute("aria-pressed", "false");
+    document.getElementById("f-sig").setAttribute("aria-pressed", "false");
+    renderList(); renderDetail(); }
+  else it.c.run();
+  palClose();
+}
+
+q.addEventListener("input", function(){ palIndex = 0; palRender(); });
+pres.addEventListener("click", function(e){
+  var b = e.target.closest(".pitem"); if (!b) return;
+  palIndex = +b.dataset.i; palRun();
+});
+document.getElementById("open-pal").addEventListener("click", palOpen);
+scrim.addEventListener("click", function(e){ if (e.target === scrim) palClose(); });
+
+document.addEventListener("keydown", function(e){
+  var open = !scrim.hidden;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k"){ e.preventDefault(); open ? palClose() : palOpen(); return; }
+  if (open){
+    if (e.key === "Tab"){ e.preventDefault(); q.focus(); return; }  // focus trap
+    if (e.key === "Escape"){ palClose(); }
+    else if (e.key === "ArrowDown"){ e.preventDefault(); palIndex = Math.min(palItems.length - 1, palIndex + 1); palRender(); }
+    else if (e.key === "ArrowUp"){ e.preventDefault(); palIndex = Math.max(0, palIndex - 1); palRender(); }
+    else if (e.key === "Enter"){ e.preventDefault(); palRun(); }
+    return;
+  }
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); move(1); }
+  else if (e.key === "k" || e.key === "ArrowUp"){ e.preventDefault(); move(-1); }
+});
+
+renderChrome();
+
+renderList();
+renderDetail();
+})();
+</script>
+</body>
+</html>

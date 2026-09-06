@@ -7,6 +7,7 @@ kind: Program
 metadata:
   key: replenishment-winback
   version: 1.2.0
+  name: Replenishment winback
   blueprint: ecommerce-dtc
 spec:
   trigger:

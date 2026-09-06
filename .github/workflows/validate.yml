@@ -8,23 +8,58 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # The runtime tests need a real Postgres. They are skipped rather than
+    # faked when one is absent, so without this service CI would go green
+    # having verified none of the isolation properties.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: zolts
+          POSTGRES_PASSWORD: zolts
+          POSTGRES_DB: zolts
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+
+    env:
+      PYTHONPATH: .
+      ZOLTS_TEST_DATABASE_URL: postgresql://zolts:zolts@127.0.0.1:5432/zolts
+      ZOLTS_TEST_APP_DATABASE_URL: postgresql://zolts_app:zolts_app@127.0.0.1:5432/zolts
+
     steps:
       - uses: actions/checkout@v5        # v4 targets the deprecated Node 20
       - uses: actions/setup-python@v6    # v5 targets the deprecated Node 20
         with:
           python-version: '3.11'
       - run: pip install pyyaml jsonschema pytest
+      - run: pip install -r runtime/requirements.txt
+
+      - name: Create the non-owning application role
+        run: |
+          psql "$ZOLTS_TEST_DATABASE_URL" -c \
+            "create role zolts_app login password 'zolts_app'"
       - name: Validate GTM programs against the JSON Schema
         run: python3 scripts/validate.py
-      - name: Run the reference core test suite
+      - name: Run the test suite
         run: python3 -m pytest tests/ -q
-        env:
-          PYTHONPATH: .
+
       - name: Run declarative program tests
         run: python3 scripts/run_program_tests.py
-        env:
-          PYTHONPATH: .
+      - name: Check the built site is in sync with its source
+        run: |
+          python3 scripts/build_site.py
+          git diff --exit-code -- site vercel.json \
+            || { echo "::error::site/ is stale — run PYTHONPATH=. python3 scripts/build_site.py and commit"; exit 1; }
+
       - name: Benchmark the waterfall optimiser
         run: python3 scripts/benchmark_waterfall.py
+
+      - name: Smoke the runtime end to end
+        run: python3 scripts/smoke_runtime.py
         env:
-          PYTHONPATH: .
+          ZOLTS_DATABASE_URL: postgresql://zolts:zolts@127.0.0.1:5432/zolts
+          ZOLTS_APP_DATABASE_URL: postgresql://zolts_app:zolts_app@127.0.0.1:5432/zolts
+          ZOLTS_SECRET_KEY: ci-only-not-a-real-key

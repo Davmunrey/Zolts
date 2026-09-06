@@ -133,10 +133,9 @@ motion:
   duration-fast: 150ms
   duration-base: 220ms
   duration-slow: 380ms
-  ease-out: cubic-bezier(0.22, 1, 0.36, 1)
-  ease-in-out: cubic-bezier(0.65, 0, 0.35, 1)
-  spring-gentle: linear(0, 0.35, 0.79, 0.96, 1.02, 1.01, 1)
-  stagger-row: 24ms
+  ease-out: cubic-bezier(0.23, 1, 0.32, 1)
+  ease-in-out: cubic-bezier(0.77, 0, 0.175, 1)
+  press-scale: 0.97
 
 components:
   button-primary:
@@ -257,30 +256,74 @@ Display weights sit at 550–560, never 700. Negative tracking is applied aggres
 
 ### Density
 
-This is a professional tool used for hours. Rows are 32–36px, not 52px. Sidebar items are 28px. The default table is comfortable at 13px, not 16px.
+This is a professional tool used for hours. Rows are 32–36px, not 52px. Rail items are 26px. The default table is comfortable at 13px, not 16px.
 
 Density is not the absence of space — it is space spent on separation between *groups* rather than padding inside every element.
+
+## Layout: the list is the page
+
+A product surface is scanned and operated, not read top to bottom, and the fastest way to make one read as a generic template is to compose it from widgets. Four rules keep it from happening.
+
+**No metric-tile row.** A row of large numbers across the top is the single most recognisable signature of a generated dashboard, and it puts the least actionable information in the most valuable position. Totals belong in a status strip at the foot of the list, where they summarise what is above them.
+
+**Not everything is a card.** Content sits directly on `{colors.canvas}` separated by hairlines. Border, fill, radius and shadow each say "separate object" and are spent by role: the command palette floats, so it is lifted; a table is not an object on the page, it *is* the page.
+
+**No section heading with a subtitle.** `<h2>Title</h2><p>Explanatory sentence</p>` on every block is documentation furniture. Product surfaces use an uppercase label at `{typography.eyebrow}` and nothing else; the context comes from the bar above.
+
+**Three panes: rail, list, detail.** Navigation on the left, the working set in the middle at full bleed, properties on the right as a label/value list. The detail pane is a property list, never a stack of small cards.
+
+## Keyboard
+
+A tool people live in is driven from the keyboard, and the affordances have to be visible or they do not exist.
+
+- `⌘K` opens the command palette: jump to any object, run any command. It is the only element permitted a drop shadow.
+- `J` / `K` move the selection; arrow keys do the same for anyone who does not know the convention.
+- `Enter` opens, `Esc` closes.
+- Shortcut hints sit permanently at the foot of the rail, set in `kbd` at 10px.
+- Selection is a 2px `{colors.accent}` left rail plus a surface lift — never a filled row, which would compete with the data.
 
 ## Motion
 
 Motion exists to explain a state change. If a viewer cannot say what a transition told them, it should not ship.
 
-| Situation | Duration | Easing |
+### The first question is whether to animate at all
+
+Frequency decides, not taste. An animation the operator sees a hundred times a day is a hundred small delays.
+
+| How often it is seen | Decision |
+|---|---|
+| 100+ times a day — the command palette, selection movement, keyboard shortcuts | **No animation. Ever.** |
+| Tens of times a day — hover, filter toggles | Reduce to 90ms, colour only |
+| Occasional — a drawer, a confirmation, a published version | Standard animation |
+| Rare — onboarding, a first successful program | Delight is affordable |
+
+**Keyboard-initiated actions are never animated.** `⌘K` opens the palette instantly, with no fade and no scale. This is the single rule most often broken by interfaces that feel slow despite being fast: the animation is charged to the user on every repetition, and the palette is the most repeated action in the product.
+
+### Durations and curves
+
+| Situation | Duration | Curve |
 |---|---|---|
-| Hover, focus, colour shift | `{motion.duration-instant}` 90ms | `{motion.ease-out}` |
-| Popover, tooltip, chip appear | `{motion.duration-fast}` 150ms | `{motion.ease-out}` |
-| Panel, drawer, tab content | `{motion.duration-base}` 220ms | `{motion.ease-out}` |
-| Number counting to a new value | `{motion.duration-slow}` 380ms | `{motion.ease-out}` |
-| Drawer and sheet gestures | — | `{motion.spring-gentle}` |
+| Hover, focus, colour shift | 90ms | `{motion.ease-out}` |
+| Press feedback | 160ms | `{motion.ease-out}` |
+| Popover, chip appear | 150ms | `{motion.ease-out}` |
+| Panel, drawer, tab content | 220ms | `{motion.ease-out}` |
+| A value moving to a new position | 380ms | `{motion.ease-out}` |
+| Something moving across the screen | 300ms | `{motion.ease-in-out}` |
 
-Rules:
+Custom curves only. `cubic-bezier(.23, 1, .32, 1)` for ease-out and `cubic-bezier(.77, 0, .175, 1)` for ease-in-out; the built-in CSS keywords are too weak to read as intentional.
 
-- **Enter with movement, exit without.** Entering elements translate 4–8px and fade in; exiting elements fade only. An exit that animates position makes the interface feel slow, because the user has already decided.
-- **Stagger lists at `{motion.stagger-row}` 24ms**, capped at eight rows. Beyond eight it stops reading as choreography and starts reading as lag.
-- **Never animate `width`, `height`, `top` or `left`.** `transform` and `opacity` only.
-- **Numbers count up; they never crossfade.** A metric changing from 1.4× to 2.1× interpolates through the values, because the movement is the information.
-- **Honour `prefers-reduced-motion`**: all durations collapse to 0ms and transforms are removed. Never merely shortened.
-- The only continuous animation permitted is the live-latency pulse, and it is a 2px dot at `{colors.data-live}`, nothing more.
+**Never `ease-in` on UI.** It delays the first movement — the exact moment the user is watching hardest — so a 300ms `ease-in` dropdown *feels* slower than a 300ms `ease-out` one.
+
+### Rules
+
+- **Enter with movement, exit without.** Entering elements translate 4–8px and fade; exiting elements fade only. The user has already decided, so an animated exit only costs them time.
+- **Only `transform` and `opacity`.** Both skip layout and paint and run on the GPU. A progress bar animates `transform: scaleX()` with `transform-origin: left`, never `width`.
+- **Every pressable element scales to `0.97` on `:active`.** Without it the surface never confirms it heard the click.
+- **Never animate from `scale(0)`.** Nothing in the real world appears from nothing; start at `0.95` with opacity.
+- **Transitions, not keyframes, for anything triggered rapidly.** Transitions retarget from their current position; keyframes restart from zero.
+- **Gate every hover behind `@media (hover: hover) and (pointer: fine)`.** Touch devices fire hover on tap and the state sticks after the finger lifts.
+- **`prefers-reduced-motion` means fewer and gentler, not none.** Colour and opacity transitions aid comprehension and stay. Movement is what causes sickness, so only movement is removed.
+- The only continuous animation permitted is the live-latency pulse, and it is a 2px dot at `{colors.data-live}`.
 
 ## Components
 
@@ -301,6 +344,33 @@ Rules:
 **`code-block`** — Recessed to `{colors.canvas}`, `{typography.mono}`. Used for program YAML and execution traces. Recessed, not raised: code is the substrate, not an object on top of the page.
 
 **`data-row`** — 34px, transparent, hairline bottom rule. Hover lifts to `{colors.surface-2}` at 90ms. Selection is a 2px `{colors.ink}` left border, never a fill.
+
+## Interaction contracts
+
+Visual language is the easy half. The half that decides whether a keyboard or screen-reader user can operate the product at all is a set of contracts, and every one of them is invisible when correct. These follow the Radix Primitives model; the vanilla implementation in `design/console.html` is the reference.
+
+### Lists
+
+A selectable list is a `listbox` whose **options are not interactive widgets**. `role="option"` on a `<button>` is invalid — an option cannot itself be a control, and making every row focusable produces one tab stop per row, which turns a 200-row list into a keyboard trap.
+
+The correct shape is **active descendant**: the container is the single tab stop, holds `role="listbox"` and `tabindex="0"`, and names the current option through `aria-activedescendant`. Rows are plain elements carrying `role="option"`, a stable `id` and `aria-selected`. Arrow keys and `J`/`K` move the pointer; focus never leaves the container.
+
+### The command palette
+
+It is a `dialog` containing a `combobox`, and both halves have obligations.
+
+| Contract | Why it is not optional |
+|---|---|
+| `aria-labelledby` and `aria-describedby` on the dialog | A dialog with no accessible name is announced as "dialog", which tells the user nothing. Both targets are visually hidden. |
+| Input carries `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"` | Without them the results are an unannounced div; the user types into a box and hears nothing change. |
+| Input's `aria-activedescendant` points at the highlighted result | This is what makes arrow keys legible to a screen reader while focus stays in the input. |
+| Focus trapped in the input, `Tab` intercepted | Focus escaping to the page behind an open modal is the most common overlay bug there is. |
+| Focus returned to the trigger on close | Losing focus to `<body>` strands a keyboard user at the top of the document. |
+| `inert` and `aria-hidden` on the background | Otherwise the content behind the modal stays reachable and readable. |
+| Scroll lock on `<body>` | The page scrolling behind an open dialog breaks the sense that it is modal. |
+| `data-state="open" \| "closed"` on the dialog | State belongs in an attribute, not an ad-hoc class, so styling and testing read the same source. |
+
+None of these change a single pixel. That is the point: they are the difference between a surface that looks operable and one that is.
 
 ## Accessibility
 

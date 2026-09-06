@@ -1,0 +1,10 @@
+"""The execution engine.
+
+The path a signal takes: `triggers` decides whether it matches a live program,
+`enroll` creates the enrollment and assigns the holdout variant, `planner`
+turns the enrollment's position in the play into the next action, `gate`
+decides whether that action is permitted, and `worker` carries it out.
+
+Every decision the engine makes comes from `zolts/`. This package contributes
+the I/O and the ordering, never the rules.
+"""

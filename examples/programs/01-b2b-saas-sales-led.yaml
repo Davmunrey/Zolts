@@ -6,6 +6,7 @@ kind: Program
 metadata:
   key: series-a-hiring-surge
   version: 2.1.0
+  name: Series A hiring surge
   owner: gtm-eng@company.com
   blueprint: b2b-saas-sales-led
   description: Recent Series A plus RevOps/Data roles opened => multithreaded outbound
