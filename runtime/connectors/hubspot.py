@@ -18,7 +18,12 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from runtime.connectors.base import PermanentError, Request, Result
+from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
 from runtime.connectors.http import body, request
+
+
+def _truthy(value: Any) -> bool:
+    return str(value).lower() in {"true", "yes", "1"}
 
 BASE = "https://api.hubapi.com"
 
@@ -93,17 +98,46 @@ class HubSpotConnector:
         results = body(response).get("results") or []
         return str(results[0]["id"]) if results else None
 
-    # -- inbound ---------------------------------------------------------
+    # -- inbound: the CRM contract ---------------------------------------
 
-    def companies(self, token: str, *, limit: int = 100) -> Iterator[dict[str, Any]]:
-        yield from self._paged(token, "companies",
-                               ["name", "domain", "country", "numberofemployees", "industry"],
-                               limit)
+    capabilities = Capabilities(
+        provider="hubspot", reads_accounts=True, reads_contacts=True,
+        reads_opt_out=True, writes_tasks=True, page_size=100,
+        caveats=("employee count is a raw number, not a band; it is stored as an "
+                 "attribute rather than mapped to one",))
 
-    def contacts(self, token: str, *, limit: int = 100) -> Iterator[dict[str, Any]]:
-        yield from self._paged(token, "contacts",
-                               ["email", "firstname", "lastname", "jobtitle", "country",
-                                "hs_email_optout", "associatedcompanyid"], limit)
+    def accounts(self, credential: str) -> Iterator[CrmAccount]:
+        for company in self._paged(credential, "companies",
+                                   ["name", "domain", "country", "numberofemployees",
+                                    "industry"], self.capabilities.page_size):
+            props = company.get("properties") or {}
+            name = props.get("name") or props.get("domain")
+            if not name:
+                continue
+            yield CrmAccount(
+                external_id=str(company.get("id")), name=name,
+                domain=props.get("domain"), country=props.get("country"),
+                industry=props.get("industry"),
+                attributes={"employees": props.get("numberofemployees")})
+
+    def contacts(self, credential: str) -> Iterator[CrmContact]:
+        for contact in self._paged(credential, "contacts",
+                                   ["email", "firstname", "lastname", "jobtitle", "country",
+                                    "hs_email_optout", "associatedcompanyid"],
+                                   self.capabilities.page_size):
+            props = contact.get("properties") or {}
+            email = props.get("email")
+            if not email:
+                continue
+            name = " ".join(p for p in (props.get("firstname"), props.get("lastname")) if p)
+            company = props.get("associatedcompanyid")
+            yield CrmContact(
+                external_id=str(contact.get("id")), email=email,
+                full_name=name or None, title=props.get("jobtitle"),
+                country=props.get("country"),
+                account_external_id=str(company) if company else None,
+                consent=(Consent.OPTED_OUT if _truthy(props.get("hs_email_optout"))
+                         else Consent.ALLOWED))
 
     def _paged(self, token: str, object_type: str, properties: list[str],
                limit: int) -> Iterator[dict[str, Any]]:

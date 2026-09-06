@@ -241,6 +241,7 @@ Usage rule: do not answer everything. Answer the 🔴, strike through the defaul
 | 10 | **E8** training on customer data or not | A sales argument or an asset given away; not both |
 | 11 | ~~**I10** Act 2 anchor~~ | **Closed: hybrid floor plus lift bonus** |
 | 12 | **B7/B8** paid pilot with signed criteria | Determines whether phase 1 feedback is real or polite |
+| 13 | **C1** unified CRM API vendor, or native connectors only | Default: buy the long tail once a prospect needs a third CRM. Native stays for the entry segment, because opt-out state is what unified APIs normalise worst. See ADR-013 |
 
 ## Five actions for this week, independent of everything above
 

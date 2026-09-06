@@ -1,5 +1,9 @@
 """Pulling a CRM into the canonical entities.
 
+Provider-agnostic. It takes a `CrmSource` and knows nothing about whose CRM it
+is reading — the previous version had eleven HubSpot field names compiled into
+it, which made "connect a second CRM" mean "write a second sync".
+
 A sync is not an import: it runs repeatedly, and the second run must produce no
 new rows. Every write goes through the repository upserts, which key on domain
 and email, so re-running is a no-op rather than a duplication.
@@ -15,25 +19,26 @@ timeout instead of restarted.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from runtime.connectors.hubspot import HubSpotConnector
+from runtime.connectors.crm import Consent, CrmSource, consent_state, get_source
 from runtime.db import Database
 from runtime.repo import entities, ledger
 
 
 @dataclass
 class SyncReport:
+    provider: str = ""
     accounts: int = 0
     people: int = 0
     links: int = 0
     skipped: int = 0
-
-
-def _opted_out(properties: dict[str, Any]) -> bool:
-    value = properties.get("hs_email_optout")
-    return str(value).lower() in {"true", "yes", "1"}
+    # Contacts whose CRM could not say whether they had opted out. They are
+    # stored, and they are unreachable until somebody establishes a basis.
+    consent_unknown: int = 0
+    opted_out: int = 0
+    caveats: list[str] = field(default_factory=list)
 
 
 def _batched(items: Iterable[Any], size: int) -> Iterator[list[Any]]:
@@ -47,71 +52,83 @@ def _batched(items: Iterable[Any], size: int) -> Iterator[list[Any]]:
         yield batch
 
 
-def _sync_companies(db: Database, tenant_id: str, connector: HubSpotConnector, token: str,
-                    report: SyncReport, limit: int, batch_size: int) -> dict[str, str]:
-    crm_to_account: dict[str, str] = {}
-    for page in _batched(connector.companies(token, limit=limit), batch_size):
+def _sync_accounts(db: Database, tenant_id: str, source: CrmSource, credential: str,
+                   report: SyncReport, batch_size: int) -> dict[str, str]:
+    external_to_id: dict[str, str] = {}
+    for page in _batched(source.accounts(credential), batch_size):
         with db.tenant_tx(tenant_id) as cur:
-            for company in page:
-                props = company.get("properties") or {}
-                if not props.get("name") and not props.get("domain"):
-                    report.skipped += 1
-                    continue
+            for account in page:
                 row = entities.upsert_account(
-                    cur, tenant_id, name=props.get("name") or props.get("domain"),
-                    domain=props.get("domain"), country=props.get("country"),
-                    industry_code=props.get("industry"), crm_id=str(company.get("id")),
-                    attributes={"employees": props.get("numberofemployees")})
-                crm_to_account[str(company.get("id"))] = str(row["id"])
+                    cur, tenant_id, name=account.name, domain=account.domain,
+                    country=account.country, employee_band=account.employee_band,
+                    industry_code=account.industry,
+                    crm_id=f"{report.provider}:{account.external_id}",
+                    attributes=account.attributes)
+                external_to_id[account.external_id] = str(row["id"])
                 report.accounts += 1
-    return crm_to_account
+    return external_to_id
 
 
-def _sync_contacts(db: Database, tenant_id: str, connector: HubSpotConnector, token: str,
-                   report: SyncReport, crm_to_account: dict[str, str], limit: int,
+def _sync_contacts(db: Database, tenant_id: str, source: CrmSource, credential: str,
+                   report: SyncReport, external_to_id: dict[str, str],
                    batch_size: int) -> None:
-    for page in _batched(connector.contacts(token, limit=limit), batch_size):
+    provider = report.provider
+    for page in _batched(source.contacts(credential), batch_size):
         with db.tenant_tx(tenant_id) as cur:
             for contact in page:
-                props = contact.get("properties") or {}
-                email = props.get("email")
-                if not email:
+                if not contact.email:
                     report.skipped += 1
                     continue
-                name = " ".join(p for p in (props.get("firstname"), props.get("lastname")) if p)
-                # An opt-out in the CRM is authoritative and one-way. It is
-                # recorded as consent state and as a suppression, because the
-                # two are read by different rules and recording only one leaves
-                # a path that still allows.
-                consent = ({"email": {"opted_out": True, "source": "hubspot"}}
-                           if _opted_out(props)
-                           else {"email": {"basis": "legitimate_interest", "source": "hubspot"}})
                 person = entities.upsert_person(
-                    cur, tenant_id, email=email, full_name=name or None,
-                    country=props.get("country"), consent_state=consent,
-                    crm_id=str(contact.get("id")),
-                    attributes={"title": props.get("jobtitle")})
-                report.people += 1
-                if _opted_out(props):
-                    entities.suppress(cur, tenant_id, "email", str(email),
-                                      "crm_opt_out", "hubspot")
+                    cur, tenant_id, email=contact.email, full_name=contact.full_name,
+                    country=contact.country,
+                    consent_state=consent_state(contact, provider),
+                    crm_id=f"{provider}:{contact.external_id}",
+                    attributes={"title": contact.title, **contact.attributes})
 
-                account_id = crm_to_account.get(str(props.get("associatedcompanyid")))
+                if contact.consent is Consent.OPTED_OUT:
+                    # One-way and recorded twice: consent state and the
+                    # suppression list are read by different rules, and
+                    # recording only one leaves a path that still allows.
+                    entities.suppress(cur, tenant_id, "email", str(contact.email),
+                                      "crm_opt_out", provider)
+                    report.opted_out += 1
+                elif contact.consent is Consent.UNKNOWN:
+                    report.consent_unknown += 1
+
+                report.people += 1
+                account_id = external_to_id.get(contact.account_external_id or "")
                 if account_id:
                     entities.link(cur, tenant_id, str(person["id"]), account_id,
-                                  title=props.get("jobtitle"))
+                                  title=contact.title)
                     report.links += 1
 
 
-def hubspot_to_entities(db: Database, tenant_id: str, token: str, *,
-                        connector: HubSpotConnector | None = None,
-                        limit: int = 100, batch_size: int = 200) -> SyncReport:
-    connector = connector or HubSpotConnector()
-    report = SyncReport()
-    crm_to_account = _sync_companies(db, tenant_id, connector, token, report, limit, batch_size)
-    _sync_contacts(db, tenant_id, connector, token, report, crm_to_account, limit, batch_size)
+def pull(db: Database, tenant_id: str, credential: str, *, provider: str = "hubspot",
+         source: CrmSource | None = None, batch_size: int = 200) -> SyncReport:
+    """Read a CRM into the canonical entities.
+
+    The provider is named once. Everything after it is the contract.
+    """
+    source = source or get_source(provider)
+    report = SyncReport(provider=source.capabilities.provider,
+                        caveats=list(source.capabilities.caveats))
+    if not source.capabilities.reads_opt_out:
+        # Said once, loudly, in the report an operator reads. A CRM that cannot
+        # answer this does not get its silence read as permission.
+        report.caveats.insert(
+            0, f"{report.provider} does not expose opt-out state: every contact is "
+               "stored with consent unknown and is unreachable until a basis is "
+               "established elsewhere")
+
+    external_to_id = _sync_accounts(db, tenant_id, source, credential, report, batch_size)
+    _sync_contacts(db, tenant_id, source, credential, report, external_to_id, batch_size)
+
     with db.tenant_tx(tenant_id) as cur:
-        ledger.audit(cur, tenant_id, actor="sync", action="hubspot.sync", subject=None,
+        ledger.audit(cur, tenant_id, actor=f"sync:{report.provider}",
+                     action="crm.sync", subject=None,
                      detail={"accounts": report.accounts, "people": report.people,
-                             "links": report.links, "skipped": report.skipped})
+                             "links": report.links, "skipped": report.skipped,
+                             "consent_unknown": report.consent_unknown,
+                             "opted_out": report.opted_out})
     return report

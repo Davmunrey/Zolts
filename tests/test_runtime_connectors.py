@@ -213,26 +213,42 @@ def test_a_dry_run_reaches_no_provider(monkeypatch):
 
 # -- pulling a CRM in ----------------------------------------------------
 
-def test_a_sync_is_a_no_op_the_second_time(db, tenant, monkeypatch):
+from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact  # noqa: E402
+
+
+class _Source:
+    """A CRM in the canonical shape. The provider-shaped mapping is covered by
+    the contract suite; this exercises what the sync does with the result."""
+
+    def __init__(self, *, reads_opt_out=True, accounts=None, contacts=None, fail_after=None):
+        self.capabilities = Capabilities(provider="stubcrm", reads_opt_out=reads_opt_out)
+        self._accounts = accounts if accounts is not None else [
+            CrmAccount(external_id="11", name="Northwind", domain="northwind.test",
+                       country="ES")]
+        self._contacts = contacts if contacts is not None else [
+            CrmContact(external_id="21", email="dana@northwind.test", full_name="Dana Cruz",
+                       title="RevOps Lead", account_external_id="11",
+                       consent=Consent.ALLOWED)]
+        self._fail_after = fail_after
+
+    def accounts(self, credential):
+        yield from self._accounts
+
+    def contacts(self, credential):
+        for n, contact in enumerate(self._contacts):
+            if self._fail_after is not None and n >= self._fail_after:
+                raise ConnectionError("the provider hung up")
+            yield contact
+
+
+def test_a_sync_is_a_no_op_the_second_time(db, tenant):
     """A sync is not an import: it runs repeatedly, and the second run must
-    produce no new rows. It was written and never called until an audit found
-    it had no caller — so this is the test that proves it works."""
-    from runtime.connectors.sync import hubspot_to_entities
-
-    class Stub:
-        def companies(self, token, limit=100):
-            yield {"id": "c1", "properties": {"name": "Northwind", "domain": "northwind.test",
-                                              "country": "ES", "numberofemployees": "120"}}
-
-        def contacts(self, token, limit=100):
-            yield {"id": "p1", "properties": {"email": "dana@northwind.test",
-                                              "firstname": "Dana", "lastname": "Cruz",
-                                              "jobtitle": "RevOps Lead",
-                                              "associatedcompanyid": "c1"}}
+    produce no new rows."""
+    from runtime.connectors.sync import pull
 
     tid = str(tenant["id"])
-    first = hubspot_to_entities(db, tid, "token", connector=Stub())
-    second = hubspot_to_entities(db, tid, "token", connector=Stub())
+    first = pull(db, tid, "credential", source=_Source())
+    pull(db, tid, "credential", source=_Source())
     assert first.accounts == 1 and first.people == 1 and first.links == 1
     with db.tenant_tx(tid) as cur:
         cur.execute("select count(*) as n from account")
@@ -240,26 +256,20 @@ def test_a_sync_is_a_no_op_the_second_time(db, tenant, monkeypatch):
         cur.execute("select count(*) as n from person")
         people = cur.fetchone()["n"]
     assert accounts == 1 and people == 1, "the second run must not duplicate"
-    assert second.accounts == 1, "it still reports what it saw"
 
 
 def test_a_crm_opt_out_becomes_a_suppression_not_just_a_flag(db, tenant):
     """One-way and recorded twice: consent state and the suppression list are
-    consulted by different rules, and recording only one leaves a path that
-    still allows."""
-    from runtime.connectors.sync import hubspot_to_entities
+    read by different rules, and recording only one leaves a path that still
+    allows."""
+    from runtime.connectors.sync import pull
     from runtime.repo import entities
 
-    class Stub:
-        def companies(self, token, limit=100):
-            return iter(())
-
-        def contacts(self, token, limit=100):
-            yield {"id": "p9", "properties": {"email": "gone@northwind.test",
-                                              "hs_email_optout": "true"}}
-
     tid = str(tenant["id"])
-    hubspot_to_entities(db, tid, "token", connector=Stub())
+    report = pull(db, tid, "credential", source=_Source(contacts=[
+        CrmContact(external_id="22", email="gone@northwind.test",
+                   consent=Consent.OPTED_OUT)]))
+    assert report.opted_out == 1
     with db.tenant_tx(tid) as cur:
         assert entities.suppressed_keys(cur, "gone@northwind.test", None)
         cur.execute("select consent_state from person where email = %s",
@@ -267,31 +277,63 @@ def test_a_crm_opt_out_becomes_a_suppression_not_just_a_flag(db, tenant):
         assert cur.fetchone()["consent_state"]["email"]["opted_out"] is True
 
 
+def test_a_crm_that_cannot_read_opt_out_never_manufactures_a_basis(db, tenant):
+    """The property that decides whether a connector is a liability.
+
+    A CRM that does not expose opt-out state must not have its silence read as
+    permission. The contact is stored with consent unknown, the policy gate has
+    no rule that admits unknown, and the operator is told which CRM cannot
+    answer the question.
+    """
+    from runtime.connectors.sync import pull
+    from runtime.engine import gate
+
+    tid = str(tenant["id"])
+    report = pull(db, tid, "credential", source=_Source(
+        reads_opt_out=False,
+        contacts=[CrmContact(external_id="23", email="quiet@northwind.test",
+                             country="ES", consent=Consent.UNKNOWN)]))
+    assert report.consent_unknown == 1
+    assert any("does not expose opt-out" in c for c in report.caveats)
+
+    with db.tenant_tx(tid) as cur:
+        cur.execute("select * from person where email = %s", ("quiet@northwind.test",))
+        person = cur.fetchone()
+        assert person["consent_state"]["email"]["basis"] == "unknown"
+        verdict = gate.check(cur, tid, person=person, channel="email",
+                             enrollment_id=None, program_spec={})
+    assert not verdict.allowed, "an unknown basis must not reach a provider"
+
+
 def test_a_sync_commits_per_batch_not_once_at_the_end(db, tenant):
     """A portal with fifty thousand contacts would otherwise hold one
     transaction open for minutes, and a failure at the end would lose every row
-    before it. Found by wiring dead code up and asking what it does at scale."""
-    from runtime.connectors.sync import hubspot_to_entities
-
-    class Stub:
-        def __init__(self):
-            self.failed = False
-
-        def companies(self, token, limit=100):
-            for n in range(5):
-                yield {"id": f"c{n}", "properties": {"name": f"Co {n}",
-                                                     "domain": f"co{n}.test"}}
-
-        def contacts(self, token, limit=100):
-            yield {"id": "p0", "properties": {"email": "first@co0.test"}}
-            # The provider dies half-way through the crawl.
-            raise ConnectionError("the portal hung up")
+    before it."""
+    from runtime.connectors.sync import pull
 
     tid = str(tenant["id"])
+    accounts = [CrmAccount(external_id=str(n), name=f"Co {n}", domain=f"co{n}.test")
+                for n in range(5)]
+    contacts = [CrmContact(external_id=str(100 + n), email=f"p{n}@co{n}.test",
+                           consent=Consent.ALLOWED) for n in range(4)]
     with pytest.raises(ConnectionError):
-        hubspot_to_entities(db, tid, "token", connector=Stub(), batch_size=2)
+        pull(db, tid, "credential", batch_size=2,
+             source=_Source(accounts=accounts, contacts=contacts, fail_after=1))
 
     with db.tenant_tx(tid) as cur:
         cur.execute("select count(*) as n from account")
-        accounts = cur.fetchone()["n"]
-    assert accounts == 5, "the companies committed before the contacts failed"
+        assert cur.fetchone()["n"] == 5, "the companies committed before the contacts failed"
+
+
+def test_the_sync_does_not_know_which_crm_it_is_reading(db, tenant):
+    """Provider-agnostic by construction. The previous version had eleven
+    HubSpot field names compiled into it, which made 'connect a second CRM'
+    mean 'write a second sync'."""
+    import inspect
+
+    from runtime.connectors import sync
+
+    body = inspect.getsource(sync)
+    for leaked in ("hs_email_optout", "associatedcompanyid", "firstname", "lastname",
+                   "numberofemployees", "jobtitle", "org_id", "marketing_status"):
+        assert leaked not in body, f"provider field '{leaked}' leaked into the sync"

@@ -12,7 +12,8 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | Step planning and the transactional outbox | `runtime/engine/planner.py`, `runtime/repo/actions.py` | Running |
 | Policy gate at dispatch time | `runtime/engine/gate.py` | Running |
 | Leased worker with backoff and dead-letter | `runtime/engine/worker.py` | Running |
-| HubSpot CRM, in and out | `runtime/connectors/hubspot.py`, `runtime/connectors/sync.py` | Written, not yet run against a live portal |
+| CRM contract + contract suite | `runtime/connectors/crm.py`, `tests/test_crm_contract.py` | Running |
+| HubSpot and Pipedrive as CRM sources | `runtime/connectors/hubspot.py`, `runtime/connectors/pipedrive.py` | Written, not yet run against a live account |
 | Smartlead sending | `runtime/connectors/smartlead.py` | Written, not yet run against a live account |
 | HTTP API with API-key tenancy | `runtime/api/` | Running |
 | CLI: migrate, provision, worker, serve | `runtime/cli.py` | Running |
@@ -48,6 +49,14 @@ generate action claimed
 **A program with no declared budget cannot run an agent.** The guard answers `cannot-tell`, and `cannot-tell` is not a yes.
 
 Two defects came out of wiring it to real data. The provenance rule first measured overlap across every content word, which dropped *"Northwind opened four RevOps roles last quarter, which usually means the reporting layer is about to be rebuilt"* — with that exact fact in evidence — because the interpretive clause diluted the overlap. It now measures the citable half of a sentence: numbers, proper nouns, absolutes. And the retrieval split the company name into its own evidence item, so no single source could support a sentence that named who did the thing; each item now states its own subject, because that is what a citation is.
+
+## Adding a CRM
+
+`runtime/connectors/crm.py` is the whole surface. A new source maps the provider's objects onto `CrmAccount` and `CrmContact`, declares a `Capabilities`, and passes `tests/test_crm_contract.py` — which is parametrised over every registered source, so a connector cannot ship without answering its questions.
+
+Pipedrive exists to prove the seam is not HubSpot-shaped: organizations rather than companies, an array of addresses per person rather than a field, a nested `org_id` object, offset pagination, and the credential in the query string. Nothing about it matches, and the sync did not change to accommodate it.
+
+The contract's sharpest rule is about consent. `Capabilities.reads_opt_out` is a claim the suite verifies: a source that claims it and never reports an opted-out contact fails. A source that does **not** claim it has every contact stored with consent `unknown`, the policy gate denies on `unknown`, and the sync report says which CRM could not answer. A CRM's silence is never read as permission — which is also the reason a unified CRM API cannot be the only integration, since that is precisely the field they normalise worst.
 
 ## The console
 
@@ -163,13 +172,14 @@ On Fly, do not enable `auto_stop_machines` for the worker: it holds leases, and 
 | Misattribution across sources is not caught deterministically | Whenever a model borrows a real figure for the wrong subject | The factuality judge in `docs/08`; the regex layer catches fabrication, not misattribution, and says so |
 | Provider rate limits are the connector's problem | First large tenant | A shared token bucket per (tenant, provider) in the claim path |
 | Webhooks are interpreted inline on the request | A provider bursting a backlog | The events are already stored first; move the interpretation to the worker |
-| A CRM sync re-crawls the whole portal each run | A portal past a few hundred thousand records | HubSpot's incremental search by `hs_lastmodifieddate`; the writes are already idempotent, so only the read is wasteful |
+| A CRM sync re-crawls the whole portal each run | A portal past a few hundred thousand records | Incremental search by the provider's last-modified field; the writes are already idempotent, so only the read is wasteful |
+| Two native CRMs, and the market has a hundred | The first prospect on Salesforce or Dynamics | A unified-API vendor is one more `CrmSource`, not an architecture change — ADR-013 |
 
 None is load-bearing before the first paying customers, and each is a contained change. They are listed so that the first one to bite is a known cost rather than an outage.
 
 ## Tests
 
-423 tests. The runtime's 117 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+448 tests. The runtime's 142 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -189,3 +199,5 @@ What they assert, in the order that matters:
 14. An agent step with no model configured fails loudly rather than sending an empty message.
 15. A draft that fails the gate never queues a send, and a dispatched proposal cannot be re-approved.
 16. What reaches the provider is what survived provenance, not what the model wrote.
+17. A CRM that cannot read opt-out state never produces a legal basis, and the contact it returns is denied by the policy gate.
+18. The sync contains no provider field names; a test greps for them.

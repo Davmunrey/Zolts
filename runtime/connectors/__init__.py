@@ -11,12 +11,17 @@ persisted. Its contract is narrow on purpose:
 """
 
 from runtime.connectors.base import Connector, PermanentError, Result, TransientError
+from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContact,
+                                    CrmSource, get_source, register_source, sources)
 from runtime.connectors.hubspot import HubSpotConnector
+from runtime.connectors.pipedrive import PipedriveConnector
 from runtime.connectors.registry import get_connector, providers_for, register
 from runtime.connectors.smartlead import SmartleadConnector
 
-__all__ = ["Connector", "PermanentError", "Result", "TransientError", "get_connector",
-           "providers_for", "register", "install_default_connectors"]
+__all__ = ["Capabilities", "Connector", "Consent", "CrmAccount", "CrmContact", "CrmSource",
+           "PermanentError", "Result", "TransientError", "get_connector", "get_source",
+           "install_default_connectors", "providers_for", "register", "register_source",
+           "sources"]
 
 
 def install_default_connectors() -> None:
@@ -29,3 +34,7 @@ def install_default_connectors() -> None:
     """
     register(HubSpotConnector())
     register(SmartleadConnector())
+    # Read sources are a separate registry from send channels: a CRM you can
+    # read is not automatically a channel you may write to.
+    register_source(HubSpotConnector())
+    register_source(PipedriveConnector())
