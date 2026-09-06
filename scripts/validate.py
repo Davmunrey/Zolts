@@ -54,9 +54,31 @@ def validate_mappings() -> int:
     return failed
 
 
+def validate_providers() -> int:
+    """A provider document decides which endpoint gets a credential and where
+    the data budget goes. It is checked here for the same reason a CRM mapping
+    is."""
+    sys.path.insert(0, str(ROOT))
+    from runtime.connectors.declarative_provider import validate
+
+    failed = 0
+    for path in sorted((ROOT / "examples" / "providers").glob("*.yaml")):
+        name = path.relative_to(ROOT)
+        try:
+            document = validate(yaml.safe_load(open(path)))
+        except Exception as exc:  # noqa: BLE001 — a bad document is a bad document
+            failed = 1
+            print("FAIL ", name)
+            print("     ", exc)
+        else:
+            fields = ", ".join(sorted(document["spec"]["lookups"]))
+            print("OK   ", name, f"  (resolves: {fields})")
+    return failed
+
+
 def main() -> int:
     schemas = max(_validate(schema, pattern) for schema, pattern in TARGETS)
-    return max(schemas, validate_mappings())
+    return max(schemas, validate_mappings(), validate_providers())
 
 
 if __name__ == "__main__":

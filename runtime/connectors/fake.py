@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from runtime.connectors.dataprovider import (DataCapabilities, Found, Lookup,
+                                            ProviderError)
 from runtime.connectors.base import Request, Result, TransientError
 
 
@@ -39,3 +41,45 @@ class FakeConnector:
     def reset(self) -> None:
         self.sent.clear()
         self._failures = 0
+
+
+@dataclass
+class FakeDataProvider:
+    """A data provider whose hit rate is decided by the test, not by chance.
+
+    Deterministic on purpose. A provider that hits at random makes a waterfall
+    test that passes most of the time, which is the kind that gets believed
+    until the day it does not.
+    """
+    key: str = "fake-data"
+    fields: tuple[str, ...] = ("email", "phone", "firmographics")
+    hits: bool = True
+    cost_micros: int = 30_000
+    confidence: float = 0.92
+    calls: list[Lookup] = field(default_factory=list)
+    seen_credentials: list[str | None] = field(default_factory=list)
+    error_times: int = 0
+    _errors: int = 0
+    values: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def capabilities(self) -> DataCapabilities:
+        return DataCapabilities(provider=self.key, fields=self.fields)
+
+    def resolve(self, lookup: Lookup, credential: str | None,
+                config: dict[str, Any]) -> Found:
+        if self._errors < self.error_times:
+            self._errors += 1
+            raise ProviderError(f"injected provider error {self._errors}")
+        self.calls.append(lookup)
+        self.seen_credentials.append(credential)
+        if not self.hits:
+            return Found(hit=False, cost_micros=self.cost_micros)
+        default = {
+            "email": {"email": f"found-{len(self.calls)}@example.com"},
+            "phone": {"phone": f"+3460000{len(self.calls):04d}"},
+            "firmographics": {"employee_band": "51-200", "industry_code": "62.01",
+                              "country": "ES"},
+        }[lookup.field]
+        return Found(hit=True, values=self.values or default,
+                     confidence=self.confidence, cost_micros=self.cost_micros)
