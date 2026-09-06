@@ -9,6 +9,7 @@ thing standing between that and a first-run demo.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -73,3 +74,42 @@ def test_a_missing_program_directory_is_an_error_not_an_empty_catalog(tmp_path):
 
     with pytest.raises(FileNotFoundError, match="does not exist"):
         load_catalog(tmp_path / "not-here")
+
+
+# -- the numbers the documents quote about the tests themselves ----------
+
+def test_the_documents_do_not_overstate_the_test_suite():
+    """README claimed 676 tests and 302 against Postgres. The real figures were
+    689 and 187 — the second overstated by 60% in a document investors read.
+
+    Nobody wrote it dishonestly; the number was simply never re-measurable, so
+    it was never re-measured. This test makes it measurable, and the cost of
+    keeping it true is one edit in the pull request that changes it.
+    """
+    import re
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parent.parent
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/", "--collect-only", "-q", "-p",
+         "no:cacheprovider"],
+        cwd=root, capture_output=True, text=True, env={**os.environ, "PYTHONPATH": "."})
+    total = int(re.search(r"(\d+) tests collected", collected.stdout).group(1))
+
+    needing_db = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/", "--collect-only", "-q", "-m", "db",
+         "-p", "no:cacheprovider"],
+        cwd=root, capture_output=True, text=True, env={**os.environ, "PYTHONPATH": "."})
+    against_postgres = int(re.search(r"(\d+)/\d+ tests collected", needing_db.stdout).group(1))
+
+    for document in (root / "README.md", root / "docs" / "20-runtime.md"):
+        text = document.read_text()
+        quoted = {int(n) for n in re.findall(r"(\d{3,4}) tests", text)}
+        assert quoted, f"{document.name} no longer quotes a test count"
+        assert quoted == {total}, (
+            f"{document.name} says {sorted(quoted)} tests and there are {total}. "
+            f"The document is corrected, never the measurement")
+        assert re.search(rf"\b{against_postgres}\b", text), (
+            f"{document.name} does not state that {against_postgres} tests run "
+            f"against a real Postgres")

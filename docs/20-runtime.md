@@ -407,14 +407,18 @@ and runs it: migrate, quickstart (asserting the programs are non-empty), then
 | | |
 |---|---|
 | Meter | Every send and every generation, priced at the moment it happens — not conditional on knowing our own COGS |
-| Ceiling | Checked **before** the spend and before anything about the particular action. A tenant who has run out is held, not cancelled: the action returns to pending, due when the period turns |
+| Ceiling | `tenant.credit_ceiling`, null meaning the plan's allowance. Checked **before** the spend and before anything about the particular action. A tenant who has run out is held, not cancelled: the action returns to pending, due when the period turns |
+| Alert | 80% of the ceiling, per `docs/18` I6. A warning, not a stop — a customer who finds out at the ceiling found out too late to do anything but stop |
 | Period | One open period per tenant, enforced by a partial unique index. Its terms are copied in at open time, so a mid-month upgrade does not restate the month being consumed |
+| Raise | `zolts set-terms --tenant … --credit-ceiling 80000` lets a tenant spend past the plan; `--credit-ceiling plan` puts it back. Terms that cannot be billed — an enterprise ladder with a gap in it — are refused inside the transaction, so nothing is half-applied |
 | Close | `zolts close-period --tenant …` produces a statement. Idempotent: closing twice returns the first one rather than restating it |
-| Read | `GET /v1/billing/current` for consumption and what is left; `GET /v1/billing/statements` for closed periods |
+| Read | `GET /v1/billing/current` for consumption, what is left, and what the period costs so far; `GET /v1/billing/statements` for closed periods |
 
 Seats are counted from live API keys at close time rather than from a number somebody maintains, because a seat count nobody maintains undercharges forever.
 
-**The overage rate is not computed.** The statement reports overage credits and says the rate is contractual. Inventing one here produces an invoice nobody signed — decision 17, open by design.
+**Overage and seats are charged on the ladder `docs/12` already published**, and were not, for as long as credits were not (decision 17). Additional credits are priced graduated over the overage alone — 0-100k at €0.010, 100k-500k at €0.008, above at €0.006 — and additional seats at €90/month. A test re-reads every one of those numbers out of `docs/12`, and another asserts the property that picks graduated over flat: **the bill never falls as consumption rises**. An enterprise contract overrides the ladder and the seat price in `negotiated_terms`; a ladder with a gap or a ceiling in it is refused on the way in rather than on the way to an invoice.
+
+Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
 ## Operating it once a partner is real
 
@@ -481,7 +485,9 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-676 tests. The runtime's 302 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+692 tests. 189 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+
+Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
 What they assert, in the order that matters:
 

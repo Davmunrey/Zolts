@@ -22,7 +22,31 @@ OWNER_URL = os.environ.get("ZOLTS_TEST_DATABASE_URL")
 APP_URL = os.environ.get("ZOLTS_TEST_APP_DATABASE_URL") or OWNER_URL
 SECRET = "test-secret-key"
 
-requires_db = pytest.mark.skipif(not OWNER_URL, reason="ZOLTS_TEST_DATABASE_URL is not set")
+_skip_without_db = pytest.mark.skipif(
+    not OWNER_URL, reason="ZOLTS_TEST_DATABASE_URL is not set")
+
+
+def requires_db(test):
+    """Skip without a real Postgres. See `pytest_collection_modifyitems`."""
+    return _skip_without_db(test)
+
+
+def pytest_collection_modifyitems(items):
+    """Mark every test that needs Postgres `db`, however it asks for one.
+
+    Two ways exist to need a database here — the `requires_db` decorator, and
+    simply requesting the `db` fixture, which skips on its own — and counting
+    only the first understates the set by nearly half. README claimed 302 tests
+    ran against Postgres; the real number was 187, and neither was measurable
+    because a skipif cannot be selected for. Reading the fixture closure counts
+    both, so `pytest -m db` is exact and `pytest -m "not db"` is what a
+    contributor without a database runs.
+    """
+    for item in items:
+        if "db" in getattr(item, "fixturenames", ()) or any(
+                mark.name == "skipif" and mark.kwargs.get("reason", "").startswith(
+                    "ZOLTS_TEST_DATABASE_URL") for mark in item.iter_markers()):
+            item.add_marker("db")
 
 
 @pytest.fixture(scope="session")
