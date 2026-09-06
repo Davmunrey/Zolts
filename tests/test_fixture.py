@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from zolts.experiment import lift, minimum_detectable_effect
+from zolts.experiment import is_resolvable, lift, minimum_detectable_effect
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -31,8 +31,36 @@ def test_every_shipped_program_appears():
 def test_mde_matches_the_reference_core(key):
     """The figure on screen must come from the function the suite covers."""
     p, seen = BY_KEY[key], OBSERVED[key]
+    if p["mde"] is None:
+        # Withheld because the arm establishes no baseline. Covered by
+        # test_an_unresolvable_arm_reports_no_effect_at_all.
+        return
     expected = minimum_detectable_effect(seen["ctrl"], p["nTreat"], p["nControl"])
     assert p["mde"] == round(expected * 100, 2)
+
+
+@pytest.mark.parametrize("key", sorted(OBSERVED), ids=lambda k: k)
+def test_an_unresolvable_arm_reports_no_effect_at_all(key):
+    """An arm with too few conversions establishes no baseline.
+
+    Found by rendering the console against live data: it reported EUR 1.75m
+    incremental against a control arm of 26 subjects with zero observed
+    conversions. The MDE read as precise because it had been handed a floor
+    rather than an estimate. When the baseline is not established, the MDE, the
+    needed holdout and the pipeline are all withheld and the surface says why.
+    """
+    p = BY_KEY[key]
+    conversions = (round(p["nTreat"] * p["treat"] / 100),
+                   round(p["nControl"] * p["ctrl"] / 100))
+    if is_resolvable(*conversions):
+        assert p["unresolvedReason"] is None
+        assert p["mde"] is not None
+        return
+    assert p["mde"] is None
+    assert p["neededHoldout"] is None
+    assert p["pipeline"] is None
+    assert p["significant"] is False
+    assert p["unresolvedReason"], "the surface must say why, not show a bare dash"
 
 
 @pytest.mark.parametrize("key", sorted(OBSERVED), ids=lambda k: k)
@@ -44,6 +72,9 @@ def test_lift_matches_the_reference_core(key):
 @pytest.mark.parametrize("key", sorted(OBSERVED), ids=lambda k: k)
 def test_significance_is_lift_against_mde_not_a_flag(key):
     p = BY_KEY[key]
+    if p["mde"] is None:
+        assert p["significant"] is False
+        return
     assert p["significant"] is (p["absLift"] > p["mde"])
 
 
@@ -62,7 +93,7 @@ def test_needed_holdout_actually_resolves_the_lift(key):
     """The surface tells the operator which holdout would make the lift
     reportable. That claim has to hold at the sample size it is offered for."""
     p, seen = BY_KEY[key], OBSERVED[key]
-    if p["significant"]:
+    if p["significant"] or p["mde"] is None:
         return
     assert p["neededHoldout"] is not None
     n = seen["enrolled"]
@@ -133,3 +164,27 @@ def test_the_fixture_carries_no_wall_clock_field():
     blob = json.dumps(build())
     assert "generatedAt" not in blob
     assert not re.search(r"20\d\d-\d\d-\d\dT\d\d:", blob), "a timestamp leaked into the fixture"
+
+
+@pytest.mark.parametrize("key", sorted(BY_KEY), ids=lambda k: k)
+def test_the_rendering_contract_the_surface_relies_on(key):
+    """The surface branches on `treat` and then reads `absLift` and `mde`.
+
+    It crashed the first time it met live data, because a program with no
+    outcomes carried a rate of 0.00 and a null lift: the guard passed and the
+    next line called toFixed on null. The contract is stated here rather than
+    left implicit in the JavaScript, because the JavaScript is the thing that
+    breaks when it is violated.
+    """
+    p = BY_KEY[key]
+    if p["treat"] is None:
+        assert p["ctrl"] is None and p["absLift"] is None and p["mde"] is None
+        assert p["significant"] is False and p["pipeline"] is None
+        return
+    assert p["ctrl"] is not None, "a treatment rate without a control rate cannot be rendered"
+    assert p["absLift"] is not None
+    if p["mde"] is None:
+        assert p["significant"] is False and p["pipeline"] is None
+    if p["significant"]:
+        assert p["mde"] is not None and p["absLift"] > p["mde"]
+        assert p["pipeline"] and p["pipeline"] > 0

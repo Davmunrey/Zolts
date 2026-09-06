@@ -9,14 +9,23 @@ from runtime.db import one, rows
 
 
 def publish(cur, tenant_id: str, *, key: str, version: str, spec: dict[str, Any],
-            spec_hash: str, status: str = "draft", created_by: str | None = None) -> dict[str, Any]:
+            spec_hash: str, status: str = "draft", created_by: str | None = None,
+            metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Store a version.
+
+    `metadata` carries the document's name, blueprint and owner. The blueprint
+    is not decoration: the linter scopes rules by it and the overlay resolver
+    needs it to know which policy the program inherits.
+    """
     cur.execute(
-        "insert into program (tenant_id, key, version, spec, spec_hash, status, created_by)"
-        " values (%s,%s,%s,%s,%s,%s,%s)"
+        "insert into program (tenant_id, key, version, spec, spec_hash, status, created_by,"
+        " metadata) values (%s,%s,%s,%s,%s,%s,%s,%s)"
         " on conflict (tenant_id, key, version) do update set"
-        "   spec = excluded.spec, spec_hash = excluded.spec_hash"
+        "   spec = excluded.spec, spec_hash = excluded.spec_hash,"
+        "   metadata = excluded.metadata"
         " returning *",
-        (tenant_id, key, version, json.dumps(spec), spec_hash, status, created_by),
+        (tenant_id, key, version, json.dumps(spec), spec_hash, status, created_by,
+         json.dumps(metadata or {})),
     )
     return one(cur)
 

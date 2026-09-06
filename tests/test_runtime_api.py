@@ -203,3 +203,138 @@ def test_measurement_reports_the_effect_the_sample_can_detect(client, db, tenant
                       headers=_auth(key)).json()
     assert body["treatment"] == 0 and body["control"] == 0
     assert body["significant"] is False, "no data can never be a significant result"
+
+
+# -- the console ---------------------------------------------------------
+
+def test_the_console_is_served_with_live_data(client, key):
+    published = client.post("/v1/programs", headers=_auth(key),
+                            json={"key": "api-test", "version": "1.0.0", "spec": SPEC,
+                                  "name": "API test", "blueprint": "b2b-saas-sales-led",
+                                  "activate": True})
+    assert published.status_code == 201, published.text
+    response = client.get("/console", headers=_auth(key))
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "api-test" in response.text
+    assert "/*__FIXTURE__*/" not in response.text, "the placeholder must be replaced"
+
+
+def test_the_console_policy_is_derived_from_what_is_served(client, key):
+    response = client.get("/console", headers=_auth(key))
+    policy = response.headers["content-security-policy"]
+    assert "'sha256-" in policy
+    assert "style-src-attr 'unsafe-inline'" in policy, (
+        "a hash covers a <style> element but never a style='' attribute; "
+        "locking both refuses every runtime style")
+    assert "script-src 'self' 'sha256-" in policy
+    assert "'unsafe-inline'" not in policy.split("script-src")[1].split(";")[0]
+
+
+def test_a_tenants_live_figures_are_never_cached(client, key):
+    response = client.get("/console", headers=_auth(key))
+    assert "no-store" in response.headers["cache-control"]
+
+
+def test_the_console_needs_a_key(client):
+    assert client.get("/console").status_code == 401
+
+
+def test_the_console_reports_no_lift_it_cannot_resolve(client, key):
+    """With no outcomes, nothing may be reported as significant."""
+    client.post("/v1/programs", headers=_auth(key),
+                json={"key": "api-test", "version": "1.0.0", "spec": SPEC,
+                      "name": "API test", "blueprint": "b2b-saas-sales-led", "activate": True})
+    data = client.get("/v1/console", headers=_auth(key)).json()
+    assert data["programs"], "a live program must appear"
+    program = data["programs"][0]
+    assert program["significant"] is False
+    assert program["pipeline"] is None, "pipeline is withheld until the lift clears the MDE"
+
+
+def test_the_console_shows_only_its_own_tenants_programs(client, db, tenant, other_tenant, key):
+    other_key = issue_api_key(db, str(other_tenant["id"]), "other", []).token
+    client.post("/v1/programs", headers=_auth(key),
+                json={"key": "mine", "version": "1.0.0", "spec": SPEC, "name": "Mine",
+                      "blueprint": "b2b-saas-sales-led", "activate": True})
+    theirs = client.get("/v1/console", headers=_auth(other_key)).json()
+    assert theirs["programs"] == []
+    assert theirs["tenant"]["slug"] == other_tenant["slug"]
+
+
+def test_the_live_view_model_matches_the_fixtures_shape(client, db, tenant, key):
+    """One shape means one rendering path.
+
+    The trace rendered `undefined · undefined` the first time the console ran
+    against live data, because the live decisions carried different keys from
+    the fixture the surface was built against.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    from build_fixture import build as build_fixture
+
+    fixture = build_fixture()
+    client.post("/v1/programs", headers=_auth(key),
+                json={"key": "api-test", "version": "1.0.0", "spec": SPEC, "name": "API test",
+                      "blueprint": "b2b-saas-sales-led", "activate": True})
+    live = client.get("/v1/console", headers=_auth(key)).json()
+
+    missing = set(fixture) - set(live)
+    assert not missing, f"the live view model omits {sorted(missing)}"
+
+    program_keys = set(fixture["programs"][0])
+    assert program_keys <= set(live["programs"][0]), (
+        f"program view omits {sorted(program_keys - set(live['programs'][0]))}")
+
+    # A fresh tenant has no decisions, and a check that only runs when data
+    # happens to exist is the check that was missing when this broke.
+    from runtime.repo import entities, ledger
+
+    with db.tenant_tx(str(tenant["id"])) as cur:
+        person = entities.upsert_person(cur, str(tenant["id"]), email="trace@example.com",
+                                        full_name="Trace Subject", country="ES")
+        ledger.record_decision(cur, str(tenant["id"]), subject_type="person",
+                               subject_id=str(person["id"]), action="email.send",
+                               decision="deny", rule_key="suppression.unsubscribed",
+                               jurisdiction="ES", rationale="contact opted out of email")
+    live = client.get("/v1/console", headers=_auth(key)).json()
+
+    decision_keys = set(next(iter(fixture["decisions"].values()))[0])
+    sample = next(iter(live["decisions"].values()))
+    assert decision_keys <= set(sample[0]), (
+        f"decision view omits {sorted(decision_keys - set(sample[0]))}")
+    assert sample[0]["account"] == "Trace Subject", "the trace names what an operator recognises"
+    assert sample[0]["channel"] == "email"
+
+
+def test_the_live_view_model_honours_the_rendering_contract(client, key):
+    """Same contract as the fixture, on the model the API actually serves.
+
+    The surface branches on `treat` and then reads `absLift` and `mde`. A
+    program with no outcomes carried a rate of 0.00 and a null lift, so the
+    guard passed and the next line called toFixed on null.
+    """
+    client.post("/v1/programs", headers=_auth(key),
+                json={"key": "api-test", "version": "1.0.0", "spec": SPEC, "name": "API test",
+                      "blueprint": "b2b-saas-sales-led", "activate": True})
+    for program in client.get("/v1/console", headers=_auth(key)).json()["programs"]:
+        if program["treat"] is None:
+            assert program["ctrl"] is None and program["absLift"] is None
+            assert program["mde"] is None and program["pipeline"] is None
+            assert program["significant"] is False
+            assert program["unresolvedReason"], "the surface must be able to say why"
+        else:
+            assert program["ctrl"] is not None and program["absLift"] is not None
+        if program["significant"]:
+            assert program["mde"] is not None and program["pipeline"]
+
+
+def test_a_published_program_keeps_its_blueprint(client, key):
+    """The linter scopes rules by blueprint, and the console has a column for it."""
+    client.post("/v1/programs", headers=_auth(key),
+                json={"key": "api-test", "version": "1.0.0", "spec": SPEC, "name": "API test",
+                      "blueprint": "b2b-saas-sales-led", "activate": True})
+    data = client.get("/v1/console", headers=_auth(key)).json()
+    assert data["programs"][0]["blueprint"] == "b2b-saas-sales-led"

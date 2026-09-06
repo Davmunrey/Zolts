@@ -177,18 +177,18 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
     <div>
       <button class="ws">
         <span class="glyph"><svg viewBox="0 0 18 18" fill="none"><path d="M4 4h10L4 14h10" stroke="#fff" stroke-width="2" stroke-linecap="square"/></svg></span>
-        <span class="name">Northbeam</span>
+        <span class="name" id="ws-name">Northbeam</span>
         <svg class="chev" width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2.2 3.6L4.5 5.9 6.8 3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
       </button>
     </div>
 
     <nav aria-label="Primary">
       <p class="sec">Run</p>
-      <a href="#" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c">7</span></a>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c">15</span></a>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c">42</span></a>
+      <a href="#" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
       <p class="sec">Prove</p>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 11V5.5M6.5 11V2M11 11V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Experiments<span class="c">6</span></a>
+      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 11V5.5M6.5 11V2M11 11V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Experiments<span class="c" id="nav-experiments">6</span></a>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend</a>
       <p class="sec">Govern</p>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1.6l4.2 1.9v3.2c0 2.4-1.8 4.1-4.2 4.7-2.4-.6-4.2-2.3-4.2-4.7V3.5l4.2-1.9z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Policy</a>
@@ -297,7 +297,7 @@ function renderList(){
     b.innerHTML =
       '<span class="st ' + p.status + '" title="' + p.status + '"></span>'
     + '<span class="pname"><b>' + p.name + '</b><span>' + p.key + ' · v' + p.version + '</span></span>'
-    + '<span class="bp">' + p.blueprint + '</span>'
+    + '<span class="bp">' + (p.blueprint || "—") + '</span>'
     + '<span class="n">' + (p.enrolled ? nf(p.enrolled) : "—") + '</span>'
     + '<span class="lift ' + cls + '">' + (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2) + " pp") + '</span>'
     + '<span class="n">' + p.holdout + '%</span>'
@@ -312,16 +312,44 @@ function renderList(){
   list.setAttribute("aria-activedescendant", rows.length ? "row-" + state.sel : "");
 }
 
+/* ── chrome ────────────────────────────────────────────────────────── */
+// The rail carried fixed counts from the design pass. On a live tenant a
+// wrong number is worse than no number, because it is one a customer acts on.
+function renderChrome(){
+  function put(id, value){
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (value == null){ el.remove(); return; }
+    el.textContent = nf(value);
+  }
+  var t = D.tenant;
+  if (t && t.name) document.getElementById("ws-name").textContent = t.name;
+  put("nav-programs", P.length);
+  // Distinct trigger signals armed across every live program: what the tenant
+  // is actually listening for, not a catalogue size.
+  var signals = {};
+  P.forEach(function(p){ (p.signals || []).forEach(function(s){ if (s) signals[s] = 1; }); });
+  put("nav-signals", Object.keys(signals).length);
+  put("nav-review", D.queue ? D.queue.pending : null);
+  put("nav-experiments", P.filter(function(p){ return p.holdout > 0; }).length);
+}
+
 /* ── detail ────────────────────────────────────────────────────────── */
 var detail = document.getElementById("detail");
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
   var has = p.treat != null, d = p.absLift, ok = p.significant;
+  var resolvable = has && d != null && p.mde != null;
 
-  var evidence = !has
+  var evidence = !resolvable
     ? '<p style="margin:0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">'
-      + 'No enrollments yet. Evidence appears once the control group fills.</p>'
+      + (p.unresolvedReason
+           // Say why. A bare dash reads as a rendering fault, and an operator
+           // who cannot tell "not yet" from "broken" stops trusting the screen.
+           ? 'No effect resolvable: ' + p.unresolvedReason + '.'
+           : 'No enrollments yet. Evidence appears once the control group fills.')
+      + '</p>'
     : '<div class="arm t"><em>Treatment</em><span class="track"><i style="transform:scaleX('
         + Math.min(1, p.treat / 25).toFixed(3) + ')"></i></span><span class="v">'
         + p.treat.toFixed(2) + '%</span></div>'
@@ -527,6 +555,8 @@ document.addEventListener("keydown", function(e){
   if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); move(1); }
   else if (e.key === "k" || e.key === "ArrowUp"){ e.preventDefault(); move(-1); }
 });
+
+renderChrome();
 
 renderList();
 renderDetail();

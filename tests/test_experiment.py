@@ -2,7 +2,8 @@
 
 import pytest
 
-from zolts.experiment import CONTROL, TREATMENT, assign, lift, minimum_detectable_effect
+from zolts.experiment import (CONTROL, MIN_CONVERSIONS_PER_ARM, TREATMENT, assign,
+                              is_resolvable, lift, minimum_detectable_effect)
 
 
 def test_assignment_is_stable_across_calls():
@@ -67,3 +68,22 @@ def test_mde_shrinks_with_sample_size():
 
 def test_lift_is_undefined_on_a_zero_base():
     assert lift(0.05, 0.0)["relative"] == float("inf")
+
+
+# -- what may be declared at all ----------------------------------------
+
+def test_an_arm_with_too_few_conversions_resolves_nothing():
+    """A control arm with no conversions does not establish a baseline.
+
+    Found by rendering: the console reported EUR 1.75m incremental against a
+    control arm of 26 subjects with zero observed conversions. The MDE looked
+    precise because it had been handed a 1% floor rather than an estimate.
+    """
+    assert not is_resolvable(58, 0)
+    assert not is_resolvable(58, 4)
+    assert not is_resolvable(4, 58)
+    assert is_resolvable(58, 5)
+
+
+def test_the_threshold_is_the_normal_approximations_floor():
+    assert MIN_CONVERSIONS_PER_ARM == 5

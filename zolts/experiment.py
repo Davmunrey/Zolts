@@ -76,6 +76,26 @@ def minimum_detectable_effect(
     return (z_alpha + z_beta) * (variance_term ** 0.5)
 
 
+# A rate needs a sample, and so does a baseline. Below this many observed
+# conversions in an arm the baseline is a guess, and an MDE computed from a
+# guess is a number that looks precise and is not. Five is the conventional
+# floor for the normal approximation the two-proportion test relies on.
+MIN_CONVERSIONS_PER_ARM = 5
+
+
+def is_resolvable(conversions_treatment: int, conversions_control: int) -> bool:
+    """Whether an effect may be declared at all.
+
+    A control arm with no observed conversions does not establish a baseline.
+    The MDE formula still returns a number if handed a floor, and that number
+    is what turns a fluke into a reported result — the exact failure this
+    product exists to prevent, so the check sits here rather than in whichever
+    surface happens to render the figure.
+    """
+    return (conversions_treatment >= MIN_CONVERSIONS_PER_ARM
+            and conversions_control >= MIN_CONVERSIONS_PER_ARM)
+
+
 def lift(treatment_rate: float, control_rate: float) -> dict[str, float]:
     """Absolute and relative lift. Relative lift is undefined at a zero base."""
     absolute = treatment_rate - control_rate

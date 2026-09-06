@@ -7,12 +7,13 @@ parameter: the only way to name a tenant is to hold one of its keys.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import jsonschema
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Response, status
 
+from runtime.api import console
 from runtime.api.auth import CurrentPrincipal, Principal
 from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
                                  MeasurementOut, PersonIn, ProgramIn, ProgramOut, SignalIn)
@@ -20,7 +21,10 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.engine import enroll
 from runtime.repo import actions, enrollments, entities, ledger, programs
+from runtime.surface import content_security_policy, document, inject
 from zolts import dsl, experiment
+
+SURFACE = Path(__file__).resolve().parent.parent.parent / "design" / "console.html"
 
 
 def create_app(db: Database, *, install_connectors: bool = True) -> FastAPI:
@@ -105,7 +109,8 @@ def create_app(db: Database, *, install_connectors: bool = True) -> FastAPI:
         with db.tenant_tx(principal.tenant_id) as cur:
             row = programs.publish(cur, principal.tenant_id, key=body.key, version=body.version,
                                    spec=body.spec, spec_hash=program.spec_hash,
-                                   status="draft", created_by=principal.key_id)
+                                   status="draft", created_by=principal.key_id,
+                                   metadata=metadata)
             if body.activate:
                 row = programs.activate(cur, str(row["id"]))
             ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
@@ -207,14 +212,57 @@ def create_app(db: Database, *, install_connectors: bool = True) -> FastAPI:
         t_rate = (converted.get("treatment", 0) / treatment) if treatment else 0.0
         c_rate = (converted.get("control", 0) / control) if control else 0.0
         holdout = float((program["spec"].get("experiment") or {}).get("holdout_pct", 0))
+        # A control arm with too few observed conversions does not establish a
+        # baseline, and an MDE computed from a floor is a number that looks
+        # precise and is not. The rule lives in zolts.experiment so the console
+        # and this endpoint cannot disagree about what may be declared.
+        resolvable = experiment.is_resolvable(converted.get("treatment", 0),
+                                              converted.get("control", 0))
         mde = (experiment.minimum_detectable_effect(baseline_rate=max(c_rate, 0.01),
                                                     n_treatment=treatment, n_control=control)
-               if treatment and control else float("inf"))
+               if resolvable else float("inf"))
         lift_pp = (t_rate - c_rate) * 100
         return MeasurementOut(
             program_key=program["key"], treatment=treatment, control=control,
             holdout_pct=holdout, treatment_rate=t_rate, control_rate=c_rate,
-            lift_pp=lift_pp, minimum_detectable_effect_pp=mde * 100 if mde != float("inf") else -1,
-            significant=bool(treatment and control and lift_pp > mde * 100))
+            lift_pp=lift_pp, minimum_detectable_effect_pp=mde * 100 if resolvable else -1,
+            significant=bool(resolvable and lift_pp > mde * 100))
+
+    # -- the console -----------------------------------------------------
+
+    @app.get("/console", response_class=Response)
+    def serve_console(principal: Principal = CurrentPrincipal) -> Response:
+        """The operator surface, with this tenant's live data inlined.
+
+        Same origin as the API, so there is no CORS to configure and no second
+        origin in `connect-src`. The data is injected exactly as the static
+        build injects the fixture, which means one rendering path rather than
+        two and a policy derived from the bytes actually served.
+        """
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute("select * from tenant where id = %s", (principal.tenant_id,))
+            tenant = cur.fetchone()
+            data = console.build(cur, tenant)
+
+        rendered = document(inject(SURFACE.read_text(encoding="utf-8"), data),
+                            title=f"Zolts — {tenant['name']}")
+        return Response(
+            content=rendered, media_type="text/html; charset=utf-8",
+            headers={
+                "Content-Security-Policy": content_security_policy(rendered,
+                                                                   connect_src="'self'"),
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "strict-origin-when-cross-origin",
+                # A tenant's live figures are not cacheable by anything sitting
+                # in front of the API.
+                "Cache-Control": "no-store, private",
+            })
+
+    @app.get("/v1/console")
+    def console_data(principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """The same view model as JSON, for anything that renders it itself."""
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute("select * from tenant where id = %s", (principal.tenant_id,))
+            return console.build(cur, cur.fetchone())
 
     return app

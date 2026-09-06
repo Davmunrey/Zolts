@@ -44,7 +44,7 @@
 - `runtime/db.py`, `runtime/repo/` — data access where the only way to get a cursor is to name a tenant
 - `runtime/engine/` — signal ingest, holdout assignment, step planning, the policy gate, and a leased worker with backoff and dead-letter
 - `runtime/connectors/` — connector contract, HubSpot (CRM, both directions) and Smartlead (sending)
-- `runtime/api/` — HTTP surface with API-key tenancy; no route takes a tenant id
+- `runtime/api/` — HTTP surface with API-key tenancy; no route takes a tenant id, and `GET /console` serves the operator surface with the tenant's live figures inlined
 - `runtime/cli.py` — migrate, provision a tenant, issue a key, seal a credential, run the worker, serve
 - `Dockerfile`, `docker-compose.yml` — database, migrations, API and worker in one command
 
@@ -60,7 +60,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/blueprint.py` plus `blueprints/` — the archetype resolver and 11 blueprints as configuration
 - `zolts/catalog.py` — the join between programs and blueprints, and the integrity checks neither schema can perform
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
-- `tests/` — 332 tests, each backing a specific claim made in `docs/`; the 62 runtime tests run against a real Postgres and CI fails a run that skipped them
+- `tests/` — 351 tests, each backing a specific claim made in `docs/`; the 70 runtime tests run against a real Postgres and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -70,14 +70,16 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 332 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 351 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
 
 The reference core exists to test the plan; the runtime exists to run it. Building both has corrected thirteen defects so far. Ten came from the core: five in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written — four of them the same failure in different clothing, an opt-out path that silently did not work. Three came from the runtime: a schema named after a database role, which made a second migration run duplicate every table and report success; a migration runner whose version ledger rolled back while its DDL committed; and a connector branch that could never execute because the helper raised on the status it was meant to inspect. See [19](docs/19-reference-core.md) and [20](docs/20-runtime.md).
 
-Every one of the thirteen was found by executing, none by reading.
+Two more came from rendering the console against live data: the surface crashed on a program with no measurement yet — which is every program on day one — and it reported EUR 1.75m of incremental pipeline against a control arm with zero observed conversions, because its detectable effect had been computed from a floor rather than an estimate. That second one is now a rule in the core: no effect is declared while either arm carries fewer than five observed conversions.
+
+Every one of the fifteen was found by executing, none by reading.
 
 ## Definition status
 
