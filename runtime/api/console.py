@@ -404,6 +404,18 @@ def review_view(cur, limit: int = 50) -> list[dict[str, Any]]:
 
 
 def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
+    """The whole view model, from the tenant's own row.
+
+    The row, not a description of it. The spend view reads the billing period,
+    which is keyed by tenant id, and a caller that hands over a dictionary of
+    labels gets a `KeyError` three frames down inside metering. Said here, it
+    names the caller's mistake instead.
+    """
+    if not tenant.get("id"):
+        raise ValueError(
+            "console.build needs the tenant's own row, not a description of it: "
+            "the spend view reads that tenant's billing period, which is keyed "
+            "by id")
     live = programs.live(cur)
     cur.execute("select * from program where status <> 'live' order by key")
     other = [dict(r) for r in cur.fetchall()]

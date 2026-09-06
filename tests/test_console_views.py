@@ -180,3 +180,21 @@ def test_spend_shows_the_number_the_customer_is_charged_on(db, tenant):
     assert view["remaining"] == 14_880.0
     assert view["byKind"] == [{"kind": "email.send", "credits": 120.0,
                                "events": 1, "costEur": 0.0}]
+
+
+@requires_db
+def test_the_view_model_refuses_a_tenant_that_is_only_a_description(db, tenant):
+    """CI found this before a customer did, and it is the same defect twice.
+
+    `smoke_runtime.py` had passed a dictionary of labels — name, slug, region —
+    since before billing existed, and every check passed because nothing in the
+    view model had needed the tenant's identity. The spend view does, and the
+    failure surfaced as a `KeyError` three frames down inside metering.
+
+    A caller holding a stub now learns that from the function it called.
+    """
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        with pytest.raises(ValueError, match="own row"):
+            console.build(cur, {"name": "Smoke Co", "slug": "smoke",
+                                "region": "eu", "blueprint_id": "b2b-saas-sales-led"})

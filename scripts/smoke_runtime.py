@@ -94,8 +94,11 @@ def main() -> int:
                      for r in ledger.decisions(cur, 10)]
         queued = actions.pending_count(cur)
         cur.execute("select id from program where status = 'live' limit 1")
-        measurement = console.build(cur, {"name": "Smoke Co", "slug": "smoke",
-                                          "region": "eu", "blueprint_id": "b2b-saas-sales-led"})
+        # The tenant's own row. A stub with the right labels passed every
+        # check until the console started reading the billing period, which is
+        # keyed by id — and then the smoke run, not a test, was what noticed.
+        cur.execute("select * from tenant where id = %s", (tid,))
+        measurement = console.build(cur, dict(cur.fetchone()))
 
     print(json.dumps({
         "program": {"key": program.key, "version": program.version,
