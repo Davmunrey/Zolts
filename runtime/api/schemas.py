@@ -104,3 +104,15 @@ class HealthOut(BaseModel):
     migrations: list[str]
     isolation_enforced: bool
     connectors: list[str]
+
+
+class SignupIn(BaseModel):
+    """Redeeming an invitation.
+
+    The company name and blueprint may be corrected here: the operator minted
+    the invitation from what they were told, and the person signing up knows
+    better than the person who typed it.
+    """
+    token: str = Field(min_length=8, max_length=200)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    blueprint_id: str | None = Field(default=None, max_length=80)

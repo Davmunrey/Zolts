@@ -17,7 +17,8 @@ from fastapi import FastAPI, HTTPException, Query, Response, status
 from runtime.api import console, webhooks
 from runtime.api.auth import CurrentPrincipal, Principal
 from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
-                                 MeasurementOut, PersonIn, ProgramIn, ProgramOut, SignalIn)
+                                 MeasurementOut, PersonIn, ProgramIn, ProgramOut,
+                                 SignalIn, SignupIn)
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.engine import enroll
@@ -57,6 +58,34 @@ def create_app(db: Database, *, install_connectors: bool = True,
             status="ok" if ok else "degraded", database=ok, migrations=migrations,
             isolation_enforced=db.isolation_enforced,
             connectors=sorted({p for c in ("email", "task", "crm") for p in providers_for(c)}))
+
+    # -- onboarding ------------------------------------------------------
+
+    @app.get("/v1/signup/{token}")
+    def describe_invitation(token: str) -> dict[str, Any]:
+        """What the signup form shows before anything is created."""
+        from runtime import onboarding
+
+        try:
+            return onboarding.describe(db, token)
+        except onboarding.InvitationError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    @app.post("/v1/signup", status_code=status.HTTP_201_CREATED)
+    def redeem_invitation(body: SignupIn) -> dict[str, Any]:
+        """Turn an invitation into a tenant, a first key and its programs.
+
+        The only unauthenticated write path in this runtime. An invalid token,
+        an expired one and an already-redeemed one all answer identically:
+        telling them apart tells a caller which tokens exist.
+        """
+        from runtime import onboarding
+
+        try:
+            return onboarding.redeem(db, body.token, name=body.name,
+                                     blueprint_id=body.blueprint_id)
+        except onboarding.InvitationError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     # -- entities --------------------------------------------------------
 

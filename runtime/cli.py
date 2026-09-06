@@ -127,6 +127,15 @@ def main(argv: list[str] | None = None) -> int:
     mapping.add_argument("--tenant", required=True)
     mapping.add_argument("--file", required=True)
 
+    invite = sub.add_parser("invite", help="mint a signup invitation; token shown once")
+    invite.add_argument("--company", required=True)
+    invite.add_argument("--email")
+    invite.add_argument("--region", default="eu", choices=["eu", "us"])
+    invite.add_argument("--blueprint")
+    invite.add_argument("--days", type=int, default=14)
+    invite.add_argument("--base-url", default="https://app.zolts.com",
+                        help="used only to print the link the invitee opens")
+
     pre = sub.add_parser("preflight",
                          help="check a deployment before it takes traffic")
     pre.add_argument("--json", action="store_true", help="machine-readable output")
@@ -245,6 +254,23 @@ def main(argv: list[str] | None = None) -> int:
                                  "mapping imports is unreachable until a basis is "
                                  "established elsewhere")
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "invite":
+        # Minting has no HTTP surface. An operator capability reachable from a
+        # tenant's key is a privilege escalation waiting to be found.
+        from runtime import onboarding
+
+        issued = onboarding.mint(db, company_name=args.company, email=args.email,
+                                 region=args.region, blueprint_id=args.blueprint,
+                                 ttl_days=args.days)
+        print(json.dumps({
+            "invitation_id": issued.id,
+            "token": issued.token,
+            "expires_at": issued.expires_at.isoformat(),
+            "link": f"{args.base_url.rstrip('/')}/signup/{issued.token}",
+            "note": "the token is shown once and is not recoverable",
+        }, indent=2))
         return 0
 
     if args.command == "preflight":

@@ -161,6 +161,11 @@ class Database:
             conn.execute(f"grant select, insert, update, delete on all tables in schema public to {app_role}")
             conn.execute(f"revoke insert, update, delete on tenant from {app_role}")
             conn.execute(f"revoke all on schema_migration from {app_role}")
+            # Invitations are operator state, not tenant state: they exist
+            # before their tenant does and are only ever touched by the owner
+            # connection behind the signup endpoint. The role that serves
+            # tenant requests has no reason to reach them.
+            conn.execute(f"revoke all on invitation from {app_role}")
             conn.commit()
 
 

@@ -164,3 +164,35 @@ def test_a_local_database_without_tls_is_fine(db):
     check = _named(report, "encryption in transit")
     assert check.ok
     assert "local" in check.detail
+
+
+def test_the_isolation_probe_reports_a_real_failure():
+    """The probe passes when an unscoped query raises. An earlier version
+    called a method psycopg's transaction object does not have and let an outer
+    catch swallow the AttributeError, so it passed for the wrong reason. This
+    asserts it can still say no."""
+    import contextlib
+
+    class Permissive:
+        """A database whose unscoped query happily returns a row."""
+
+        @contextlib.contextmanager
+        def _connection(self):
+            yield self
+
+        @property
+        def pool(self):
+            return type("Pool", (), {"connection": self._connection})()
+
+        @contextlib.contextmanager
+        def transaction(self):
+            yield self
+
+        def execute(self, *_args, **_kwargs):
+            return type("Result", (), {"fetchone": staticmethod(lambda: (1,))})()
+
+    report = preflight.Report()
+    preflight._isolation(report, Permissive())
+    check = _named(report, "unscoped reads refused")
+    assert not check.ok
+    assert "reads across tenants" in check.detail

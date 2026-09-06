@@ -98,6 +98,31 @@ Four path forms, and no fifth: `properties.email`, `emails[0].value`, `emails[pr
 
 Validation runs at three doors: `scripts/validate.py` in CI, the publish endpoint, and the CLI. All three raise the same `MappingError` — a caller handling a customer's document should not have to know which library rejected it. Beyond the schema, a document is refused for an unknown transform, a malformed path segment, a consent block that would mark everyone contactable, a `base_url` on loopback or link-local (the runtime's own network position, and the cloud metadata endpoint with it), and a provider name a built-in connector already owns.
 
+## Onboarding a partner
+
+Creating a tenant used to need a shell and the database URL, so every partner cost founder time. It now needs neither (ADR-015).
+
+```sh
+# The operator mints an invitation. This has no HTTP route: an operator
+# capability reachable from a tenant's key is a privilege escalation
+# waiting to be found.
+python3 -m runtime.cli invite --company "Northwind Traders" \
+  --email revops@northwind.example --blueprint b2b-saas-sales-led
+```
+
+The partner opens the link. `GET /v1/signup/{token}` shows what the form should say without consuming anything; `POST /v1/signup` turns the invitation into a tenant, a first API key and its starter programs. That is the **only** unauthenticated write path in this runtime.
+
+| Property | How |
+|---|---|
+| The token is never stored | sha256 at rest, shown once, unrecoverable — the same discipline as an API key |
+| Invalid, expired and redeemed are indistinguishable | One message, `this invitation is not valid`, for all three. Telling them apart tells a caller which tokens exist |
+| Redemption happens once, even concurrently | The row is locked with `for update`, the tenant is created, and only then is the invitation marked redeemed and its tenant named — both in one statement |
+| A half-redeemed row cannot commit | A check constraint refuses one. It caught the first implementation, which marked the invitation redeemed before the tenant existed |
+| Starter programs are drafts | A tenant contacting people before anyone has read a program is not onboarding, it is an incident |
+| An empty starter set says why | Seven of the eleven blueprints ship no example program. The response names what the blueprint declares instead of returning a bare `[]` |
+
+Invitations are operator state, not tenant state — they exist before their tenant does — so the table carries `redeemed_tenant_id` rather than `tenant_id`, and the role serving tenant requests has its access revoked.
+
 ## The console
 
 `GET /console` serves the operator surface with the tenant's live figures inlined, same origin as the API. That means no CORS to configure, no second origin in `connect-src`, and the same content security policy derivation the static build uses — `runtime/surface.py` holds both, because two copies would drift and the copy that drifts is the one that ships a policy the page violates.
@@ -290,7 +315,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-524 tests. The runtime's 171 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+539 tests. The runtime's 186 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -315,3 +340,7 @@ What they assert, in the order that matters:
 19. A tenant-authored mapping is refused for an unknown transform, and for a consent block that would mark everyone contactable.
 20. A mapping belongs to one tenant: another tenant's key lists nothing and pushes nothing.
 21. Records pushed through a mapping land as the same canonical entities, with consent translated out of the CRM's own vocabulary.
+22. Every path the runtime reads is shipped in the image, and a missing directory raises rather than reading as an empty catalogue.
+23. Preflight blocks a production release on a published secret key, an application role that can bypass row-level security, a pending migration, or a query with no tenant that returns rows.
+24. An invitation is redeemed once, including by two requests racing, and invalid, expired and redeemed answer identically.
+25. The role that serves tenant requests cannot read the invitations table.

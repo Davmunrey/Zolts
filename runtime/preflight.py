@@ -218,24 +218,41 @@ def _forced_rls(report: Report, db: Database) -> None:
 
 
 def _isolation(report: Report, db: Database) -> None:
-    """The claim, tested rather than asserted: no tenant means no rows."""
+    """The claim, tested rather than asserted: no tenant means no rows.
+
+    The probe is expected to fail, so the transaction is left to unwind on its
+    own. An explicit rollback here was calling a method psycopg's transaction
+    object does not have, and an outer catch made the whole check pass by
+    accident — right answer, wrong reason, and one refactor from being wrong.
+    """
+    refused = False
+    detail = ""
     try:
-        with db.pool.connection() as conn, conn.transaction() as tx:
-            try:
-                conn.execute("select 1 from account limit 1").fetchone()
-            except Exception:
-                report.add("unscoped reads refused", True,
-                           "a query with no tenant raises rather than returning rows")
-                tx.rollback()
-                return
-            report.add("unscoped reads refused", False,
-                       "a query with no tenant set returned without raising, so a code "
-                       "path that forgets the tenant reads across tenants")
-            tx.rollback()
-    except Exception:
-        # The rollback above escapes the transaction block; the outcome is
-        # already recorded.
+        with db.pool.connection() as conn:
+            with conn.transaction():
+                try:
+                    conn.execute("select 1 from account limit 1").fetchone()
+                except Exception as exc:  # noqa: BLE001 - this is the pass condition
+                    refused = True
+                    detail = str(exc).strip().splitlines()[0]
+                raise _Probe
+    except _Probe:
         pass
+    except Exception as exc:  # noqa: BLE001
+        report.add("unscoped reads refused", False, f"could not be checked: {exc}")
+        return
+
+    if refused:
+        report.add("unscoped reads refused", True,
+                   f"a query with no tenant raises rather than returning rows: {detail}")
+    else:
+        report.add("unscoped reads refused", False,
+                   "a query with no tenant set returned without raising, so a code "
+                   "path that forgets the tenant reads across tenants")
+
+
+class _Probe(Exception):
+    """Unwinds the probe's transaction without leaving anything behind."""
 
 
 def _pooling(report: Report, settings: Settings) -> None:
