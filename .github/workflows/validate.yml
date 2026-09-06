@@ -95,6 +95,7 @@ jobs:
 
     env:
       DB: postgresql://zolts:zolts@127.0.0.1:5432/zolts
+      APP_DB: postgresql://zolts_app:zolts_app@127.0.0.1:5432/zolts
       ZOLTS_SECRET_KEY: ci-only-not-a-real-key
 
     steps:
@@ -103,14 +104,22 @@ jobs:
       - name: Build the image
         run: docker build -t zolts:ci .
 
+      # The compose stack creates this role from an initdb script. A service
+      # container has no initdb hook, and `migrate` grants to it, so without
+      # this the first command inside the image fails.
+      - name: Create the non-owning application role
+        run: psql "$DB" -c "create role zolts_app login password 'zolts_app'"
+
       - name: Migrate from inside the container
         run: |
           docker run --rm --network host -e ZOLTS_DATABASE_URL="$DB" \
+            -e ZOLTS_APP_DATABASE_URL="$APP_DB" \
             -e ZOLTS_SECRET_KEY zolts:ci python3 -m runtime.cli migrate
 
       - name: A first run inside the container must seed the programs it claims
         run: |
           docker run --rm --network host -e ZOLTS_DATABASE_URL="$DB" \
+            -e ZOLTS_APP_DATABASE_URL="$APP_DB" \
             -e ZOLTS_SECRET_KEY zolts:ci \
             python3 -m runtime.cli quickstart --slug ci-demo > quickstart.json
           python3 - <<'PY'
@@ -127,7 +136,8 @@ jobs:
       - name: The API and the console must answer from inside the container
         run: |
           docker run -d --name api --network host \
-            -e ZOLTS_DATABASE_URL="$DB" -e ZOLTS_SECRET_KEY zolts:ci
+            -e ZOLTS_DATABASE_URL="$DB" -e ZOLTS_APP_DATABASE_URL="$APP_DB" \
+            -e ZOLTS_SECRET_KEY zolts:ci
           for i in $(seq 1 20); do
             curl -fsS http://127.0.0.1:8000/health > /dev/null && break
             sleep 2
