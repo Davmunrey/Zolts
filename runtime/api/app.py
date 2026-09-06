@@ -201,11 +201,25 @@ def create_app(db: Database, *, install_connectors: bool = True,
             by_kind = [{"kind": r["kind"], "credits": float(r["credits"] or 0),
                         "events": int(r["events"])} for r in cur.fetchall()]
 
+        # What it costs so far, not only what it consumed. A tenant who can
+        # see credits and not euros finds out what a period cost when the
+        # invoice arrives, which is the surprise `docs/18` I6 exists to avoid.
+        from decimal import Decimal
+        from zolts.billing import price_credits
+
+        overage_eur = price_credits(budget.overage)
         return {"plan": tenant["plan"],
                 "periodStart": period["starts_at"], "periodEnd": period["ends_at"],
                 "includedCredits": float(period["included_credits"]),
                 "consumedCredits": float(budget.consumed),
                 "remainingCredits": float(budget.remaining),
+                "creditCeiling": float(budget.ceiling),
+                "shareUsed": float(budget.share_used),
+                "alerting": budget.alerting,
+                "platformEur": float(period["platform_eur"]),
+                "overageCredits": float(budget.overage),
+                "overageEur": float(overage_eur),
+                "projectedTotalEur": float(Decimal(str(period["platform_eur"])) + overage_eur),
                 "spending": budget.allowed,
                 "byKind": by_kind}
 

@@ -17,7 +17,7 @@ from typing import Any
 
 from runtime.config import Settings
 from runtime.connectors import install_default_connectors
-from runtime.db import Database
+from runtime.db import Database, one
 from runtime.engine.worker import Worker
 from runtime.provision import (create_tenant, create_webhook_endpoint, issue_api_key,
                                store_connection)
@@ -131,6 +131,17 @@ def main(argv: list[str] | None = None) -> int:
 
     close = sub.add_parser("close-period", help="close a tenant's billing period")
     close.add_argument("--tenant", required=True)
+
+    terms = sub.add_parser(
+        "set-terms",
+        help="change a tenant's plan or raise its credit ceiling (provisioning)")
+    terms.add_argument("--tenant", required=True)
+    terms.add_argument("--plan", choices=["starter", "growth", "scale", "enterprise"])
+    terms.add_argument(
+        "--credit-ceiling",
+        help="hard spend ceiling in credits, or 'plan' to fall back to the "
+             "plan's allowance. Above the plan, the excess bills as overage")
+    terms.add_argument("--negotiated", help="path to a JSON file of enterprise terms")
 
     invite = sub.add_parser("invite", help="mint a signup invitation; token shown once")
     invite.add_argument("--company", required=True)
@@ -292,6 +303,54 @@ def main(argv: list[str] | None = None) -> int:
                           "from": closed["starts_at"].isoformat(),
                           "to": closed["ends_at"].isoformat(),
                           "statement": closed["statement"]}, indent=2))
+        return 0
+
+    if args.command == "set-terms":
+        # Deliberately not an API route. Raising a spend ceiling is the act
+        # that lets a tenant be charged more than they were sold, and the role
+        # that serves requests cannot write to `tenant` at all — which is the
+        # isolation design, and the reason this is a command an operator runs.
+        from decimal import Decimal
+
+        from runtime import metering
+        from zolts.billing import BillingError
+
+        fields, values = [], []
+        if args.plan:
+            fields.append("plan = %s")
+            values.append(args.plan)
+        if args.negotiated:
+            fields.append("negotiated_terms = %s")
+            values.append(Path(args.negotiated).read_text())
+        if args.credit_ceiling is not None:
+            fields.append("credit_ceiling = %s")
+            values.append(None if args.credit_ceiling == "plan"
+                          else Decimal(args.credit_ceiling))
+        if not fields:
+            print("nothing to change; pass --plan, --credit-ceiling or --negotiated",
+                  file=sys.stderr)
+            return 2
+
+        with db.admin_tx() as cur:
+            cur.execute(f"update tenant set {', '.join(fields)} where id = %s"
+                        " returning *", (*values, args.tenant))
+            tenant = one(cur)
+            if tenant is None:
+                print(f"no tenant {args.tenant}", file=sys.stderr)
+                return 2
+            # Reject terms that cannot be billed here rather than at the
+            # invoice: the transaction rolls back and nothing is half-applied.
+            try:
+                metering._terms(tenant)
+            except BillingError as exc:
+                raise SystemExit(f"these terms cannot be billed: {exc}")
+
+        ceiling = tenant["credit_ceiling"]
+        print(json.dumps({
+            "tenant": str(tenant["id"]), "plan": tenant["plan"],
+            "creditCeiling": None if ceiling is None else float(ceiling),
+            "note": ("the ceiling is the plan's allowance" if ceiling is None else
+                     "credits consumed above the plan bill as overage")}, indent=2))
         return 0
 
     if args.command == "liveness":

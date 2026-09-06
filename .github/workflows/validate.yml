@@ -61,6 +61,20 @@ jobs:
       - name: Benchmark the waterfall optimiser
         run: python3 scripts/benchmark_waterfall.py
 
+      # A suite that skips every Postgres test still reports green, and the
+      # properties it skipped — tenant isolation above all — are the ones a
+      # stub cannot verify. `-m db` selects them, so this asks the suite to
+      # prove it ran them rather than trusting that it did.
+      - name: Refuse a green run that skipped the Postgres tests
+        run: |
+          python3 -m pytest tests/ -q -m db -rs > /tmp/db-tests.log 2>&1 || {
+            cat /tmp/db-tests.log; exit 1; }
+          tail -1 /tmp/db-tests.log
+          if grep -q "ZOLTS_TEST_DATABASE_URL is not set" /tmp/db-tests.log; then
+            echo "::error::the Postgres tests were skipped; this run proves nothing"
+            exit 1
+          fi
+
       - name: Refuse a green run that skipped the agent tests
         run: |
           if ! command -v trazum-mcp >/dev/null; then

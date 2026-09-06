@@ -25,7 +25,15 @@ from decimal import Decimal
 from typing import Any
 
 from runtime.db import Database, one
-from zolts.billing import NEGOTIATED, BillingError, Plan, credits_for, plan_for, statement
+from zolts.billing import (NEGOTIATED, BillingError, Plan, check_tiers, credits_for,
+                           plan_for, statement)
+
+
+# `docs/18` I6: "overage with an 80% alert and a configurable hard ceiling".
+# The alert fires before the ceiling does, because the point of it is that
+# nobody is surprised — a customer who finds out at the ceiling found out too
+# late to do anything but stop.
+ALERT_AT = Decimal("0.80")
 
 
 @dataclass(frozen=True)
@@ -35,7 +43,43 @@ class Allowance:
     remaining: Decimal
     consumed: Decimal
     included: Decimal
+    ceiling: Decimal
     reason: str | None = None
+
+    @property
+    def share_used(self) -> Decimal:
+        """Of the ceiling, not of the plan: it is the ceiling that stops work."""
+        if self.ceiling <= 0:
+            return Decimal("1")
+        return (self.consumed / self.ceiling).quantize(Decimal("0.0001"))
+
+    @property
+    def alerting(self) -> bool:
+        return self.share_used >= ALERT_AT
+
+    @property
+    def overage(self) -> Decimal:
+        """Credits consumed beyond the plan. Zero until the ceiling is raised."""
+        return max(Decimal("0"), self.consumed - self.included)
+
+
+def _tiers(raw: Any) -> tuple[tuple[Decimal | None, Decimal], ...] | None:
+    """A negotiated credit ladder, as stored in `tenant.negotiated_terms`.
+
+    Shape: `[[100000, 0.009], [null, 0.007]]` — an upper bound and a rate per
+    band, the last one open-ended. Validated on the way in rather than on the
+    way to an invoice: a ladder with a gap in it prices some volume at nothing.
+    """
+    if raw is None:
+        return None
+    try:
+        ladder = tuple((None if upper is None else Decimal(str(upper)), Decimal(str(rate)))
+                       for upper, rate in raw)
+    except (TypeError, ValueError) as exc:
+        raise BillingError(
+            f"negotiated credit_tiers must be [[upper|null, rate], ...]: {exc}") from exc
+    check_tiers(ladder)
+    return ladder
 
 
 def _terms(tenant: dict[str, Any]) -> Plan:
@@ -50,7 +94,10 @@ def _terms(tenant: dict[str, Any]) -> Plan:
         return Plan(key=NEGOTIATED, name="Enterprise",
                     platform_eur=Decimal(str(negotiated["platform_eur"])),
                     seats=int(negotiated["seats"]),
-                    credits=Decimal(str(negotiated["credits"])))
+                    credits=Decimal(str(negotiated["credits"])),
+                    credit_tiers=_tiers(negotiated.get("credit_tiers")),
+                    seat_eur=(None if negotiated.get("seat_eur") is None
+                              else Decimal(str(negotiated["seat_eur"]))))
     plan = plan_for(plan_key)
     assert plan is not None  # plan_for only returns None for NEGOTIATED
     return plan
@@ -95,20 +142,29 @@ def allowance(cur, tenant: dict[str, Any], *, cost: str | None = None,
 
     `cost` names the action about to happen, so the answer accounts for it: a
     tenant with two credits left may send two emails and not a dossier.
+
+    The stop is the ceiling, not the plan. They are the same number until
+    somebody raises the ceiling, which is the deliberate act that overage bills
+    for — a tenant still cannot overspend by accident.
     """
     period = open_period(cur, tenant)
     consumed = Decimal(str(period["consumed_credits"]))
     included = Decimal(str(period["included_credits"]))
+    raised = tenant.get("credit_ceiling")
+    ceiling = included if raised is None else Decimal(str(raised))
     wanted = credits_for(cost, units) if cost else Decimal("0")
-    left = included - consumed
+    left = ceiling - consumed
 
     if left - wanted < 0:
+        limit = (f"this period's {included} credits are spent" if ceiling == included
+                 else f"the {ceiling}-credit ceiling is reached")
         return Allowance(
             allowed=False, remaining=left, consumed=consumed, included=included,
-            reason=(f"this period's {included} credits are spent "
-                    f"({consumed} used); {cost or 'the action'} needs {wanted}"))
+            ceiling=ceiling,
+            reason=(f"{limit} ({consumed} used); "
+                    f"{cost or 'the action'} needs {wanted}"))
     return Allowance(allowed=True, remaining=left, consumed=consumed,
-                     included=included)
+                     included=included, ceiling=ceiling)
 
 
 def meter(cur, tenant: dict[str, Any], *, kind: str, units: float = 1,
