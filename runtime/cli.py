@@ -127,6 +127,10 @@ def main(argv: list[str] | None = None) -> int:
     mapping.add_argument("--tenant", required=True)
     mapping.add_argument("--file", required=True)
 
+    pre = sub.add_parser("preflight",
+                         help="check a deployment before it takes traffic")
+    pre.add_argument("--json", action="store_true", help="machine-readable output")
+
     hook = sub.add_parser("webhook", help="create an inbound endpoint; secret shown once")
     hook.add_argument("--tenant", required=True)
     hook.add_argument("--provider", required=True)
@@ -242,6 +246,16 @@ def main(argv: list[str] | None = None) -> int:
                                  "established elsewhere")
         print(json.dumps(result, indent=2))
         return 0
+
+    if args.command == "preflight":
+        from runtime import preflight
+
+        report = preflight.run(settings, db)
+        print(json.dumps(report.as_dict(), indent=2) if args.json
+              else preflight.render(report))
+        # A blocking failure is a non-zero exit, so a release command or a
+        # deploy script stops rather than serving a misconfigured runtime.
+        return 1 if report.blocking else 0
 
     if args.command == "webhook":
         created = create_webhook_endpoint(db, args.tenant, provider=args.provider,

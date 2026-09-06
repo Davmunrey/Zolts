@@ -190,6 +190,54 @@ It provisions the tenant, publishes and activates the four example programs, ope
 
 All three run the API and the worker from the same image, because they share the code and differ only in the command.
 
+### Fly plus a managed Postgres, end to end
+
+The database is deliberately not Fly's. `fly postgres attach` sets `DATABASE_URL`, which this runtime does not read: a database URL is named explicitly or it is absent, because a runtime that picks up whichever connection string happens to be in the environment will one day pick up the wrong one.
+
+```sh
+# 1. The database. Neon's console gives you an owner connection string.
+#    Take the DIRECT endpoint, not the one with -pooler in the host: this
+#    runtime pools client-side, and a pooler in front of a pool buys nothing.
+
+# 2. The second role, the one that serves requests. Run against the owner URL:
+psql "$OWNER_URL" -c "create role zolts_app login password '…'"
+
+# 3. Secrets. Never in the repository, never in the database they protect.
+fly secrets set \
+  ZOLTS_DATABASE_URL="postgresql://owner:…@ep-x.eu-central-1.aws.neon.tech/zolts?sslmode=require" \
+  ZOLTS_APP_DATABASE_URL="postgresql://zolts_app:…@ep-x.eu-central-1.aws.neon.tech/zolts?sslmode=require" \
+  ZOLTS_SECRET_KEY="$(openssl rand -hex 32)"
+
+# 4. Deploy. The release command migrates, then runs preflight, and a
+#    non-zero preflight aborts the release before any traffic reaches it.
+fly deploy
+```
+
+Three values need credentials nobody but the account owner has, and each belongs in `fly secrets`, never in a file, a chat message or an issue: the two database URLs and the secret key.
+
+### Preflight
+
+`python3 -m runtime.cli preflight` answers, against the database actually connected, whether this deployment may take traffic. It is the release command on Fly and the pre-deploy step on Render, so a misconfigured runtime fails the deploy instead of serving.
+
+| Check | Blocking in production when |
+|---|---|
+| Secret key | It is a value published in this repository, or shorter than 32 characters |
+| Database | It cannot be reached — and nothing below is then reported, because a cascade of failures hides the one that matters |
+| Encryption in transit | The connection is unencrypted **and** the database is not local. A loopback or Unix-socket connection needs no TLS, and calling that a failure makes the check noise |
+| Application role | `ZOLTS_APP_DATABASE_URL` is unset, or the role it names is a superuser or holds `BYPASSRLS` |
+| Migrations | Any migration on disk is not in the ledger |
+| Forced row-level security | Any table with a `tenant_id` lacks `FORCE` — `ENABLE` alone exempts the owner |
+| Unscoped reads | A query with no tenant returns rows instead of raising |
+| Dry run | `ZOLTS_DRY_RUN` is true. Correct for a rehearsal, silent for a launch |
+
+Outside production the same checks run and report as warnings, because a developer with a local database is not misconfigured.
+
+### A transaction pooler
+
+Neon, Supabase and RDS Proxy all offer a pooled endpoint, and Neon's console offers it first. The runtime recognises one (`-pooler.` in the host, `pgbouncer=true`, or port 6543) and disables prepared statements on those connections. psycopg names a prepared statement after the fifth execution of a query, and a transaction pooler hands the next transaction a different backend that has never seen that name — so an unadapted deployment works for a few minutes and then fails under exactly the load that made it worth deploying.
+
+Tenant scoping is unaffected either way: `set_config('zolts.tenant_id', …, true)` is transaction-local and cannot outlive the transaction that set it, whichever backend runs it.
+
 Two things need doing by hand on a managed host, and both are deliberate:
 
 **Create the application role.** A managed Postgres issues one role, and it owns the schema. `ZOLTS_APP_DATABASE_URL` must point at a second role that cannot bypass row-level security — `create role zolts_app login password '…'`, then re-run `migrate`, which re-grants. Leaving it unset makes the application connect as the owner. RLS is FORCED so the policies still apply, but the second lock is gone, and `GET /health` reports `isolation_enforced: false` so the state is visible rather than assumed.
@@ -242,7 +290,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-512 tests. The runtime's 151 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+524 tests. The runtime's 171 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 

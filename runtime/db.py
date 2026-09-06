@@ -28,6 +28,30 @@ MIGRATIONS = Path(__file__).resolve().parent / "migrations"
 CONNECT_KWARGS = {"options": "-c search_path=public,pg_temp"}
 
 
+def is_pooled(url: str) -> bool:
+    """Whether a URL points at a transaction pooler rather than at Postgres.
+
+    Neon's console offers the pooled endpoint first, and a managed Supabase or
+    RDS Proxy string looks the same. It matters: a transaction pooler hands a
+    different backend to every transaction.
+    """
+    lowered = url.lower()
+    return "-pooler." in lowered or "pgbouncer=true" in lowered or ":6543/" in lowered
+
+
+def _connect_kwargs(url: str) -> dict[str, Any]:
+    if not is_pooled(url):
+        return dict(CONNECT_KWARGS)
+    # psycopg names a prepared statement after the fifth execution of a query.
+    # A transaction pooler gives the next transaction a different backend, which
+    # has never seen that name, so a deployment works for a few minutes and then
+    # fails under exactly the load that made it worth deploying.
+    #
+    # Tenant scoping is unaffected: `set_config(..., true)` is transaction-local
+    # and cannot outlive the transaction that set it, whichever backend runs it.
+    return {**CONNECT_KWARGS, "prepare_threshold": None}
+
+
 class Database:
     def __init__(self, owner_url: str, app_url: str | None = None) -> None:
         self._owner_url = owner_url
@@ -41,14 +65,14 @@ class Database:
     def pool(self) -> ConnectionPool:
         if self._pool is None:
             self._pool = ConnectionPool(self._app_url, min_size=1, max_size=8,
-                                        kwargs=CONNECT_KWARGS, open=True)
+                                        kwargs=_connect_kwargs(self._app_url), open=True)
         return self._pool
 
     @property
     def admin_pool(self) -> ConnectionPool:
         if self._admin_pool is None:
             self._admin_pool = ConnectionPool(self._owner_url, min_size=1, max_size=4,
-                                              kwargs=CONNECT_KWARGS, open=True)
+                                              kwargs=_connect_kwargs(self._owner_url), open=True)
         return self._admin_pool
 
     @property
@@ -106,7 +130,7 @@ class Database:
         if not files:
             raise RuntimeError(f"no migrations found in {MIGRATIONS}")
         applied: list[str] = []
-        conn = psycopg.connect(self._owner_url, **CONNECT_KWARGS)
+        conn = psycopg.connect(self._owner_url, **_connect_kwargs(self._owner_url))
         try:
             conn.execute(
                 "create table if not exists schema_migration ("
