@@ -191,15 +191,11 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
     <nav aria-label="Primary">
       <p class="sec">Run</p>
       <a href="#" data-view="programs" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
+      <a href="#" data-view="signals"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
+      <a href="#" data-view="prospects"><svg viewBox="0 0 13 13" fill="none"><circle cx="5" cy="4.4" r="2.2" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 11.2c0-1.9 1.6-3.2 3.5-3.2s3.5 1.3 3.5 3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M9.6 5.2h2.4M10.8 4v2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Prospects<span class="c" id="nav-prospects">0</span></a>
       <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
       <a href="#" data-view="sending"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
-      <p class="sec">Prove</p>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 11V5.5M6.5 11V2M11 11V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Experiments<span class="c" id="nav-experiments">6</span></a>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend</a>
-      <p class="sec">Govern</p>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1.6l4.2 1.9v3.2c0 2.4-1.8 4.1-4.2 4.7-2.4-.6-4.2-2.3-4.2-4.7V3.5l4.2-1.9z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Policy</a>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2.8 2.2h7.4v8.6H2.8z" stroke="currentColor" stroke-width="1.1"/><path d="M4.6 5h3.8M4.6 7.4h2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Audit log</a>
+      <a href="#" data-view="spend"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend<span class="c" id="nav-spend">0</span></a>
     </nav>
 
     <div class="rail-foot">
@@ -357,18 +353,24 @@ function renderChrome(){
   var t = D.tenant;
   if (t && t.name) document.getElementById("ws-name").textContent = t.name;
   put("nav-programs", P.length);
-  // Distinct trigger signals armed across every live program: what the tenant
-  // is actually listening for, not a catalogue size.
-  var signals = {};
-  P.forEach(function(p){ (p.signals || []).forEach(function(s){ if (s) signals[s] = 1; }); });
-  put("nav-signals", Object.keys(signals).length);
   // Drafts waiting for a person, not actions waiting to be sent. Those are
   // different queues and only one of them is somebody's job.
   put("nav-review", D.queue ? (D.queue.review != null ? D.queue.review : D.queue.pending) : null);
-  put("nav-experiments", P.filter(function(p){ return p.holdout > 0; }).length);
   // Sends left today, not mailboxes owned. An operator needs the number that
   // runs out, and an unmanaged fleet shows a dash rather than a zero: no
   // capacity and no control over capacity are opposite situations.
+  var P2 = D.prospects || {};
+  var pcount = (P2.people || []).length + (P2.accounts || []).length;
+  var pn = document.getElementById("nav-prospects");
+  if (pn) pn.textContent = nf(pcount);
+  // What has fired, not how many distinct signals are armed. The rail count
+  // and the view have to be the same number or the operator reads one as a
+  // contradiction of the other.
+  var sn = document.getElementById("nav-signals");
+  if (sn) sn.textContent = nf(((D.signalsView || {}).recent || []).length);
+  var spn = document.getElementById("nav-spend");
+  if (spn) spn.textContent = D.spendView ? nf(D.spendView.consumed) : "—";
+
   var F = D.fleet;
   var sending = document.getElementById("nav-sending");
   if (sending) sending.textContent = !F ? "—" : (F.managed ? nf(F.remaining) : "—");
@@ -830,7 +832,151 @@ function renderSending(){
        + 'No sending domain is registered yet.</p>';
 }
 
+/* ── prospects ─────────────────────────────────────────────────────────
+   The list an operator lives in, and the one that did not exist: both
+   /v1/accounts and /v1/people were POST-only, so a tenant could create a
+   prospect and never read one back. "Missing" is computed by the same rule
+   the enrichment path uses to decide whether to spend money — a screen with
+   its own idea of what is missing offers to buy fields the engine declines. */
+function renderProspects(){
+  document.querySelector(".bar h1").textContent = "Prospects";
+  var P2 = D.prospects || {accounts: [], people: [], missingCounts: {}};
+  var people = P2.people || [], accounts = P2.accounts || [];
+  document.getElementById("shown").textContent = people.length + accounts.length;
+  detail.innerHTML = "";
+
+  if (!people.length && !accounts.length){
+    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+      + 'No accounts or contacts yet. They arrive from a CRM sync, or from '
+      + 'POST /v1/accounts.</p>';
+    return;
+  }
+
+  var m = P2.missingCounts || {};
+  var head = '<div class="row" role="row"><span></span>'
+    + '<span class="nm">' + nf(accounts.length) + ' accounts, ' + nf(people.length)
+    + ' contacts</span>'
+    + '<span class="mono">' + nf(m.email || 0) + ' need email</span>'
+    + '<span class="mono">' + nf(m.phone || 0) + ' need phone</span>'
+    + '<span class="mono">' + nf(m.firmographics || 0) + ' need firmographics</span>'
+    + '</div>';
+
+  var rows = people.map(function(c){
+    // An opted-out contact is shown as denied rather than hidden: an operator
+    // who cannot see them wonders why the count does not add up.
+    var st = c.optedOut ? "deny" : (c.missing.length ? "warn" : "live");
+    return '<div class="row" role="row" data-p="' + esc(c.id) + '">'
+      + '<span class="st ' + st + '"></span>'
+      + '<span class="nm">' + esc(c.name || "(no name)") + '</span>'
+      + '<span class="mono">' + esc(c.email || "—") + '</span>'
+      + '<span class="mono">' + esc(c.phone || "—") + '</span>'
+      + '<span class="mono">' + esc(c.optedOut ? "opted out"
+          : (c.missing.join(", ") || "complete")) + '</span>'
+      + '</div>';
+  }).join("");
+
+  var accountRows = accounts.map(function(a){
+    return '<div class="row" role="row" style="padding-left:22px">'
+      + '<span class="st ' + (a.missing.length ? "warn" : "live") + '"></span>'
+      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(a.name) + '</span>'
+      + '<span class="mono">' + esc(a.domain || "—") + '</span>'
+      + '<span class="mono">' + nf(a.contacts) + ' contacts</span>'
+      + '<span class="mono">' + esc(a.missing.join(", ") || "complete") + '</span>'
+      + '</div>';
+  }).join("");
+
+  list.innerHTML = head + rows + accountRows;
+}
+
+/* ── signals ───────────────────────────────────────────────────────────
+   docs/06 calls signal-to-action latency the highest-leverage variable in
+   the system, so the split between how long the source took and how long we
+   took is the headline rather than a detail: they need opposite fixes. */
+function renderSignals(){
+  document.querySelector(".bar h1").textContent = "Signals";
+  var S = D.signalsView || {recent: [], watched: [], latency: {}};
+  document.getElementById("shown").textContent = (S.recent || []).length;
+  detail.innerHTML = "";
+
+  var L = S.latency || {};
+  var lat = L.touches
+    ? '<div class="row" role="row"><span></span>'
+      + '<span class="nm">time to touch, p95</span>'
+      + '<span class="mono">' + nf(L.detectionP95Minutes) + 'm to notice</span>'
+      + '<span class="mono">' + nf(L.executionP95Minutes) + 'm to act</span>'
+      + '<span class="mono">' + nf(L.totalP95Minutes) + 'm total</span></div>'
+    : '<div class="row" role="row"><span></span><span class="nm">time to touch</span>'
+      + '<span class="mono" style="grid-column:span 3">nothing sent from a signal yet</span></div>';
+
+  var watched = (S.watched || []).map(function(w){
+    return '<div class="row" role="row">'
+      + '<span class="st ' + (w.staleRefused ? "warn" : "live") + '"></span>'
+      + '<span class="nm">' + esc(w.signal) + '</span>'
+      + '<span class="mono">' + nf(w.checks) + ' checked</span>'
+      + '<span class="mono">' + nf(w.detected) + ' found</span>'
+      + '<span class="mono">' + (w.staleRefused ? nf(w.staleRefused) + ' too late' : '')
+      + '</span></div>';
+  }).join("");
+
+  var recent = (S.recent || []).map(function(r){
+    return '<div class="row" role="row" style="padding-left:22px">'
+      + '<span class="st live"></span>'
+      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(r.type) + '</span>'
+      + '<span class="mono">' + esc(r.subject || "—") + '</span>'
+      + '<span class="mono">' + r.strength + '</span>'
+      + '<span class="mono">' + nf(r.detectionMinutes) + 'm to notice</span>'
+      + '</div>';
+  }).join("");
+
+  list.innerHTML = lat + watched + recent
+    || '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+       + 'Nothing has fired yet.</p>';
+}
+
+/* ── spend ─────────────────────────────────────────────────────────────
+   GET /v1/billing/current has answered this since billing existed and no
+   screen asked it, so the number a customer is charged on was visible only
+   to whoever ran curl. */
+function renderSpend(){
+  document.querySelector(".bar h1").textContent = "Spend";
+  var S = D.spendView;
+  detail.innerHTML = "";
+  if (!S){
+    document.getElementById("shown").textContent = "0";
+    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+      + 'No billing period is open.</p>';
+    return;
+  }
+  document.getElementById("shown").textContent = nf(S.consumed);
+
+  var pct = Math.round((S.shareUsed || 0) * 100);
+  var head = '<div class="row" role="row">'
+    + '<span class="st ' + (S.alerting ? "warn" : "live") + '"></span>'
+    + '<span class="nm">' + esc(S.plan) + '</span>'
+    + '<span class="mono">' + nf(S.consumed) + ' of ' + nf(S.included) + '</span>'
+    + '<span class="mono">' + nf(S.remaining) + ' left</span>'
+    + '<span class="mono">' + pct + '% of the ceiling</span></div>';
+
+  var kinds = (S.byKind || []).map(function(k){
+    return '<div class="row" role="row" style="padding-left:22px">'
+      + '<span class="st live"></span>'
+      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(k.kind) + '</span>'
+      + '<span class="mono">' + nf(k.credits) + ' cr</span>'
+      + '<span class="mono">' + nf(k.events) + ' events</span>'
+      + '<span class="mono">€' + k.costEur.toFixed(4) + ' cost</span>'
+      + '</div>';
+  }).join("");
+
+  list.innerHTML = head + (kinds
+    || '<div class="row" role="row" style="padding-left:22px"><span></span>'
+       + '<span class="nm" style="color:var(--ink-tertiary)">nothing billed yet'
+       + '</span></div>');
+}
+
 function render(){
+  if (state.view === "prospects"){ renderProspects(); return; }
+  if (state.view === "signals"){ renderSignals(); return; }
+  if (state.view === "spend"){ renderSpend(); return; }
   if (state.view === "sending"){ renderSending(); return; }
   if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
   document.querySelector(".bar h1").textContent = "Programs";

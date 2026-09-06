@@ -17,9 +17,10 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from runtime.api import auth, console, webhooks
 from runtime.api.signin import SIGN_IN_CSP, sign_in_page
 from runtime.api.auth import CurrentPrincipal, Principal
-from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
-                                 MeasurementOut, PersonIn, ProgramIn, ProgramOut,
-                                 KeyIn, SessionIn, SignalIn, SignupIn)
+from runtime.api.schemas import (AccountIn, EnrichIn, EnrollmentOut, HealthOut,
+                                 IngestOut, KeyIn, MeasurementOut, PersonIn,
+                                 ProgramIn, ProgramOut, SessionIn, SignalIn,
+                                 SignupIn)
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
@@ -318,6 +319,67 @@ def create_app(db: Database, *, install_connectors: bool = True,
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     # -- entities --------------------------------------------------------
+
+    @app.get("/v1/accounts")
+    def list_accounts(limit: int = Query(200, ge=1, le=1000),
+                      principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """The tenant's accounts and contacts, and what is missing on them.
+
+        Both of these were POST-only. A tenant could create a prospect and had
+        no way to read one back, which made the console's prospect list
+        impossible and left enrichment reachable only from the CLI.
+        """
+        with db.tenant_tx(principal.tenant_id) as cur:
+            return console.prospects_view(cur, limit=limit)
+
+    @app.post("/v1/enrich")
+    def enrich_entities(body: EnrichIn,
+                        principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Buy a missing field for named entities.
+
+        Named rather than "everything missing": this spends real money, and an
+        endpoint that bills a data budget for whatever the caller happened to
+        have unresolved is one nobody can predict the cost of. The console
+        sends the rows the operator selected.
+        """
+        principal.require("write")
+        from runtime import enrichment
+
+        # The key the app was created with, not a fresh read of the whole
+        # environment. `Settings.from_env()` requires the database URL too, so
+        # a handler that calls it fails in any process configured differently
+        # from the one that built the app — which is every test, and any
+        # deployment that passes configuration in rather than exporting it.
+        results = []
+        with db.tenant_tx(principal.tenant_id) as cur:
+            enrichment.install_declared(cur)
+            cur.execute("select * from tenant where id = %s", (principal.tenant_id,))
+            tenant = cur.fetchone()
+            table = "account" if body.field == "firmographics" else "person"
+            for entity_id in body.ids:
+                cur.execute(f"select * from {table} where id = %s", (entity_id,))
+                row = cur.fetchone()
+                if row is None:
+                    continue
+                account = None
+                if table == "person":
+                    cur.execute(
+                        "select a.* from account a join membership m"
+                        " on m.account_id = a.id where m.person_id = %s limit 1",
+                        (entity_id,))
+                    found = cur.fetchone()
+                    account = dict(found) if found else None
+                results.append(enrichment.resolve(
+                    cur, tenant, field_name=body.field, entity=dict(row),
+                    account=account, legal_basis=body.legal_basis,
+                    secret_key=app.state.secret_key).as_dict())
+
+        resolved = [r for r in results if r["hit"]]
+        return {"field": body.field, "asked": len(results),
+                "resolved": len(resolved),
+                "creditsBilled": sum(r["credits"] for r in resolved),
+                "results": results,
+                "note": "misses are paid for and not billed to the tenant"}
 
     @app.post("/v1/accounts", status_code=status.HTTP_201_CREATED)
     def upsert_account(body: AccountIn, principal: Principal = CurrentPrincipal) -> dict[str, Any]:

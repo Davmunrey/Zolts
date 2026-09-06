@@ -127,3 +127,18 @@ class KeyIn(BaseModel):
 class SessionIn(BaseModel):
     """Opening a browser session with an API key."""
     api_key: str = Field(min_length=8, max_length=200)
+
+
+class EnrichIn(BaseModel):
+    """Buying a missing field for named entities.
+
+    Named rather than "everything unresolved": this spends a data budget, and
+    an endpoint whose cost depends on how much happened to be missing is one
+    nobody can predict the bill for.
+    """
+    field: Literal["email", "phone", "firmographics"]
+    ids: list[str] = Field(min_length=1, max_length=200)
+    # Enrichment obtains personal data from a third party. The basis is
+    # recorded against every value bought and cannot be reconstructed later.
+    legal_basis: Literal["legitimate_interest", "consent", "contract"] = \
+        "legitimate_interest"

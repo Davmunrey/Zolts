@@ -430,6 +430,20 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## The console an operator sits in front of
+
+Three views worked — Programs, Review queue, Sending — and the rail offered five more that did nothing. A nav entry with no surface behind it is worse than an absent one: it teaches an operator that clicking things here is pointless. Worse still, `/v1/accounts` and `/v1/people` were **POST-only**, so a tenant could create a prospect and had no way to read one back; the list they would live in was not unbuilt, it was unbuildable.
+
+| View | What it answers |
+|---|---|
+| **Prospects** | Every account and contact, and what is missing on each. "Missing" is decided by the same rule the enrichment path uses to spend money, so the screen cannot offer to buy a field the engine will decline. An opted-out contact is shown as denied rather than hidden |
+| **Signals** | What fired, and the latency split: how long the source took to notice against how long this runtime took to act. A bad total is one or the other and they need opposite fixes |
+| **Spend** | Credits consumed, what is left, the share of the ceiling and where it went by kind. `GET /v1/billing/current` had answered this since billing existed and no screen asked it |
+
+`POST /v1/enrich` takes named ids rather than "everything unresolved": it spends a data budget, and an endpoint whose cost depends on how much happened to be missing is one nobody can predict the bill for. It requires a write scope for the same reason.
+
+Experiments, Policy and Audit log were removed from the rail rather than left as links. The data behind two of them exists — `GET /v1/decisions` and the audit log — and a view for each is honest work still to do; a link pretending it is done is not.
+
 ## Going and looking for a signal
 
 `docs/06` calls signal-to-action latency the highest-leverage variable in the whole system. Nothing watched anything: signals arrived only when a customer pushed one, so the runtime's SLA was a claim about somebody else's work (ADR-022).
@@ -549,7 +563,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-756 tests. 237 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+765 tests. 244 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
