@@ -7,13 +7,14 @@ parameter: the only way to name a tenant is to hold one of its keys.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import jsonschema
 from fastapi import FastAPI, HTTPException, Query, Response, status
 
-from runtime.api import console
+from runtime.api import console, webhooks
 from runtime.api.auth import CurrentPrincipal, Principal
 from runtime.api.schemas import (AccountIn, EnrollmentOut, HealthOut, IngestOut,
                                  MeasurementOut, PersonIn, ProgramIn, ProgramOut, SignalIn)
@@ -27,12 +28,17 @@ from zolts import dsl, experiment
 SURFACE = Path(__file__).resolve().parent.parent.parent / "design" / "console.html"
 
 
-def create_app(db: Database, *, install_connectors: bool = True) -> FastAPI:
+def create_app(db: Database, *, install_connectors: bool = True,
+               secret_key: str | None = None) -> FastAPI:
     app = FastAPI(title="Zolts", version="0.1.0",
                   description="The GTM runtime: signal in, gated action out.")
     app.state.db = db
+    app.state.secret_key = secret_key or os.environ.get("ZOLTS_SECRET_KEY", "")
     if install_connectors:
         install_default_connectors()
+    # Webhooks authenticate by signature rather than by API key, so they are
+    # mounted outside the key-protected surface.
+    app.include_router(webhooks.router(db, app.state.secret_key), prefix="/v1")
 
     # -- health ----------------------------------------------------------
 

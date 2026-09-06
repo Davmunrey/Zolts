@@ -16,7 +16,8 @@ from runtime.config import Settings
 from runtime.connectors import install_default_connectors
 from runtime.db import Database
 from runtime.engine.worker import Worker
-from runtime.provision import create_tenant, issue_api_key, store_connection
+from runtime.provision import (create_tenant, create_webhook_endpoint, issue_api_key,
+                               store_connection)
 
 
 def _db(settings: Settings) -> Database:
@@ -53,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
     worker = sub.add_parser("worker", help="run the execution loop")
     worker.add_argument("--once", action="store_true")
     worker.add_argument("--interval", type=float, default=2.0)
+
+    hook = sub.add_parser("webhook", help="create an inbound endpoint; secret shown once")
+    hook.add_argument("--tenant", required=True)
+    hook.add_argument("--provider", required=True)
 
     serve = sub.add_parser("serve", help="run the API")
     serve.add_argument("--host", default="0.0.0.0")
@@ -97,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"connection_id": connection_id, "provider": args.provider}))
         return 0
 
+    if args.command == "webhook":
+        created = create_webhook_endpoint(db, args.tenant, provider=args.provider,
+                                          secret_key=settings.secret_key)
+        print(json.dumps(created))
+        return 0
+
     if args.command == "worker":
         install_default_connectors()
         runner = Worker(db, secret_key=settings.secret_key,
@@ -113,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
 
         from runtime.api.app import create_app
 
-        uvicorn.run(create_app(db), host=args.host, port=args.port)
+        uvicorn.run(create_app(db, secret_key=settings.secret_key),
+                    host=args.host, port=args.port)
         return 0
 
     return 2

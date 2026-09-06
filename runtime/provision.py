@@ -51,6 +51,31 @@ def issue_api_key(db: Database, tenant_id: str, name: str, scopes: list[str]) ->
     return IssuedKey(token=token, key_id=str(key_id), prefix=prefix)
 
 
+def create_webhook_endpoint(db: Database, tenant_id: str, *, provider: str,
+                            secret_key: str, secret: str | None = None) -> dict[str, str]:
+    """Create an inbound endpoint. Returns the URL path and the signing secret.
+
+    The secret is generated when not supplied and returned once, like an API
+    token. The endpoint is addressed by an opaque token rather than by tenant
+    id, so the URL a provider stores discloses nothing.
+    """
+    import secrets as _secrets
+
+    token = _secrets.token_urlsafe(24)
+    signing_secret = secret or _secrets.token_urlsafe(32)
+    with db.tenant_tx(tenant_id) as cur:
+        cur.execute(
+            "insert into webhook_endpoint (tenant_id, provider, token, secret_enc)"
+            " values (%s,%s,%s,%s)"
+            " on conflict (tenant_id, provider) do update set"
+            "   token = excluded.token, secret_enc = excluded.secret_enc,"
+            "   active = true returning token",
+            (tenant_id, provider, token, seal(signing_secret, secret_key)))
+        stored = one(cur)["token"]
+    return {"path": f"/webhooks/{stored}", "secret": signing_secret,
+            "note": "store the secret now; it is not recoverable"}
+
+
 def store_connection(
     db: Database,
     tenant_id: str,

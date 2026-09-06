@@ -17,6 +17,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | HTTP API with API-key tenancy | `runtime/api/` | Running |
 | CLI: migrate, provision, worker, serve | `runtime/cli.py` | Running |
 | Console served from the API with live tenant data | `runtime/api/console.py`, `runtime/surface.py` | Running |
+| Signed inbound webhooks: replies, bounces, opt-outs, deals | `runtime/api/webhooks.py`, `runtime/engine/inbound.py` | Running |
 
 Not built: the agent layer and its eval gate, the enrichment waterfall wired to real providers, warehouse zero-copy, and any second sending channel. Those are named here so the gap is a decision rather than a discovery.
 
@@ -70,6 +71,12 @@ worker tick
 
 **Sending is never free.** Every send records a cost in micros, because a budget rule reading zero is a budget rule that never fires.
 
+**An inbound event is stored before it is interpreted.** A provider that changes its payload, or an interpretation this runtime gets wrong, is then a replay rather than data that never existed. The raw body is the only record of what a provider actually said, and it is the one a compliance question is answered from.
+
+**An opt-out does all three things or none.** Suppress the address, exit the enrollment, cancel its queued work. This repository has found the same failure four times in other disguises — a contact asks not to be contacted and tomorrow's step still goes out — so the three are one transaction and a test asserts that the policy gate then denies the contact the webhook just suppressed. A suppression the gate disagrees with is decorative.
+
+**A webhook with no signing secret accepts nothing.** An unauthenticated endpoint that records outcomes is a way for anyone who learns the URL to move a customer's measured lift.
+
 ## Operating it
 
 ```bash
@@ -99,12 +106,13 @@ python3 -m runtime.cli worker
 | `plan_due` scans every active tenant per tick | Thousands of tenants | Drive planning from a due-time index rather than a tenant loop |
 | Contact-local hour approximated by country | Immediately, for accuracy | Resolve a real timezone per contact; the coarse table is marked in the code |
 | Provider rate limits are the connector's problem | First large tenant | A shared token bucket per (tenant, provider) in the claim path |
+| Webhooks are interpreted inline on the request | A provider bursting a backlog | The events are already stored first; move the interpretation to the worker |
 
 None is load-bearing before the first paying customers, and each is a contained change. They are listed so that the first one to bite is a known cost rather than an outage.
 
 ## Tests
 
-351 tests. The runtime's 70 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+366 tests. The runtime's 85 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -118,3 +126,6 @@ What they assert, in the order that matters:
 8. A tenant with no connection fails loudly rather than silently.
 9. No effect is declared while either arm carries fewer than five observed conversions.
 10. The live view model and the static fixture carry the same shape, and both honour the contract the surface's rendering relies on.
+11. An unsigned or wrongly signed webhook is rejected, and an unknown endpoint token is indistinguishable from a revoked one.
+12. An opt-out arriving by webhook suppresses, exits and cancels — and the policy gate then denies that contact.
+13. A retried provider event is applied once. A retried conversion would move the measured lift.

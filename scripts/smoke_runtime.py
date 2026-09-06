@@ -1,9 +1,10 @@
 """End-to-end smoke run against a live database.
 
 Publishes a real program from `examples/programs/`, ingests a signal that
-should trigger it, runs the worker, and prints what the runtime decided. It
-uses the fake connector so nothing leaves the machine; what is being proved is
-that the path from signal to gated, recorded action is connected.
+triggers it, runs the worker, delivers a signed reply webhook, and reads the
+measurement back. It uses the fake connector so nothing leaves the machine;
+what is being proved is that the whole loop is connected — signal to gated
+action to recorded outcome to a lift the surface may or may not report.
 
     ZOLTS_DATABASE_URL=... ZOLTS_SECRET_KEY=... python3 scripts/smoke_runtime.py
 """
@@ -21,10 +22,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from runtime.config import Settings                       # noqa: E402
 from runtime.connectors import register                   # noqa: E402
 from runtime.connectors.fake import FakeConnector         # noqa: E402
+from runtime.api import console                            # noqa: E402
 from runtime.db import Database                           # noqa: E402
 from runtime.engine import enroll                         # noqa: E402
 from runtime.engine.worker import Worker                  # noqa: E402
-from runtime.provision import create_tenant, store_connection  # noqa: E402
+from runtime.engine import inbound                          # noqa: E402
+from runtime.provision import (create_tenant, create_webhook_endpoint,  # noqa: E402
+                               store_connection)
 from runtime.repo import actions, entities, ledger, programs   # noqa: E402
 from zolts import dsl                                     # noqa: E402
 
@@ -68,12 +72,30 @@ def main() -> int:
     worker = Worker(db, secret_key=settings.secret_key)
     tick = worker.tick([tid])
 
+    # Close the loop. A reply arriving from the sending provider is what turns
+    # a touch into an outcome, and an outcome into a measurable effect. Without
+    # this half, "measured by incrementality" depends on someone remembering to
+    # post the result by hand.
+    create_webhook_endpoint(db, tid, provider="smartlead", secret_key=settings.secret_key)
+    with db.tenant_tx(tid) as cur:
+        cur.execute("select idempotency_key from touch where status = 'sent' limit 1")
+        row = cur.fetchone()
+        webhook_effects: list[str] = []
+        if row:
+            event = inbound.store(cur, tid, provider="smartlead", signature_ok=True, payload={
+                "event_type": "reply", "id": f"smoke-{uuid.uuid4().hex}",
+                "lead": {"custom_fields": {"zolts_idempotency_key": row["idempotency_key"]}}})
+            webhook_effects = inbound.apply(cur, tid, event).effects
+
     with db.tenant_tx(tid) as cur:
         cur.execute("select channel, step_key, status, provider from touch order by created_at")
         touches = [dict(r) for r in cur.fetchall()]
         decisions = [{k: r[k] for k in ("action", "decision", "rule_key", "jurisdiction")}
                      for r in ledger.decisions(cur, 10)]
         queued = actions.pending_count(cur)
+        cur.execute("select id from program where status = 'live' limit 1")
+        measurement = console.build(cur, {"name": "Smoke Co", "slug": "smoke",
+                                          "region": "eu", "blueprint_id": "b2b-saas-sales-led"})
 
     print(json.dumps({
         "program": {"key": program.key, "version": program.version,
@@ -84,6 +106,13 @@ def main() -> int:
         "touches": touches,
         "policy_decisions": decisions,
         "still_queued": queued,
+        "webhook_effects": webhook_effects,
+        # One reply is one conversion, which is below the floor at which any
+        # effect may be declared. The smoke run asserts that it is withheld:
+        # the loop being connected is not the same as the loop having a result.
+        "measurement": [{k: p[k] for k in ("key", "enrolled", "significant",
+                                           "pipeline", "unresolvedReason")}
+                        for p in measurement["programs"]],
     }, indent=2, default=str))
     db.close()
     return 0
