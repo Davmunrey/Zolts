@@ -36,8 +36,14 @@ from runtime.repo import actions, enrollments, entities, ledger
 # What a provider event means to the runtime. Anything unmapped is stored and
 # left unhandled rather than guessed at: a wrong mapping writes an outcome that
 # silently moves a measured lift.
-OPT_OUT = {"unsubscribe", "unsubscribed", "email_unsubscribed", "spam", "complaint",
-           "contact.unsubscribed"}
+# Suppression treats these identically and is right to: both mean stop. For
+# reputation they are nothing alike — 0.3% complaints pauses a domain, 2%
+# unsubscribes triggers a review — so the runtime has to be able to tell them
+# apart. One set for what they share, two for what they do not.
+UNSUBSCRIBE = {"unsubscribe", "unsubscribed", "email_unsubscribed",
+               "contact.unsubscribed"}
+COMPLAINT = {"spam", "complaint", "spam_complaint", "spamreport", "abuse"}
+OPT_OUT = UNSUBSCRIBE | COMPLAINT
 NEGATIVE_DELIVERY = {"bounce", "bounced", "hard_bounce", "email_bounced", "dropped"}
 ENGAGEMENT = {"open": "opened", "opened": "opened", "click": "opened",
               "email_opened": "opened", "delivered": "delivered",
@@ -188,6 +194,10 @@ def apply(cur, tenant_id: str, event: dict[str, Any],
 
     if event_type in OPT_OUT:
         _opt_out(cur, tenant_id, person, enrollment_id, provider, result)
+        # Recorded against the touch that caused it, because reputation is
+        # scored per mailbox and the mailbox is on the touch.
+        _reputation(cur, touch, complaint=event_type in COMPLAINT, occurred=occurred,
+                    result=result)
     elif event_type in NEGATIVE_DELIVERY:
         _bounce(cur, tenant_id, touch, person, provider, result)
     elif event_type in ENGAGEMENT and touch:
@@ -231,6 +241,51 @@ def _reply(cur, tenant_id: str, person: dict[str, Any] | None,
 
     _outcome(cur, tenant_id, enrollment_id, f"reply_{triage.verdict}", None, occurred,
              provider, event, result, verified_by="triage")
+
+
+def _reputation(cur, touch: dict[str, Any] | None, *, complaint: bool,
+                occurred: datetime, result: Applied) -> None:
+    """Stamp the touch with the fact its mailbox will be judged on.
+
+    An event with no touch behind it still suppresses the contact — that path
+    is unconditional above — but it cannot be attributed to a mailbox, and
+    attributing it to the wrong one is worse than not counting it.
+    """
+    if touch is None:
+        result.effects.append("reputation.unattributed")
+        return
+    column = "complained_at" if complaint else "unsubscribed_at"
+    cur.execute(
+        # First one wins: a provider that redelivers a complaint must not make
+        # it look like two.
+        f"update touch set {column} = coalesce({column}, %s) where id = %s",
+        (occurred, touch["id"]))
+    result.effects.append("touch.complained" if complaint else "touch.unsubscribed")
+    if complaint:
+        _breakers(cur, touch, result)
+
+
+def _breakers(cur, touch: dict[str, Any], result: Applied) -> None:
+    """Re-assess the cut-offs now, not on a nightly job.
+
+    A threshold evaluated overnight lets a bad afternoon run to completion, and
+    these are the numbers whose damage cannot be undone on that timescale.
+    """
+    from runtime import breakers
+
+    program_id = None
+    if touch.get("enrollment_id"):
+        cur.execute("select program_id from enrollment where id = %s",
+                    (touch["enrollment_id"],))
+        row = cur.fetchone()
+        program_id = str(row["program_id"]) if row and row["program_id"] else None
+
+    mailbox_id = str(touch["mailbox_id"]) if touch.get("mailbox_id") else None
+    tripped = breakers.check(cur, mailbox_id=mailbox_id, program_id=program_id)
+    for name in tripped.domains:
+        result.effects.append(f"domain.paused:{name}")
+    for program in tripped.programs:
+        result.effects.append(f"program.paused:{program}")
 
 
 def _opt_out(cur, tenant_id: str, person: dict[str, Any] | None, enrollment_id: str | None,
@@ -277,6 +332,7 @@ def _bounce(cur, tenant_id: str, touch: dict[str, Any] | None,
     if touch:
         cur.execute("update touch set status = 'bounced' where id = %s", (touch["id"],))
         result.effects.append("touch.bounced")
+        _breakers(cur, touch, result)
     if person and person.get("email"):
         cur.execute("update person set email_status = 'invalid' where id = %s",
                     (person["id"],))

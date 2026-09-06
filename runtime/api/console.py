@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from runtime import fleet
 from runtime.repo import enrollments, programs
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, is_resolvable, lift, minimum_detectable_effect
 
@@ -303,5 +304,10 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "blueprints": [],
         "assignmentSample": [],
         "queue": {"pending": queued, "dead": dead, "review": review},
+        # Capacity is reported whether or not it is managed. A fleet with no
+        # members and a tenant whose provider owns the mailboxes look identical
+        # in a summary and are opposite in consequence, so the surface has to
+        # say which one this is.
+        "fleet": fleet.health(cur),
         "spend": {"llm_usd": round(llm_micros / 1_000_000, 4)},
     }

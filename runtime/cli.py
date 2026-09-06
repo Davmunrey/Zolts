@@ -132,6 +132,34 @@ def main(argv: list[str] | None = None) -> int:
     close = sub.add_parser("close-period", help="close a tenant's billing period")
     close.add_argument("--tenant", required=True)
 
+    domain = sub.add_parser(
+        "sending-domain",
+        help="register a sending domain, or confirm its authentication")
+    domain.add_argument("--tenant", required=True)
+    domain.add_argument("--name", required=True)
+    domain.add_argument("--spf", action="store_true", help="SPF is published")
+    domain.add_argument("--dkim", action="store_true", help="DKIM is published")
+    domain.add_argument("--dmarc", default="none",
+                        choices=["none", "quarantine", "reject"])
+    domain.add_argument("--one-click-unsubscribe", action="store_true")
+    domain.add_argument("--resume", action="store_true",
+                        help="lift a pause a cut-off applied")
+
+    box = sub.add_parser("mailbox", help="register a sending mailbox")
+    box.add_argument("--tenant", required=True)
+    box.add_argument("--address", required=True)
+    box.add_argument("--provider", default="other",
+                     choices=["google", "microsoft", "other"],
+                     help="the recipients this mailbox sends to, not its host")
+    box.add_argument("--warmup-started",
+                     help="ISO date warm-up began; defaults to today, which is "
+                          "the cautious reading and sends less")
+    box.add_argument("--pause", action="store_true")
+    box.add_argument("--resume", action="store_true")
+
+    caps = sub.add_parser("capacity", help="what the sending fleet can do today")
+    caps.add_argument("--tenant", required=True)
+
     terms = sub.add_parser(
         "set-terms",
         help="change a tenant's plan or raise its credit ceiling (provisioning)")
@@ -351,6 +379,83 @@ def main(argv: list[str] | None = None) -> int:
             "creditCeiling": None if ceiling is None else float(ceiling),
             "note": ("the ceiling is the plan's allowance" if ceiling is None else
                      "credits consumed above the plan bill as overage")}, indent=2))
+        return 0
+
+    if args.command == "sending-domain":
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute(
+                "insert into sending_domain (tenant_id, name, spf, dkim,"
+                " dmarc_policy, one_click_unsubscribe) values (%s,%s,%s,%s,%s,%s)"
+                " on conflict (tenant_id, name) do update set"
+                "   spf = excluded.spf, dkim = excluded.dkim,"
+                "   dmarc_policy = excluded.dmarc_policy,"
+                "   one_click_unsubscribe = excluded.one_click_unsubscribe"
+                " returning *",
+                (args.tenant, args.name, args.spf, args.dkim, args.dmarc,
+                 args.one_click_unsubscribe))
+            row = one(cur)
+            if args.resume:
+                # Lifting a cut-off is a human saying the cause is fixed. The
+                # breaker will trip again on the next complaint if it is not.
+                cur.execute("update sending_domain set paused = false,"
+                            " paused_reason = null, paused_at = null"
+                            " where id = %s returning *", (row["id"],))
+                row = one(cur)
+        issues = []
+        if not row["spf"]:
+            issues.append("spf.missing")
+        if not row["dkim"]:
+            issues.append("dkim.missing")
+        if row["dmarc_policy"] not in ("quarantine", "reject"):
+            issues.append("dmarc.too_weak")
+        if not row["one_click_unsubscribe"]:
+            issues.append("list_unsubscribe.missing")
+        print(json.dumps({
+            "domain": row["name"], "paused": row["paused"],
+            "authenticationIssues": issues,
+            "note": ("this domain has no capacity until every issue is resolved; "
+                     "missing authentication is mail filtered on arrival, not a "
+                     "reputation problem to recover from") if issues else
+                    "authenticated"}, indent=2))
+        return 0
+
+    if args.command == "mailbox":
+        from datetime import date
+
+        started = date.fromisoformat(args.warmup_started) if args.warmup_started else None
+        with db.tenant_tx(args.tenant) as cur:
+            cur.execute(
+                "insert into mailbox (tenant_id, address, domain, provider,"
+                " warmup_started_on) values (%s,%s,%s,%s, coalesce(%s, current_date))"
+                " on conflict (tenant_id, address) do update set"
+                "   provider = excluded.provider,"
+                "   warmup_started_on = coalesce(%s, mailbox.warmup_started_on)"
+                " returning *",
+                (args.tenant, args.address, args.address.split("@")[-1],
+                 args.provider, started, started))
+            row = one(cur)
+            if args.pause or args.resume:
+                cur.execute("update mailbox set paused = %s, paused_reason = %s"
+                            " where id = %s returning *",
+                            (bool(args.pause), "paused by an operator" if args.pause
+                             else None, row["id"]))
+                row = one(cur)
+            cur.execute("select 1 from sending_domain where name = %s", (row["domain"],))
+            registered = cur.fetchone() is not None
+        print(json.dumps({
+            "mailbox": row["address"], "provider": row["provider"],
+            "warmupStartedOn": row["warmup_started_on"].isoformat(),
+            "paused": row["paused"],
+            "note": None if registered else
+                    f"the domain {row['domain']} is not registered, so this "
+                    f"mailbox has no capacity until it is"}, indent=2))
+        return 0
+
+    if args.command == "capacity":
+        from runtime import fleet
+
+        with db.tenant_tx(args.tenant) as cur:
+            print(json.dumps(fleet.health(cur), indent=2))
         return 0
 
     if args.command == "liveness":

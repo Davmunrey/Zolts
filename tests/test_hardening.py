@@ -119,7 +119,7 @@ def test_liveness_reports_a_draining_deployment(client):
     assert body["draining"] is True
     assert {s["name"] for s in body["signals"]} == {
         "outbox draining", "actions completing", "connections healthy",
-        "tenants can send"}
+        "tenants can send", "sending domains"}
 
 
 @requires_db

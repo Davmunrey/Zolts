@@ -206,6 +206,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       <a href="#" data-view="programs" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
       <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
+      <a href="#" data-view="sending"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
       <p class="sec">Prove</p>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 11V5.5M6.5 11V2M11 11V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Experiments<span class="c" id="nav-experiments">6</span></a>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend</a>
@@ -378,6 +379,12 @@ function renderChrome(){
   // different queues and only one of them is somebody's job.
   put("nav-review", D.queue ? (D.queue.review != null ? D.queue.review : D.queue.pending) : null);
   put("nav-experiments", P.filter(function(p){ return p.holdout > 0; }).length);
+  // Sends left today, not mailboxes owned. An operator needs the number that
+  // runs out, and an unmanaged fleet shows a dash rather than a zero: no
+  // capacity and no control over capacity are opposite situations.
+  var F = D.fleet;
+  var sending = document.getElementById("nav-sending");
+  if (sending) sending.textContent = !F ? "—" : (F.managed ? nf(F.remaining) : "—");
 }
 
 /* ── detail ────────────────────────────────────────────────────────── */
@@ -782,7 +789,59 @@ function show(view){
   render();
 }
 
+/* ── sending fleet ─────────────────────────────────────────────────────
+   These errors do not surface as a failing test. A miscalculated capacity or
+   a threshold checked one comparison too late shows up weeks later as a
+   burned domain, which is why the state has to be visible before then. */
+function renderSending(){
+  document.querySelector(".bar h1").textContent = "Sending";
+  var F = D.fleet || {managed: false, domains: [], note: "No fleet data."};
+  document.getElementById("shown").textContent = (F.domains || []).length;
+  detail.innerHTML = "";
+
+  if (!F.managed){
+    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+      + esc(F.note || "Sending capacity is not managed here.") + '</p>';
+    return;
+  }
+
+  var paused = (F.pausedDomains || []).map(function(d){
+    return '<div class="row" role="row"><span class="st deny"></span>'
+      + '<span class="nm">' + esc(d.name) + '</span>'
+      + '<span class="mono" style="grid-column:span 3">'
+      + esc(d.pausedReason || "paused") + '</span></div>';
+  }).join("");
+
+  var rows = (F.domains || []).map(function(d){
+    var issues = (d.authenticationIssues || []).join(", ");
+    var head = '<div class="row" role="row">'
+      + '<span class="st ' + (d.health === "paused" ? "deny"
+          : d.health === "alarm" ? "warn" : "live") + '"></span>'
+      + '<span class="nm">' + esc(d.name) + '</span>'
+      + '<span class="mono">' + nf(d.capacity) + '/day</span>'
+      + '<span class="mono">' + esc(d.health) + '</span>'
+      + '<span class="mono">' + esc(issues || d.rule || "") + '</span>'
+      + '</div>';
+    var boxes = (d.mailboxes || []).map(function(m){
+      return '<div class="row" role="row" style="padding-left:22px">'
+        + '<span class="st ' + (m.health === "paused" ? "deny"
+            : m.health === "alarm" ? "warn" : "live") + '"></span>'
+        + '<span class="nm" style="color:var(--ink-secondary)">' + esc(m.address) + '</span>'
+        + '<span class="mono">' + nf(m.remaining) + ' left</span>'
+        + '<span class="mono">day ' + nf(m.warmupDay) + '</span>'
+        + '<span class="mono">' + esc(m.provider) + '</span>'
+        + '</div>';
+    }).join("");
+    return head + boxes;
+  }).join("");
+
+  list.innerHTML = paused + rows
+    || '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+       + 'No sending domain is registered yet.</p>';
+}
+
 function render(){
+  if (state.view === "sending"){ renderSending(); return; }
   if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
   document.querySelector(".bar h1").textContent = "Programs";
   renderList();

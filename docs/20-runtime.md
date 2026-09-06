@@ -420,6 +420,24 @@ Seats are counted from live API keys at close time rather than from a number som
 
 Overage was priced and unreachable until the ceiling became raisable. The runtime stopped every tenant at their included credits, so no tenant could consume a credit past their plan and the expansion revenue `docs/12` calls the first driver of NRR was arithmetic nobody could run. `credit_ceiling` defaults to null — the plan's allowance, the behaviour that was already there — and raising it is provisioning, like changing a plan.
 
+## Sending capacity, and what stops a send
+
+`zolts/deliverability.py` modelled warm-up curves, reputation factors, the `docs/09` thresholds and per-provider segregation since the reference core existed. Nothing in the runtime imported it, and the `mailbox` table had columns for warm-up and four rates that no code ever wrote or read (ADR-020).
+
+| | |
+|---|---|
+| Derive | Every rate comes from the touches a mailbox actually sent, over a 30-day window. The four stored rate columns were dropped: a stored rate is right when written and wrong from then on, and a stale 0.0% bounce rate looks exactly like a healthy mailbox |
+| Allocate | `runtime/fleet.py` picks a mailbox for the recipient's provider, most headroom first. Nothing left is a hard stop, and the action is **held** until the cap resets — not failed, not cancelled |
+| Fail closed | A domain nobody registered, or one without SPF, DKIM, a DMARC policy and one-click unsubscribe, has zero capacity. Missing authentication is mail filtered on arrival, not a reputation problem to recover from |
+| Break | A complaint rate at 0.3% pauses the **domain**, including its healthy mailboxes. A bounce rate at 3% pauses the **program**. Checked on the event, because a threshold evaluated overnight lets a bad afternoon finish |
+| Report | `zolts capacity --tenant …`, a Sending view in the console, and a `sending domains` liveness signal. A paused domain is the most expensive silent state in the product |
+
+Register a fleet with `zolts sending-domain --tenant … --name outbound.example --spf --dkim --dmarc quarantine --one-click-unsubscribe` and `zolts mailbox --tenant … --address ae@outbound.example --warmup-started 2026-09-01`.
+
+**A tenant with no registered domain is reported, not blocked.** The provider owns those mailboxes and this runtime cannot cap what it has not been told about; refusing to send would stop a tenant for a reason no operator could act on. Every surface says capacity is unmanaged rather than showing a healthy zero.
+
+**What the gate buys depends on the provider.** Smartlead takes a recipient and picks the mailbox itself, so there the allocated mailbox is an intent recorded on the touch and the gate bounds the volume released per day. Decision 19 registers that rather than implying a per-mailbox guarantee no provider agreed to.
+
 ## Operating it once a partner is real
 
 `/health` answers "can I reach the database". That is nearly always yes, including on the morning the worker died at 3am, the outbox has been growing for six hours and a paying partner's campaign has sent nothing. Both states report `"status": "ok"`, which makes the endpoint an alibi rather than a signal.
@@ -485,7 +503,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-692 tests. 189 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+709 tests. 205 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

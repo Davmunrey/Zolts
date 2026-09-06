@@ -27,7 +27,7 @@ from runtime.connectors.registry import get_connector, providers_for
 from runtime.crypto import open_sealed
 from runtime.db import Database, one
 from runtime.engine import gate, generate, planner
-from runtime import metering
+from runtime import fleet, metering
 from runtime.repo import actions, enrollments, entities, ledger, programs, signals
 
 log = logging.getLogger("zolts.worker")
@@ -49,6 +49,18 @@ class Tick:
     @property
     def did_work(self) -> bool:
         return bool(self.planned or self.claimed)
+
+
+def _next_sending_day(now: datetime | None = None) -> datetime:
+    """Midnight UTC tomorrow: when a mailbox's daily cap resets.
+
+    UTC because that is what `sent_today` is counted in. A cap that resets on
+    one clock and is measured on another gives a mailbox a few free sends
+    every day, which is how a cap becomes a suggestion.
+    """
+    moment = now or datetime.now(timezone.utc)
+    tomorrow = moment.astimezone(timezone.utc).date() + timedelta(days=1)
+    return datetime.combine(tomorrow, datetime.min.time(), tzinfo=timezone.utc)
 
 
 class Worker:
@@ -170,6 +182,22 @@ class Worker:
             tick.cancelled += 1
             return
 
+        # Capacity, after the policy gate so a blocked contact does not spend
+        # any, and before the connector so an over-capacity send never leaves.
+        #
+        # Held rather than failed, for the same reason a tenant out of credits
+        # is held: the work is good and the condition passes on its own. What
+        # no retry budget should be spent on is a mailbox that will still be at
+        # its daily cap in five minutes.
+        seat = fleet.allocate(cur, recipient=(person or {}).get("email"))
+        if not seat.granted:
+            # Due when the daily cap resets, not when the billing period
+            # turns, which is `defer`'s default and a month too late here.
+            actions.defer(cur, str(action["id"]), f"capacity: {seat.reason}",
+                          until=_next_sending_day())
+            tick.deferred += 1
+            return
+
         provider, secret, config = self._connection_for(cur, channel)
         connector = get_connector(provider)
         result: Result = connector.execute(Request(
@@ -185,7 +213,8 @@ class Worker:
             step_key=action["step_key"], idempotency_key=action["idempotency_key"],
             content={"step": payload.get("step", {})}, provider=provider,
             provider_ref=result.provider_ref, status="sent",
-            cost_micros=result.cost_micros, sent_at=datetime.now(timezone.utc))
+            cost_micros=result.cost_micros, sent_at=datetime.now(timezone.utc),
+            mailbox_id=seat.mailbox_id)
         # Metered whatever the provider cost us. Billing a send only when we
         # happen to know our own COGS made every send through a provider that
         # reports no cost free to the customer, which is not a discount

@@ -79,6 +79,21 @@ def _seed() -> tuple[str, str]:
                          "dropped_claims": ["They are hiring 40 engineers."]}),
              json.dumps([{"ref": "e1", "source": "filing", "text": "A $12m Series A."}]),
              json.dumps({"failures": []}), json.dumps({"verdict": "yes"})))
+
+        # A sending fleet, so the surface renders rows rather than only its
+        # empty state. Two mailboxes on one authenticated domain, one of them
+        # part-way through warm-up, because a capacity that is not the base cap
+        # is the number a wrong warm-up calculation would get wrong.
+        cur.execute(
+            "insert into sending_domain (tenant_id, name, spf, dkim, dmarc_policy,"
+            " one_click_unsubscribe) values (%s,'outbound.example',true,true,"
+            " 'quarantine',true)", (tenant_id,))
+        for address, provider, age in (("ae@outbound.example", "google", 45),
+                                       ("sdr@outbound.example", "other", 5)):
+            cur.execute(
+                "insert into mailbox (tenant_id, address, domain, provider,"
+                " warmup_started_on) values (%s,%s,'outbound.example',%s,"
+                " current_date - %s)", (tenant_id, address, provider, age))
     db.close()
     return signed_up["api_key"], tenant_id
 
@@ -141,6 +156,17 @@ def main() -> int:
                 .evaluate("el => el.parentElement.innerText")
             page.click("#approve")
             page.wait_for_selector("#approve", state="detached", timeout=15_000)
+
+            # 5. The sending fleet. This is the surface whose errors do not
+            #    surface as a failing test: a burned domain shows up weeks
+            #    later, so an operator has to be able to see the state before
+            #    then. A fresh tenant has no fleet, and the honest answer is
+            #    that capacity is not managed rather than that it is zero.
+            page.click('nav a[data-view="sending"]')
+            page.wait_for_selector("#list .empty, #list .row", timeout=15_000)
+            report["sending_rail"] = page.locator("#nav-sending").inner_text()
+            report["sending_rows"] = page.locator("#list .row").count()
+            report["sending_view"] = page.locator("#list").inner_text()[:200]
 
             report["page_errors"] = errors
             report["csp_violations"] = violations

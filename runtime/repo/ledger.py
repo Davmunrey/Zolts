@@ -29,18 +29,24 @@ def record_decision(cur, tenant_id: str, *, subject_type: str, subject_id: str,
 def record_touch(cur, tenant_id: str, *, enrollment_id: str | None, channel: str,
                  step_key: str | None, idempotency_key: str, content: dict[str, Any],
                  provider: str | None, provider_ref: str | None, status: str,
-                 cost_micros: int = 0, sent_at: datetime | None = None) -> dict[str, Any] | None:
+                 cost_micros: int = 0, sent_at: datetime | None = None,
+                 mailbox_id: str | None = None) -> dict[str, Any] | None:
     cur.execute(
         "insert into touch (tenant_id, enrollment_id, channel, step_key, idempotency_key,"
-        " content, provider, provider_ref, status, cost_micros, sent_at)"
-        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        " content, provider, provider_ref, status, cost_micros, sent_at, mailbox_id)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
         " on conflict (tenant_id, idempotency_key) do update set"
         "   status = excluded.status, provider_ref ="
         "   coalesce(excluded.provider_ref, touch.provider_ref), sent_at ="
-        "   coalesce(excluded.sent_at, touch.sent_at)"
+        "   coalesce(excluded.sent_at, touch.sent_at), mailbox_id ="
+        # A redelivered send keeps the mailbox that actually sent it. Letting a
+        # retry rewrite it would move the reputation consequence to whichever
+        # mailbox happened to be free the second time.
+        "   coalesce(touch.mailbox_id, excluded.mailbox_id)"
         " returning *",
         (tenant_id, enrollment_id, channel, step_key, idempotency_key,
-         json.dumps(content), provider, provider_ref, status, cost_micros, sent_at),
+         json.dumps(content), provider, provider_ref, status, cost_micros, sent_at,
+         mailbox_id),
     )
     return one(cur)
 
