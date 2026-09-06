@@ -28,10 +28,18 @@ OUT_DIR = ROOT / "site"
 
 def build() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    rendered = document(inject(source, build_fixture()), title=TITLE, description=DESCRIPTION)
+    fixture = build_fixture()
+    rendered = document(inject(source, fixture), title=TITLE, description=DESCRIPTION)
 
     OUT_DIR.mkdir(exist_ok=True)
     (OUT_DIR / "index.html").write_text(rendered, encoding="utf-8")
+
+    # The same fixture, as data. It was written only when `build_fixture.py`
+    # was run by hand, so CI's staleness check — which runs this file — could
+    # never see it drift from the page beside it.
+    (OUT_DIR / "data").mkdir(exist_ok=True)
+    (OUT_DIR / "data" / "console.json").write_text(
+        json.dumps(fixture, indent=2) + "\n", encoding="utf-8")
 
     # The static build fetches nothing, so connect-src stays closed.
     policy = content_security_policy(rendered, connect_src="'none'")
@@ -49,7 +57,17 @@ def build() -> None:
 
     vercel = {
         "$schema": "https://openapi.vercel.sh/vercel.json",
-        "buildCommand": "python3 scripts/build_site.py",
+        # No build. `site/` is committed and CI regenerates it and fails on any
+        # difference, so the host has nothing left to do but serve the files.
+        #
+        # Rebuilding here cost two failed deploys for nothing. The first had no
+        # pyyaml, because CI installs it globally as its first step and so was
+        # structurally unable to notice its absence. The second added a `pip
+        # install` and hit PEP 668 — that image's Python is managed by uv and
+        # refuses to be modified. Each fix would have been a guess about
+        # somebody else's build image, to reproduce an artefact this repository
+        # has already built and checked.
+        "buildCommand": "",
         "outputDirectory": "site",
         "cleanUrls": True,
         "trailingSlash": False,

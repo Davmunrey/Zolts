@@ -342,6 +342,16 @@ fly deploy
 
 Three values need credentials nobody but the account owner has, and each belongs in `fly secrets`, never in a file, a chat message or an issue: the two database URLs and the secret key.
 
+```sh
+# 5. Open it the way the internet does. The release command proves the runtime
+#    may take traffic and `smoke_runtime.py` proves the loop against a
+#    database; neither of them opens the URL, and that gap already shipped a
+#    console nobody could open.
+python3 scripts/smoke_deployed.py --url https://zolts.fly.dev
+```
+
+It needs no credentials: `/health`, the liveness signals, and that `/console` returns a door a person can act on with a Content-Security-Policy on it. Pass `--key` to add a tenant-scoped read, which is the difference between the process being up and the product answering. Liveness signals are reported rather than fatal — a freshly deployed instance legitimately has a tenant with no connector yet, and a smoke that fails on that trains whoever runs it to ignore the output. `--strict` is for the run after the deployment is configured.
+
 ### Preflight
 
 `python3 -m runtime.cli preflight` answers, against the database actually connected, whether this deployment may take traffic. It is the release command on Fly and the pre-deploy step on Render, so a misconfigured runtime fails the deploy instead of serving.
@@ -503,7 +513,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-709 tests. 205 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+712 tests. 205 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

@@ -113,3 +113,79 @@ def test_the_documents_do_not_overstate_the_test_suite():
         assert re.search(rf"\b{against_postgres}\b", text), (
             f"{document.name} does not state that {against_postgres} tests run "
             f"against a real Postgres")
+
+
+# -- the deploy path installs what the build imports ---------------------
+
+# Module name to the distribution that provides it. Two entries, and both are
+# here because a module and its package share a name only by convention.
+DISTRIBUTIONS = {"yaml": "pyyaml", "jsonschema": "jsonschema"}
+
+
+def _third_party_imports(entry: Path, root: Path) -> set[str]:
+    """Top-level third-party modules reachable from a script in this repo."""
+    import ast
+
+    seen: set[Path] = set()
+    found: set[str] = set()
+    queue = [entry]
+    local = {p.stem for p in (root / "scripts").glob("*.py")}
+    while queue:
+        path = queue.pop()
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        for node in ast.walk(ast.parse(path.read_text())):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                names = [node.module]
+            for name in names:
+                top = name.split(".")[0]
+                if top in ("zolts", "runtime"):
+                    queue += list((root / top).glob("*.py"))
+                elif top in local:
+                    queue.append(root / "scripts" / f"{top}.py")
+                elif top in DISTRIBUTIONS:
+                    found.add(top)
+    return found
+
+
+def test_the_deploy_either_builds_with_its_dependencies_or_does_not_build():
+    """Two ways to be right and one way to be broken.
+
+    Either the host rebuilds the site and installs what the build imports, or
+    it does not build and serves a directory this repository has committed and
+    CI keeps in sync. What cannot stand is a build command that runs the
+    generator without its dependencies — which shipped, and failed the deploy
+    while every check in CI was green, because CI installs those dependencies
+    globally as its first step and so was structurally unable to notice.
+    """
+    import json
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    config = json.loads((root / "vercel.json").read_text())
+    command = config.get("buildCommand") or ""
+    output = config.get("outputDirectory")
+
+    if "build_site" in command:
+        needed = {DISTRIBUTIONS[m] for m in _third_party_imports(
+            root / "scripts" / "build_site.py", root)}
+        assert needed, "the site build imports nothing third-party; check the walker"
+        missing = {d for d in needed if d not in command}
+        assert not missing, (
+            f"vercel.json builds the site without installing {sorted(missing)}. "
+            f"CI installs them globally and will not catch this; the deploy will")
+        return
+
+    # No build, so the committed output is what the world gets.
+    assert output, "vercel.json neither builds nor names an output directory"
+    tracked = subprocess.run(["git", "ls-files", output], cwd=root,
+                             capture_output=True, text=True).stdout.split()
+    assert tracked, (
+        f"vercel.json serves '{output}' without building it, and nothing in "
+        f"'{output}' is committed. The deploy would serve an empty directory")
+    assert f"{output}/index.html" in tracked, (
+        f"'{output}' is committed without an index.html to serve")
