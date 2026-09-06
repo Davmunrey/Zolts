@@ -25,6 +25,23 @@ class HoldoutMissing(ValueError):
 
 
 @dataclass(frozen=True)
+class IngestResult:
+    """What ingest did.
+
+    `signal_id` is None when the dedupe key was already present. Callers need
+    to tell that apart from "recorded, but nothing triggered": inferring it
+    from an empty enrollment list reports every non-triggering signal as a
+    duplicate, which tells a source its feed is being ignored when it is not.
+    """
+    signal_id: str | None
+    enrollments: list["Enrolled"]
+
+    @property
+    def deduplicated(self) -> bool:
+        return self.signal_id is None
+
+
+@dataclass(frozen=True)
 class Enrolled:
     enrollment_id: str
     program_key: str
@@ -39,7 +56,7 @@ def holdout_pct(spec: dict[str, Any], program_key: str) -> float:
     if not block or "holdout_pct" not in block:
         raise HoldoutMissing(f"program '{program_key}' declares no holdout")
     pct = float(block["holdout_pct"])
-    if pct == 0 and not block.get("waiver_justification"):
+    if pct == 0 and not block.get("holdout_waiver_reason"):
         raise HoldoutMissing(
             f"program '{program_key}' waives its holdout with no written justification")
     return pct
@@ -59,7 +76,7 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
            payload: dict[str, Any], observed_at: datetime,
            dedupe_key: str | None = None,
            score: float | None = None,
-           now: datetime | None = None) -> list[Enrolled]:
+           now: datetime | None = None) -> IngestResult:
     """Record a signal and enroll it into every live program it triggers.
 
     Everything happens in the caller's transaction: a signal that is recorded
@@ -73,7 +90,9 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
         legal_basis=legal_basis, payload=payload, observed_at=observed_at,
         dedupe_key=dedupe_key)
     if signal is None:
-        return []  # already seen; a replay is not a new observation
+        # Already seen. A replay is not a new observation, and re-running the
+        # trigger on it would enroll from history the caller already sent.
+        return IngestResult(signal_id=None, enrollments=[])
 
     results: list[Enrolled] = []
     for program in programs.live(cur):
@@ -120,4 +139,4 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
                              "tier": tier, "reason": reason})
         results.append(Enrolled(str(row["id"]), program["key"], variant,
                                 effective_score, tier, reason))
-    return results
+    return IngestResult(signal_id=str(signal["id"]), enrollments=results)

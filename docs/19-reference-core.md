@@ -112,6 +112,8 @@ Ten defects so far. Every one was found by executing the artefacts, none by read
 
 The plan already classifies the policy decision log and idempotency as unacceptable debt. This adds a third: **a suppression path with no test is unacceptable debt**, because it fails silently, it fails in the direction of contacting people who asked not to be contacted, and human review demonstrably does not catch it.
 
-## Deliberately not implemented
+## Deliberately not implemented here
 
-The durable runtime (Temporal), connectors, the agent layer and its eval harness, and persistence. Those need infrastructure, not logic, and simulating them would prove nothing. Everything here is pure logic that either holds or does not.
+Persistence, durable execution, connectors, the agent layer and its eval harness. Those need infrastructure, not logic, and simulating them inside a pure-logic package would prove nothing.
+
+They now exist in `runtime/`, which depends on this package and is depended on by nothing here. See `docs/20-runtime.md`. The durable runtime is a Postgres outbox with leases rather than Temporal; ADR-007 records why, and what would make that the wrong call.

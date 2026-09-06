@@ -49,7 +49,7 @@ SPEC = {
 # the behaviour under test, so those tests use a justified zero holdout and the
 # assignment invariants are tested on their own.
 DISPATCH_SPEC = {**SPEC, "experiment": {"holdout_pct": 0, "unit": "account", "salt": "dispatch",
-                                        "waiver_justification": "deterministic test fixture"}}
+                                        "holdout_waiver_reason": "deterministic test fixture"}}
 
 
 def _publish(cur, tenant_id: str, spec=None, key="test-program") -> dict:
@@ -71,12 +71,13 @@ def _account_with_contact(cur, tenant_id: str, *, country="ES", basis="legitimat
 
 
 def _ingest(cur, tenant_id, account_id, *, amount=9_000_000, dedupe=None, score=None):
+    """Returns the enrollments, which is what every caller here asserts on."""
     return enroll.ingest(
         cur, tenant_id, entity_type="account", entity_id=str(account_id),
         type="funding.round", strength=0.9, half_life_h=720, source="test",
         legal_basis="legitimate_interest",
         payload={"stage": "series_a", "amount_usd": amount},
-        observed_at=NOW, dedupe_key=dedupe, score=score, now=NOW)
+        observed_at=NOW, dedupe_key=dedupe, score=score, now=NOW).enrollments
 
 
 # -- enrollment ----------------------------------------------------------
@@ -131,7 +132,7 @@ def test_a_zero_holdout_needs_a_written_justification(db, tenant, fake):
     tid = str(tenant["id"])
     waived = {**SPEC, "experiment": {"holdout_pct": 0, "salt": "s"}}
     justified = {**SPEC, "experiment": {"holdout_pct": 0, "salt": "s",
-                                        "waiver_justification": "regulated pilot, n=12"}}
+                                        "holdout_waiver_reason": "regulated pilot, n=12"}}
     with db.tenant_tx(tid) as cur:
         with pytest.raises(enroll.HoldoutMissing):
             enroll.holdout_pct(waived, "k")

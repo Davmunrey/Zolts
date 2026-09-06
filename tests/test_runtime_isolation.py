@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.conftest import SECRET
+from tests.conftest import OWNER_URL, SECRET
 from runtime.provision import issue_api_key, store_connection
 
 
@@ -96,3 +96,16 @@ def test_the_internal_schema_is_not_named_after_a_plausible_role(db):
     with db.admin_tx() as cur:
         cur.execute("select nspname from pg_namespace where nspname = 'zolts'")
         assert cur.fetchone() is None
+
+
+def test_ci_never_reports_green_having_skipped_these():
+    """The runtime tests skip without a database. In CI that is a failure.
+
+    A suite that skips its isolation tests and reports 332 passed is worse than
+    one that fails: it says the property holds when nothing checked it.
+    """
+    import os
+
+    if os.environ.get("CI", "").lower() not in {"true", "1"}:
+        pytest.skip("only enforced in CI")
+    assert OWNER_URL, "ZOLTS_TEST_DATABASE_URL must be set in CI"

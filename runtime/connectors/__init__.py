@@ -10,7 +10,22 @@ persisted. Its contract is narrow on purpose:
 * It reports cost in micros so the budget rules see real spend, not estimates.
 """
 
-from runtime.connectors.base import Connector, Result, TransientError
-from runtime.connectors.registry import get_connector, register
+from runtime.connectors.base import Connector, PermanentError, Result, TransientError
+from runtime.connectors.hubspot import HubSpotConnector
+from runtime.connectors.registry import get_connector, providers_for, register
+from runtime.connectors.smartlead import SmartleadConnector
 
-__all__ = ["Connector", "Result", "TransientError", "get_connector", "register"]
+__all__ = ["Connector", "PermanentError", "Result", "TransientError", "get_connector",
+           "providers_for", "register", "install_default_connectors"]
+
+
+def install_default_connectors() -> None:
+    """Register the providers a deployment ships with.
+
+    The fake connector is deliberately not installed here. A tenant falling
+    back to it would report success while sending nothing, which is the failure
+    mode that makes a sending platform untrustworthy; tests register it
+    explicitly.
+    """
+    register(HubSpotConnector())
+    register(SmartleadConnector())

@@ -51,6 +51,16 @@ class Database:
                                               kwargs=CONNECT_KWARGS, open=True)
         return self._admin_pool
 
+    @property
+    def isolation_enforced(self) -> bool:
+        """True when the application pool uses a role that cannot bypass RLS.
+
+        A deployment where both URLs are the owner still passes every isolation
+        test, because the policies are FORCED. This reports the second lock, so
+        an operator can see whether it is in place.
+        """
+        return self._app_url != self._owner_url
+
     def close(self) -> None:
         for pool in (self._pool, self._admin_pool):
             if pool is not None:
