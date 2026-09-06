@@ -141,7 +141,24 @@ An operator now goes to `/console`, gets a sign-in page, and pastes the key they
 
 **One flag separates the two pages.** The static build inlines a fixture and keeps `connect-src` at `'none'`, so its buttons stay inert; the served view model sets `live`, and only then are the actions wired. A button that silently does nothing is worse than no button, and both pages render from one file.
 
-`scripts/browser_console.py` drives a real browser against a real server against a real database: type the URL, get the door, paste the key, land in the console, click Activate, and check in Postgres that the program is live. It runs in CI.
+### The review queue
+
+Agents propose and the runtime disposes — and the disposing was `curl`. The rail counted a review queue that led nowhere, which makes product invariant 1 a claim with no surface behind it.
+
+The queue now renders each waiting draft beside **what every gate said about it**, read from the row rather than recomputed: thresholds move, and the question an audit asks is what was true when it was decided.
+
+| Shown | Why it is on the screen |
+|---|---|
+| The draft | What would be sent, not a summary of it |
+| Removed before sending | The sentences provenance struck. A reviewer sees the difference between what the model wrote and what survived |
+| Gate reason | Why a person is being asked at all — an eval below threshold, a failed required check, a spend refusal |
+| Eval score and failed checks | The number and the named checks, not a verdict |
+| Spend verdict and cost | What the call cost and whether the guard allowed it |
+| Evidence | Every item, with its source, so a claim can be traced to what supports it |
+
+Approving queues an action. It does not send: the policy gate still runs on the action, and a denial still cancels it. The copy on the screen says so, because a reviewer who believes Approve means Send will approve differently.
+
+`scripts/browser_console.py` drives a real browser against a real server against a real database: type the URL, get the door, paste the key, click Activate, open the review queue, click Approve — then check in Postgres that the program is live and the proposal decided. It runs in CI.
 
 ## Reading a reply
 
@@ -397,7 +414,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-603 tests. The runtime's 244 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+609 tests. The runtime's 249 run against a real Postgres and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 What they assert, in the order that matters:
 
@@ -436,3 +453,5 @@ What they assert, in the order that matters:
 33. A cookie-authenticated write without the CSRF token is refused; the same write with `x-api-key` is not.
 34. Revoking a key ends the sessions it opened, and a session cannot carry scopes its key lacked.
 35. A draft appears in the console's program list, carries an id, and a real browser can click it live.
+36. The review queue carries what every gate said, agrees with the rail's count, and is tenant-scoped.
+37. A real browser opens the queue, approves a draft, and the proposal is decided in Postgres.

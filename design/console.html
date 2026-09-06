@@ -170,6 +170,12 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   .btn:active,.chipbtn:active,.row:active,.pitem:active{transform:none}
   .track i{transition:none}
 }
+  .draft{margin:0;padding:12px 14px;white-space:pre-wrap;font:inherit;
+    background:var(--surface-2,rgba(127,127,127,.06));border-radius:8px}
+  .ev{padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5}
+  .ev:last-child{border-bottom:0}
+  .ev .src{font-size:11px;color:var(--ink-tertiary);text-transform:uppercase;
+    letter-spacing:.04em;margin-right:6px}
 </style>
 
 <div class="app">
@@ -184,9 +190,9 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 
     <nav aria-label="Primary">
       <p class="sec">Run</p>
-      <a href="#" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
+      <a href="#" data-view="programs" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
-      <a href="#"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
+      <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
       <p class="sec">Prove</p>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 11V5.5M6.5 11V2M11 11V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Experiments<span class="c" id="nav-experiments">6</span></a>
       <a href="#"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend</a>
@@ -282,7 +288,9 @@ function nf(n){ return n.toLocaleString("en-US"); }
 var ICON_SIG = '<svg viewBox="0 0 14 14" fill="none"><path d="M2.4 7.6l2.6 2.6 6.6-6.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="9.8" r=".7" fill="currentColor"/></svg>';
 
-var state = { sel: (P[0] || {}).key, live: false, onlySig: false, jur: "ES" };
+var R = D.review || [];
+var state = { view: "programs", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
+              live: false, onlySig: false, jur: "ES" };
 
 function visible(){
   return P.filter(function(p){
@@ -361,6 +369,131 @@ function renderChrome(){
 
 /* ── detail ────────────────────────────────────────────────────────── */
 var detail = document.getElementById("detail");
+/* ── review queue ──────────────────────────────────────────────────────
+   Agents propose and the runtime disposes. Until now the disposing was curl:
+   the rail counted a queue that led nowhere, which makes product invariant 1
+   a claim with no surface behind it. */
+function esc(v){
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderReviewList(){
+  document.querySelector(".bar h1").textContent = "Review queue";
+  document.getElementById("shown").textContent = R.length;
+
+  if (!R.length){
+    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
+      + 'Nothing is waiting for a person. Drafts arrive here when a gate '
+      + 'declines to send them unattended.</p>';
+    return;
+  }
+  list.innerHTML = R.map(function(r){
+    return '<div class="row' + (r.id === state.rsel ? " on" : "") + '" data-r="'
+      + esc(r.id) + '" role="row" tabindex="0">'
+      + '<span class="st ' + (r.spendVerdict === "no" ? "deny" : "warn") + '"></span>'
+      + '<span class="nm">' + esc(r.agent) + ' · ' + esc(r.step || r.channel || "") + '</span>'
+      + '<span class="mono">' + (r.evalScore == null ? "—" : r.evalScore.toFixed(2)) + '</span>'
+      + '<span class="mono">€' + (r.costEur || 0).toFixed(4) + '</span>'
+      + '<span class="mono">' + esc(r.state) + '</span>'
+      + '</div>';
+  }).join("");
+
+  list.querySelectorAll("[data-r]").forEach(function(el){
+    el.addEventListener("click", function(){
+      state.rsel = el.dataset.r; renderReviewList(); renderReviewDetail();
+    });
+  });
+}
+
+function renderReviewDetail(){
+  var r = R.filter(function(x){ return x.id === state.rsel; })[0];
+  if (!r){
+    detail.innerHTML = '<div class="dhead"><h2>Review queue</h2></div>'
+      + '<div class="block"><p style="color:var(--ink-tertiary)">Select a draft.</p></div>';
+    return;
+  }
+
+  var evidence = r.evidence.length
+    ? r.evidence.map(function(e){
+        return '<div class="ev"><span class="mono">[' + esc(e.ref) + ']</span> '
+             + '<span class="src">' + esc(e.source) + '</span> ' + esc(e.text) + '</div>';
+      }).join("")
+    : '<p style="color:var(--ink-tertiary);margin:0">No evidence was attached.</p>';
+
+  var dropped = r.droppedClaims.length
+    ? '<div class="block"><div class="blabel">Removed before sending</div>'
+      + r.droppedClaims.map(function(c){
+          return '<div class="ev" style="opacity:.75"><s>' + esc(c) + '</s></div>';
+        }).join("")
+      + '<p style="margin:8px 0 0;font-size:11.5px;color:var(--ink-tertiary)">'
+      + 'A sentence the evidence did not support. It never reaches a provider.</p>'
+      + '</div>'
+    : "";
+
+  var body = r.body
+    ? '<pre class="draft">' + esc(r.body) + '</pre>'
+    : '<p style="color:var(--ink-tertiary);margin:0">No draft was produced.</p>';
+
+  detail.innerHTML =
+    '<div class="dhead">'
+      + '<div class="k">' + esc(r.model || "no model") + ' · ' + esc(r.promptVersion || "") + '</div>'
+      + '<h2>' + esc(r.agent) + ' · ' + esc(r.step || r.channel || "") + '</h2>'
+      + '<div class="dactions">' + reviewActions(r) + '</div>'
+    + '</div>'
+    + '<div class="block"><div class="blabel">Draft</div>' + body + '</div>'
+    + dropped
+    + '<div class="block"><div class="blabel">Why a person is being asked</div>'
+      + '<dl class="props">'
+      + '<dt>Gate</dt><dd class="hi">' + esc(r.gateReason || "—") + '</dd>'
+      + '<dt>Eval score</dt><dd>' + (r.evalScore == null ? "—" : r.evalScore.toFixed(2)) + '</dd>'
+      + (r.evalFailures.length
+          ? '<dt>Failed checks</dt><dd class="hi">' + esc(r.evalFailures.join(", ")) + '</dd>' : "")
+      + (r.needsHumanReason
+          ? '<dt>Provenance</dt><dd>' + esc(r.needsHumanReason) + '</dd>' : "")
+      + '<dt>Spend guard</dt><dd>' + esc(r.spendVerdict || "—") + '</dd>'
+      + '<dt>Cost</dt><dd>€' + (r.costEur || 0).toFixed(4) + '</dd>'
+      + '</dl></div>'
+    + '<div class="block" style="border-bottom:0"><div class="blabel">Evidence</div>'
+      + evidence
+      + '<p style="margin:10px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
+      + 'Approving queues an action. It does not send: the policy gate still '
+      + 'runs, and a denial still cancels.</p>'
+    + '</div>';
+
+  wireReviewActions(r);
+}
+
+function reviewActions(r){
+  if (!LIVE){
+    return '<button class="btn btn-p" disabled title="Static preview">Approve</button>'
+         + '<button class="btn btn-s" disabled>Reject</button>';
+  }
+  return '<button class="btn btn-p" id="approve" data-id="' + esc(r.id) + '">Approve</button>'
+       + '<button class="btn btn-s" id="reject" data-id="' + esc(r.id) + '">Reject</button>';
+}
+
+function wireReviewActions(r){
+  ["approve", "reject"].forEach(function(verb){
+    var b = document.getElementById(verb);
+    if (!b) return;
+    b.addEventListener("click", function(){
+      var both = [document.getElementById("approve"), document.getElementById("reject")];
+      both.forEach(function(x){ if (x) x.disabled = true; });
+      b.textContent = verb === "approve" ? "Approving…" : "Rejecting…";
+      act("/v1/proposals/" + b.dataset.id + "/" + verb).then(function(res){
+        if (res.ok){ window.location.reload(); return; }
+        both.forEach(function(x){ if (x) x.disabled = false; });
+        b.textContent = res.status === 403 ? "Not permitted" : "Failed (" + res.status + ")";
+      }).catch(function(){
+        both.forEach(function(x){ if (x) x.disabled = false; });
+        b.textContent = "Failed (network)";
+      });
+    });
+  });
+}
+
 function primaryAction(p){
   /* Signup publishes a tenant's starter programs as drafts on purpose: a
      tenant contacting people before anyone has read a program is not
@@ -609,7 +742,26 @@ document.addEventListener("keydown", function(e){
 
 renderChrome();
 
-renderList();
-renderDetail();
+function show(view){
+  state.view = view;
+  document.querySelectorAll("nav a[data-view]").forEach(function(a){
+    if (a.dataset.view === view) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+  render();
+}
+
+function render(){
+  if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
+  document.querySelector(".bar h1").textContent = "Programs";
+  renderList();
+  renderDetail();
+}
+
+document.querySelectorAll("nav a[data-view]").forEach(function(a){
+  a.addEventListener("click", function(e){ e.preventDefault(); show(a.dataset.view); });
+});
+
+render();
 })();
 </script>

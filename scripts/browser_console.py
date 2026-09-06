@@ -59,7 +59,28 @@ def _seed() -> tuple[str, str]:
     drafts = [p for p in signed_up["programs"] if p["status"] == "draft"]
     if not drafts:
         raise SystemExit("signup published no drafts, so there is nothing to activate")
-    return signed_up["api_key"], signed_up["tenant"]["id"]
+
+    # One proposal waiting for a person, in the shape the agent layer emits.
+    # Seeded rather than generated: this check is about the surface, and
+    # calling a model to produce a draft would make it a model test.
+    tenant_id = signed_up["tenant"]["id"]
+    db = Database(os.environ["ZOLTS_DATABASE_URL"],
+                  os.environ.get("ZOLTS_APP_DATABASE_URL"))
+    with db.tenant_tx(tenant_id) as cur:
+        cur.execute(
+            "insert into proposal (tenant_id, agent, idempotency_key, channel, step_key,"
+            " model, prompt_version, content, evidence, eval, eval_score, spend,"
+            " cost_micros, state, gate_reason)"
+            " values (%s,'copywriter',%s,'email','email_1','claude-haiku-4-5-20251001',"
+            " 'copywriter-v3', %s, %s, %s, 0.81, %s, 10400, 'needs_human',"
+            " 'eval 0.81 below the 0.85 auto-send threshold')",
+            (tenant_id, f"browser-{uuid.uuid4().hex}",
+             json.dumps({"body": "Congratulations on the round.",
+                         "dropped_claims": ["They are hiring 40 engineers."]}),
+             json.dumps([{"ref": "e1", "source": "filing", "text": "A $12m Series A."}]),
+             json.dumps({"failures": []}), json.dumps({"verdict": "yes"})))
+    db.close()
+    return signed_up["api_key"], tenant_id
 
 
 def _chromium(pw):
@@ -110,6 +131,17 @@ def main() -> int:
             page.wait_for_selector(".dactions .btn-p", timeout=15_000)
             report["after_activate"] = page.locator(".dactions .btn-p").first.inner_text()
 
+            # 4. The review queue: agents propose, a person disposes. Until
+            #    this existed the disposing was curl, and the rail counted a
+            #    queue that led nowhere.
+            page.click('nav a[data-view="review"]')
+            page.wait_for_selector("#approve", timeout=15_000)
+            report["queue_rendered"] = page.locator("#list .row").count()
+            report["gate_reason_shown"] = "Gate" in page.locator(".dhead, .block").first \
+                .evaluate("el => el.parentElement.innerText")
+            page.click("#approve")
+            page.wait_for_selector("#approve", state="detached", timeout=15_000)
+
             report["page_errors"] = errors
             report["csp_violations"] = violations
             browser.close()
@@ -122,12 +154,20 @@ def main() -> int:
         with db.tenant_tx(tenant_id) as cur:
             cur.execute("select key, status from program order by key")
             report["programs_in_database"] = [dict(r) for r in cur.fetchall()]
+            cur.execute("select state, approved_by from proposal order by created_at")
+            report["proposals_in_database"] = [dict(r) for r in cur.fetchall()]
         db.close()
 
         print(json.dumps(report, indent=2))
         live = [p for p in report["programs_in_database"] if p["status"] == "live"]
         if not live:
             print("::error::the button reported success and no program went live",
+                  file=sys.stderr)
+            return 1
+        decided = [p for p in report["proposals_in_database"]
+                   if p["state"] not in ("draft", "needs_human")]
+        if report.get("queue_rendered") and not decided:
+            print("::error::Approve reported success and no proposal was decided",
                   file=sys.stderr)
             return 1
         if errors or violations:

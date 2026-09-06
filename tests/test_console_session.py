@@ -250,3 +250,126 @@ def test_the_static_build_does_not():
         import pytest as _p
         _p.skip("site/ is not built")
     assert '"live":true' not in built.read_text()
+
+
+# -- the review queue ----------------------------------------------------
+
+def _proposal(cur, tenant_id, **overrides):
+    import json
+    import uuid
+
+    row = {"agent": "copywriter", "state": "needs_human", "channel": "email",
+           "step_key": "email_1", "model": "claude-haiku-4-5-20251001",
+           "prompt_version": "copywriter-v3", "eval_score": 0.81,
+           "gate_reason": "eval 0.81 below the 0.85 auto-send threshold",
+           "content": {"body": "Congratulations on the round.",
+                       "dropped_claims": ["They are hiring 40 engineers."],
+                       "needs_human_reason": "one sentence cited no evidence"},
+           "evidence": [{"ref": "e1", "source": "filing", "text": "A $12m Series A."}],
+           "eval": {"failures": []}, "spend": {"verdict": "yes"},
+           "cost_micros": 10_400}
+    row.update(overrides)
+    cur.execute(
+        "insert into proposal (tenant_id, agent, idempotency_key, channel, step_key,"
+        " model, prompt_version, content, evidence, eval, eval_score, spend,"
+        " cost_micros, state, gate_reason)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id",
+        (tenant_id, row["agent"], f"t-{uuid.uuid4().hex}", row["channel"],
+         row["step_key"], row["model"], row["prompt_version"],
+         json.dumps(row["content"]), json.dumps(row["evidence"]),
+         json.dumps(row["eval"]), row["eval_score"], json.dumps(row["spend"]),
+         row["cost_micros"], row["state"], row["gate_reason"]))
+    return str(cur.fetchone()["id"])
+
+
+@requires_db
+def test_the_queue_carries_what_each_gate_said(db, tenant):
+    """Agents propose and the runtime disposes — and the disposing was curl.
+    The rail counted a queue that led nowhere."""
+    from runtime.api import console
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        _proposal(cur, tid)
+        cur.execute("select * from tenant where id = %s", (tid,))
+        view = console.build(cur, cur.fetchone())
+
+    assert len(view["review"]) == 1
+    item = view["review"][0]
+    assert item["gateReason"].startswith("eval 0.81")
+    assert item["evalScore"] == 0.81
+    assert item["spendVerdict"] == "yes"
+    assert item["costEur"] == 0.0104
+    # What provenance removed, so a reviewer sees the difference between what
+    # the model wrote and what survived.
+    assert item["droppedClaims"] == ["They are hiring 40 engineers."]
+    assert item["evidence"][0]["ref"] == "e1"
+
+
+@requires_db
+def test_the_rail_count_and_the_queue_agree(db, tenant):
+    """A rail that says 42 over a list of 3 is a rail nobody trusts."""
+    from runtime.api import console
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        for _ in range(3):
+            _proposal(cur, tid)
+        # Decided proposals are not waiting for anybody.
+        _proposal(cur, tid, state="dispatched")
+        cur.execute("select * from tenant where id = %s", (tid,))
+        view = console.build(cur, cur.fetchone())
+
+    assert len(view["review"]) == 3
+    assert view["queue"]["review"] == 3
+
+
+@requires_db
+def test_the_queue_is_tenant_scoped(db, tenant, other_tenant):
+    from runtime.api import console
+
+    with db.tenant_tx(str(other_tenant["id"])) as cur:
+        _proposal(cur, str(other_tenant["id"]))
+    with db.tenant_tx(str(tenant["id"])) as cur:
+        cur.execute("select * from tenant where id = %s", (tenant["id"],))
+        view = console.build(cur, cur.fetchone())
+    assert view["review"] == []
+
+
+@requires_db
+def test_approving_from_a_session_needs_the_csrf_token(db, client, key, tenant):
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        proposal_id = _proposal(cur, tid)
+
+    csrf = client.post("/v1/console/session",
+                       json={"api_key": key.token}).json()["csrf"]
+    assert client.post(f"/v1/proposals/{proposal_id}/approve").status_code == 403
+    approved = client.post(f"/v1/proposals/{proposal_id}/approve",
+                           headers={console_session.CSRF_HEADER: csrf})
+    assert approved.status_code == 200
+
+    with db.tenant_tx(tid) as cur:
+        cur.execute("select state, approved_by from proposal where id = %s", (proposal_id,))
+        row = cur.fetchone()
+    # Approving queues an action; it does not send. The policy gate still runs.
+    assert row["state"] in ("approved", "dispatched")
+    assert row["approved_by"]
+
+
+def test_the_fixture_ships_a_queue_so_the_static_demo_shows_one():
+    """The queue is the screen that shows what 'agents propose, the runtime
+    disposes' means. A demo with an empty one demonstrates the wrong half."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    from build_fixture import build
+
+    fixture = build()
+    assert len(fixture["review"]) >= 1
+    assert fixture["queue"]["review"] == len(fixture["review"])
+    # And it shows the interesting cases, not three happy ones.
+    reasons = " ".join(r["gateReason"] for r in fixture["review"])
+    assert "spend guard" in reasons
+    assert any(r["droppedClaims"] for r in fixture["review"])
