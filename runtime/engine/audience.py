@@ -53,6 +53,13 @@ _WRITES = re.compile(
     r"\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke|copy)\b",
     re.IGNORECASE)
 
+# The relation an audience names when it wants to leave live deals alone.
+# Matching the table name rather than parsing the SQL is deliberate: the
+# question is "does this program's decision depend on deals", and any mention
+# of the table means yes. A false positive costs a program an explicit refusal
+# until a CRM delivers deals; a false negative costs an email into a live deal.
+_DEALS = re.compile(r"\bopportunity\b", re.IGNORECASE)
+
 
 class AudienceError(ValueError):
     """An audience that cannot be evaluated. Enrolment refuses rather than allows."""
@@ -97,6 +104,27 @@ def check(spec: dict[str, Any], program_key: str) -> None:
             f"{' nor '.join(SUBJECT_COLUMNS)}, so no subject can be matched against it")
 
 
+def relies_on_deals(sql: str) -> bool:
+    """Does this audience decide anything by the `opportunity` table?"""
+    return bool(_DEALS.search(sql))
+
+
+def deals_are_answerable(cur) -> bool:
+    """Has any connected CRM ever delivered deals for this tenant?
+
+    The distinction the whole guard rests on. An empty `opportunity` table
+    means either "this tenant has no open deals" or "nothing ever asked their
+    CRM", and the SQL an audience writes reads the two identically — the
+    second silently turns the exclusion into a clause that always passes,
+    which is the failure program 01's comment has warned about since it was
+    written. `crm_sync_state.opportunities_synced_at` is written by the sync only
+    when a source that declares `reads_opportunities` has actually run.
+    """
+    cur.execute("select 1 from crm_sync_state"
+                " where opportunities_synced_at is not null limit 1")
+    return cur.fetchone() is not None
+
+
 def subject_column(sql: str) -> str:
     """Which identifier this audience yields.
 
@@ -121,6 +149,15 @@ def includes(cur, spec: dict[str, Any], program_key: str, entity_id: str) -> boo
     check(spec, program_key)
     sql = declared(spec)["sql"]
     column = subject_column(sql)
+
+    if relies_on_deals(sql) and not deals_are_answerable(cur):
+        raise AudienceError(
+            f"program '{program_key}' excludes accounts with an open deal, and no "
+            "connected CRM has delivered any deals to exclude them by. Until one "
+            "has, `not exists (select 1 from opportunity ...)` is true for every "
+            "account and the clause protects nobody. Connect a CRM that reads "
+            "deals and sync it, or remove the clause and accept that outbound may "
+            "reach an account the sales team is already in a deal with.")
 
     # A savepoint, because a failing statement aborts the whole transaction and
     # everything after it — including the audit row that records *why* the

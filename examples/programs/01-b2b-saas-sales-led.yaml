@@ -25,9 +25,20 @@ spec:
 
   audience:
     # Facts the runtime owns are columns; facts a tenant brings are attributes.
-    # `industry_code_group` and `opportunity` were neither: the first is not a
-    # column and the second is not a table, so this audience could never run.
+    # `industry_code_group` was neither, so this audience could never run.
     # Nothing noticed for as long as nothing executed it.
+    #
+    # The open-deal exclusion is the last clause, and it is the reason this
+    # program is safe to run against a real sales team: outbound into an
+    # account already in a live deal reaches somebody we are talking to,
+    # through a channel that says nobody is. It stayed unwritten until there
+    # was an `opportunity` table and a CRM sync to fill one, because a clause
+    # that always passes reads as protection and is worse than none.
+    #
+    # It is not silently optional either. A CRM that cannot read deals leaves
+    # the table empty, `not exists` true for everybody, and the clause
+    # protecting nobody — so enrolment refuses outright until a connected CRM
+    # has delivered deals. Decision 32, ADR-038.
     sql: |
       select a.id as account_id
       from account a
@@ -37,11 +48,9 @@ spec:
         and not exists (
               select 1 from suppression s
                where s.scope = 'account' and s.value = a.id::text)
-    # The exclusion that is missing, deliberately and visibly: accounts with an
-    # open opportunity. There is no `opportunity` table and no CRM sync that
-    # would fill one, so the clause is absent rather than written as something
-    # that always passes. A guard that cannot fail is worse than none, because
-    # it reads as protection. Decision 32.
+        and not exists (
+              select 1 from opportunity o
+               where o.account_id = a.id and o.status = 'open')
   enrich:
     account:
       # Decision 33: a program may ask for the fields the price list carries

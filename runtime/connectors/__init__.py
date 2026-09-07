@@ -12,15 +12,17 @@ persisted. Its contract is narrow on purpose:
 
 from runtime.connectors.base import Connector, PermanentError, Result, TransientError
 from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContact,
-                                    CrmSource, get_source, register_source, sources)
+                                    CrmOpportunity, CrmSource, DealStatus, get_source,
+                                    register_source, sources)
 from runtime.connectors.hubspot import HubSpotConnector
 from runtime.connectors.pipedrive import PipedriveConnector
 from runtime.connectors.salesforce import SalesforceConnector
 from runtime.connectors.registry import get_connector, providers_for, register
 from runtime.connectors.smartlead import SmartleadConnector
 
-__all__ = ["Capabilities", "Connector", "Consent", "CrmAccount", "CrmContact", "CrmSource",
-           "PermanentError", "Result", "TransientError", "get_connector", "get_source",
+__all__ = ["Capabilities", "Connector", "Consent", "CrmAccount", "CrmContact",
+           "CrmOpportunity", "CrmSource", "DealStatus", "PermanentError", "Result",
+           "TransientError", "get_connector", "get_source",
            "install_default_connectors", "providers_for", "register", "register_source",
            "sources"]
 

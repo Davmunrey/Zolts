@@ -5,9 +5,10 @@ suite in CI, because connector debt is the sector's main engineering sink. This
 is the read half of that interface — the half that was missing while `sync.py`
 had eleven HubSpot field names compiled into it.
 
-Adding a CRM is now: map its objects onto `CrmAccount` and `CrmContact`,
-declare what it can and cannot tell you, and pass the contract suite. No new
-sync, no new transaction handling, no new consent logic.
+Adding a CRM is now: map its objects onto `CrmAccount`, `CrmContact` and
+`CrmOpportunity`, declare what it can and cannot tell you, and pass the
+contract suite. No new sync, no new transaction handling, no new consent
+logic.
 
 One field here does more work than the rest.
 
@@ -62,6 +63,40 @@ class CrmContact:
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
+class DealStatus(str, Enum):
+    """Where a deal stands, in three states every CRM can be mapped onto.
+
+    The provider's own stage label is kept beside this, never instead of it: a
+    pipeline called "Negotiation / Legal" means something to the operator and
+    nothing to a query, and a query is what an audience runs.
+    """
+    OPEN = "open"
+    WON = "won"
+    LOST = "lost"
+
+
+@dataclass(frozen=True)
+class CrmOpportunity:
+    """A deal. The object an audience needs in order to leave people alone.
+
+    `status` is the connector's mapping, not ours. Reading "Closed Won" out of
+    a stage name we do not own is how a won deal becomes an open one, and the
+    cost of that mistake is an outbound sequence into an account the sales team
+    has already closed.
+    """
+    external_id: str
+    account_external_id: str | None = None
+    name: str | None = None
+    stage: str | None = None
+    status: DealStatus = DealStatus.OPEN
+    amount_micros: int | None = None
+    currency: str | None = None
+    owner: str | None = None
+    opened_at: Any = None
+    closed_at: Any = None
+    attributes: dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class Capabilities:
     """What a CRM can and cannot answer.
@@ -75,6 +110,11 @@ class Capabilities:
     reads_accounts: bool = True
     reads_contacts: bool = True
     reads_opt_out: bool = False
+    # Whether this source can say which accounts have a live deal. Declared,
+    # never inferred: a source that returns nothing must be distinguishable
+    # from one that was never asked, because an audience excluding accounts in
+    # a deal reads both as "no deal" and contacts everybody.
+    reads_opportunities: bool = False
     writes_tasks: bool = False
     page_size: int = 100
     # What this connector cannot do, in a sentence an operator can act on.
@@ -94,6 +134,17 @@ class CrmSource(Protocol):
     def accounts(self, credential: str) -> Iterator[CrmAccount]: ...
 
     def contacts(self, credential: str) -> Iterator[CrmContact]: ...
+
+    def opportunities(self, credential: str) -> Iterator[CrmOpportunity]:
+        """Deals, or nothing when this source cannot read them.
+
+        Part of the protocol rather than an optional extra, so that adding a
+        CRM means answering the question. A source that answers "I cannot"
+        declares `reads_opportunities=False` and yields nothing; the runtime
+        then refuses to run an audience that depends on the answer instead of
+        assuming it.
+        """
+        ...
 
 
 _SOURCES: dict[str, CrmSource] = {}

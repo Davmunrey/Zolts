@@ -37,7 +37,8 @@ from typing import Any
 from urllib.parse import urljoin
 
 from runtime.connectors.base import PermanentError
-from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
+from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContact,
+                                    CrmOpportunity, DealStatus)
 from runtime.connectors.http import body, request
 
 # Pinned. Salesforce keeps old versions working for years, and a floating
@@ -51,6 +52,13 @@ ACCOUNT_SOQL = (
 CONTACT_SOQL = (
     "SELECT Id, Email, FirstName, LastName, Title, MailingCountry, AccountId, "
     "HasOptedOutOfEmail FROM Contact")
+# `CurrencyIsoCode` exists only in multi-currency orgs and a SOQL naming a
+# field the org does not have fails the whole query, so it is not requested:
+# a connector that returns nothing for every single-currency org would be a
+# worse answer than one that returns deals with no currency.
+OPPORTUNITY_SOQL = (
+    "SELECT Id, Name, AccountId, StageName, Amount, IsClosed, IsWon, CloseDate, "
+    "CreatedDate FROM Opportunity")
 
 
 @dataclass
@@ -64,7 +72,7 @@ class SalesforceConnector:
 
     capabilities = Capabilities(
         provider="salesforce", reads_accounts=True, reads_contacts=True,
-        reads_opt_out=True, writes_tasks=False, page_size=200,
+        reads_opt_out=True, reads_opportunities=True, writes_tasks=False, page_size=200,
         caveats=("employee count is a raw number, not a band; it is stored as an "
                  "attribute rather than mapped to one",
                  "HasOptedOutOfEmail is a boolean, so an opt-out is definite and "
@@ -105,6 +113,31 @@ class SalesforceConnector:
                 country=(record.get("BillingCountry") or None),
                 industry=(record.get("Industry") or None),
                 attributes={"employees": record.get("NumberOfEmployees")})
+
+    def opportunities(self, credential: str) -> Iterator[CrmOpportunity]:
+        """Salesforce answers this one honestly: two booleans, not a label.
+
+        `IsWon` is checked first because a won opportunity is also closed, and
+        an org's `StageName` is theirs to rename — reading the stage would make
+        this connector break on a customer's process change.
+        """
+        for record in self._query(credential, OPPORTUNITY_SOQL):
+            if record.get("IsWon"):
+                status = DealStatus.WON
+            elif record.get("IsClosed"):
+                status = DealStatus.LOST
+            else:
+                status = DealStatus.OPEN
+            account_id = record.get("AccountId")
+            yield CrmOpportunity(
+                external_id=str(record.get("Id")),
+                account_external_id=str(account_id) if account_id else None,
+                name=(record.get("Name") or None),
+                stage=(record.get("StageName") or None),
+                status=status,
+                amount_micros=_micros(record.get("Amount")),
+                opened_at=record.get("CreatedDate"),
+                closed_at=record.get("CloseDate"))
 
     def contacts(self, credential: str) -> Iterator[CrmContact]:
         for record in self._query(credential, CONTACT_SOQL):
@@ -172,3 +205,12 @@ def _domain(website: Any) -> str | None:
     if text.startswith("www."):
         text = text[4:]
     return text or None
+
+
+def _micros(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(round(float(value) * 1_000_000))
+    except (TypeError, ValueError):
+        return None

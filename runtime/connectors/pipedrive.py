@@ -20,7 +20,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
+from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContact,
+                                    CrmOpportunity, DealStatus)
 from runtime.connectors.http import body, request
 
 BASE = "https://api.pipedrive.com/v1"
@@ -36,6 +37,17 @@ _CONSENT = {
 }
 
 
+# Pipedrive names deal state exactly as this runtime does, with one extra:
+# `deleted`. A deleted deal is not a lost deal — it is a record the tenant
+# withdrew — and counting it as lost would let an account back into outbound
+# on the strength of a deal nobody closed. It is skipped instead.
+_DEAL_STATUS = {
+    "open": DealStatus.OPEN,
+    "won": DealStatus.WON,
+    "lost": DealStatus.LOST,
+}
+
+
 @dataclass
 class PipedriveConnector:
     provider: str = "pipedrive"
@@ -44,7 +56,7 @@ class PipedriveConnector:
 
     capabilities = Capabilities(
         provider="pipedrive", reads_accounts=True, reads_contacts=True,
-        reads_opt_out=True, writes_tasks=False, page_size=100,
+        reads_opt_out=True, reads_opportunities=True, writes_tasks=False, page_size=100,
         caveats=("`no_consent` is reported as unknown, not as permission",
                  "task creation is not implemented; a play's task step will "
                  "fail loudly rather than silently skip"))
@@ -80,6 +92,29 @@ class PipedriveConnector:
                 consent=_CONSENT.get(str(person.get("marketing_status") or "").lower(),
                                      Consent.UNKNOWN))
 
+    def opportunities(self, credential: str) -> Iterator[CrmOpportunity]:
+        for deal in self._paged(credential, "deals"):
+            state = str(deal.get("status") or "").lower()
+            if state not in _DEAL_STATUS:
+                # `deleted`, or a state a future Pipedrive adds. Skipped rather
+                # than defaulted: the caller distinguishes "no deals" from
+                # "cannot read deals", and neither is "a deal I misfiled".
+                continue
+            org = deal.get("org_id")
+            org_id = org.get("value") if isinstance(org, dict) else org
+            yield CrmOpportunity(
+                external_id=str(deal.get("id")),
+                account_external_id=str(org_id) if org_id else None,
+                name=deal.get("title") or None,
+                stage=(str(deal["stage_id"]) if deal.get("stage_id") is not None else None),
+                status=_DEAL_STATUS[state],
+                amount_micros=_micros(deal.get("value")),
+                currency=deal.get("currency") or None,
+                owner=((deal.get("user_id") or {}).get("name")
+                       if isinstance(deal.get("user_id"), dict) else None),
+                opened_at=deal.get("add_time"),
+                closed_at=deal.get("close_time"))
+
     # -- transport -------------------------------------------------------
 
     def _paged(self, credential: str, resource: str) -> Iterator[dict[str, Any]]:
@@ -111,3 +146,12 @@ def _primary_email(emails: Any) -> str | None:
     primary = next((e for e in emails if isinstance(e, dict) and e.get("primary")), None)
     chosen = primary or next((e for e in emails if isinstance(e, dict)), None)
     return (chosen or {}).get("value") or None
+
+
+def _micros(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(round(float(value) * 1_000_000))
+    except (TypeError, ValueError):
+        return None

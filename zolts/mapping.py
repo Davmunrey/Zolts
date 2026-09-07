@@ -147,13 +147,17 @@ def check_path(where: str, path: str) -> None:
 
 
 @dataclass(frozen=True)
-class ConsentRule:
-    """How this CRM says whether somebody may be contacted.
+class TranslationRule:
+    """One field of the CRM's vocabulary, read into one of ours.
 
-    A mapping with no consent rule is not a mapping that permits contact. It is
-    a mapping whose source cannot answer the question, and the runtime treats
-    every one of its contacts as unknown until a basis is established
-    elsewhere.
+    Two things are translated this way, and both share the rule that an
+    unmapped value takes the default rather than a guess: whether somebody may
+    be contacted, and whether a deal is still live. A mapping with no consent
+    rule is not a mapping that permits contact — it is a mapping whose source
+    cannot answer the question, and every one of its contacts is unknown until
+    a basis is established elsewhere. A mapping with no deal-status rule is the
+    same shape, with `open` as the default, because open is the answer that
+    leaves an account alone.
     """
     field: str
     values: dict[str, str] = field(default_factory=dict)
@@ -281,3 +285,7 @@ def load(path: str | Path) -> dict[str, Any]:
     if not isinstance(document, dict):
         raise MappingError(f"{path}: expected a mapping at the document root")
     return validate(document)
+
+
+# The name this rule had when consent was the only thing it translated.
+ConsentRule = TranslationRule

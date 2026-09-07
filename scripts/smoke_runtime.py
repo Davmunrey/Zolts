@@ -38,7 +38,7 @@ from runtime.connectors import register                   # noqa: E402
 from runtime.connectors.fake import FakeConnector         # noqa: E402
 from runtime.connectors import sync                       # noqa: E402
 from runtime.connectors.crm import (Capabilities, CrmAccount,  # noqa: E402
-                                    CrmContact)
+                                    CrmContact, CrmOpportunity, DealStatus)
 from runtime import enrichment, metering                  # noqa: E402
 from runtime.connectors.dataprovider import register_provider  # noqa: E402
 from runtime.connectors.fake import FakeDataProvider      # noqa: E402
@@ -50,7 +50,7 @@ from runtime.engine import inbound                          # noqa: E402
 from runtime.provision import (create_tenant, create_webhook_endpoint,  # noqa: E402
                                store_connection)
 from runtime.repo import actions, entities, ledger, programs   # noqa: E402
-from zolts import dsl                                     # noqa: E402
+from zolts import dsl, experiment                         # noqa: E402
 
 PROGRAM = Path(__file__).resolve().parent.parent / "examples/programs/01-b2b-saas-sales-led.yaml"
 
@@ -63,17 +63,38 @@ class _SmokeCrm:
     yields into the accounts and contacts the rest of the runtime reads.
     """
 
-    capabilities = Capabilities(provider="smoke-crm", reads_opt_out=False)
+    capabilities = Capabilities(provider="smoke-crm", reads_opt_out=False,
+                                reads_opportunities=True)
 
     def accounts(self, credential: str):
         yield CrmAccount(external_id="crm-1", name="Contoso Data",
                          domain="contoso.example", country="ES",
+                         employee_band="51-200", industry="software")
+        yield CrmAccount(external_id="crm-2", name="Fabrikam Logistics",
+                         domain="fabrikam.example", country="ES",
                          employee_band="51-200", industry="software")
 
     def contacts(self, credential: str):
         yield CrmContact(external_id="crm-c1", email="rio@contoso.example",
                          full_name="Rio Vega", country="ES",
                          account_external_id="crm-1")
+        yield CrmContact(external_id="crm-c2", email="sam@fabrikam.example",
+                         full_name="Sam Ortiz", country="ES",
+                         account_external_id="crm-2")
+
+    def opportunities(self, credential: str):
+        """One live deal, on the second account.
+
+        The stage that proves the exclusion works rather than merely runs: the
+        loop below enrols Contoso and must not enrol Fabrikam, and a run where
+        both enrol is a run where the clause did nothing.
+        """
+        yield CrmOpportunity(external_id="crm-d1", account_external_id="crm-2",
+                             name="Fabrikam renewal", stage="Negotiation",
+                             status=DealStatus.OPEN)
+        yield CrmOpportunity(external_id="crm-d2", account_external_id="crm-1",
+                             name="Contoso pilot, closed last quarter",
+                             stage="Closed Won", status=DealStatus.WON)
 
 
 def main() -> int:
@@ -95,14 +116,52 @@ def main() -> int:
                                spec=program.spec, spec_hash=program.spec_hash, status="draft")
         programs.activate(cur, str(row["id"]))
 
+    # -- sync: where a customer's list actually comes from ----------------
+    # The first stage of every GTM product, and the one this script never
+    # touched. It runs before any signal is ingested because that is the order
+    # a customer's system works in — and because the flagship program's
+    # audience excludes accounts with an open deal, which is a question no CRM
+    # has answered until this runs. A fake source rather than a real CRM: the
+    # contract suite proves HubSpot, Pipedrive and Salesforce satisfy the
+    # interface; what is proved here is that the sync path writes what a
+    # source yields.
+    synced = sync.pull(db, tid, credential="none", provider="smoke-crm",
+                       source=_SmokeCrm())
+
+    with db.tenant_tx(tid) as cur:
         # The flagship program's audience is software companies of 51-500
         # people in six countries. Before the audience was executed this
         # account enrolled anyway; it now has to be one the program is for,
         # exactly as a customer's would.
-        account = entities.upsert_account(cur, tid, name="Northwind Analytics",
-                                          domain="northwind.example", country="ES",
-                                          employee_band="51-200",
-                                          industry_code="software")
+        # The account has to land in the treatment arm, and which arm an
+        # account lands in is a hash of its id. With the shipped 10% holdout
+        # this script failed roughly one run in ten — reporting four dead
+        # stages for the one reason that is not a defect, because a control
+        # enrolment produces no action *by design*. A CI check that fails one
+        # run in ten teaches people to press re-run, which is worth less than
+        # no check at all.
+        #
+        # The holdout is not turned off to fix that: it is the product's
+        # central invariant and the shipped program is published here verbatim.
+        # An account is chosen that the real assignment function puts in
+        # treatment, and if twenty candidates in a row land in control then
+        # assignment itself is broken and this script should say so.
+        pct = float((program.spec["experiment"] or {})["holdout_pct"])
+        salt = (program.spec["experiment"] or {}).get("salt", "")
+        account = None
+        for attempt in range(20):
+            candidate = entities.upsert_account(
+                cur, tid, name="Northwind Analytics",
+                domain=f"northwind-{attempt}.example", country="ES",
+                employee_band="51-200", industry_code="software")
+            if not experiment.assign(str(candidate["id"]), program.key, pct,
+                                     salt).is_control:
+                account = candidate
+                break
+        if account is None:
+            print("::error::twenty accounts in a row assigned to control; the "
+                  "holdout assignment is not distributing", file=sys.stderr)
+            return 1
         person = entities.upsert_person(
             cur, tid, email="dana@northwind.example", full_name="Dana Cruz", country="ES",
             consent_state={"email": {"basis": "legitimate_interest", "source": "smoke"}})
@@ -115,13 +174,19 @@ def main() -> int:
             payload={"stage": "series_a", "amount_usd": 12_000_000},
             observed_at=datetime.now(timezone.utc), dedupe_key=f"smoke-{uuid.uuid4().hex}")
 
-    # -- sync: where a customer's list actually comes from ----------------
-    # The first stage of every GTM product, and the one this script never
-    # touched. A fake source rather than a real CRM: the contract suite proves
-    # HubSpot, Pipedrive and Salesforce satisfy the interface; what is proved
-    # here is that the sync path writes what a source yields.
-    synced = sync.pull(db, tid, credential="none", provider="smoke-crm",
-                       source=_SmokeCrm())
+        # The same signal, on the account the CRM says is in a live deal. It
+        # matches the trigger, the score, the country, the size and the
+        # industry — everything except the exclusion. A run where this enrols
+        # is a run where the clause did nothing, which is the state this
+        # product shipped in until there was an `opportunity` table.
+        cur.execute("select id from account where crm_id = %s", ("smoke-crm:crm-2",))
+        in_a_deal = cur.fetchone()["id"]
+        deal_result = enroll.ingest(
+            cur, tid, entity_type="account", entity_id=str(in_a_deal),
+            type="funding.round", strength=0.72, half_life_h=720, source="smoke",
+            legal_basis="legitimate_interest",
+            payload={"stage": "series_a", "amount_usd": 12_000_000},
+            observed_at=datetime.now(timezone.utc), dedupe_key=f"smoke-{uuid.uuid4().hex}")
 
     # -- enrich: buying a field the waterfall declares ---------------------
     with db.tenant_tx(tid) as cur:
@@ -194,7 +259,9 @@ def main() -> int:
         "still_queued": queued,
         "webhook_effects": webhook_effects,
         "synced": {"accounts": synced.accounts, "people": synced.people,
-                   "links": synced.links, "caveats": synced.caveats},
+                   "links": synced.links, "opportunities": synced.opportunities,
+                   "openDeals": synced.open_deals, "caveats": synced.caveats},
+        "excludedByAnOpenDeal": not deal_result.enrollments,
         "enriched": {"field": bought.field, "hit": bought.hit,
                      "provider": bought.provider,
                      "attempts": list(bought.attempts),
@@ -219,10 +286,15 @@ def main() -> int:
     stages = {
         "a program was published": bool(program.key),
         "a CRM's records were synced": synced.accounts > 0 and synced.people > 0,
+        "the CRM's deals were read": synced.opportunities > 0 and synced.open_deals > 0,
         # A miss is an answer (ADR-021); what must not happen is the
         # waterfall never being asked at all.
         "the waterfall was consulted": bool(bought.attempts),
         "an account was enrolled": bool(result.enrollments),
+        # Both halves, because either one alone passes while the product is
+        # broken: an audience that matches nobody satisfies the second, and an
+        # exclusion that does nothing satisfies the first.
+        "an account in an open deal was left alone": not deal_result.enrollments,
         "the worker planned work": tick.planned > 0 or tick.claimed > 0,
         "a touch was recorded": bool(touches),
         "the policy gate decided": bool(decisions),

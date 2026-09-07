@@ -732,6 +732,11 @@ def create_app(db: Database, *, install_connectors: bool = True,
         source = GenericSource(stored["document"])
         source.stage("accounts", list(batch.get("accounts") or []))
         source.stage("contacts", list(batch.get("contacts") or []))
+        # Deals, when the mapping says how to read them. A push mapping that
+        # declares an `opportunities` block and never receives any would leave
+        # the exclusion unanswerable, which is the same hole as a CRM that
+        # cannot read them — except silent, because the mapping claims it can.
+        source.stage("opportunities", list(batch.get("opportunities") or []))
         report = pull_staged(db, principal.tenant_id, source)
         return {"provider": provider, **{k: v for k, v in report.__dict__.items()}}
 

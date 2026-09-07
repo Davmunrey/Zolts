@@ -8,11 +8,11 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | | Count | Evidence |
 |---|---|---|
-| Epics delivered | 34 | `docs/22`, ADR-001 … ADR-037 |
-| Tests | 912 | 303 against a real Postgres; CI fails a run that skipped them |
+| Epics delivered | 35 | `docs/22`, ADR-001 … ADR-038 |
+| Tests | 956 | 314 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
-| Native CRMs | 3 | HubSpot, Pipedrive, Salesforce |
+| Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
 | Sending channels | **1** | Blocked on decision 27 |
 | Production tenants | **0** | Blocked on B-1 |
 
@@ -50,7 +50,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Measure mutation coverage across the runtime | The suite reports 912 tests. That is a count of intention, not of coverage. The real number is what fraction bites when the thing it guards is broken — five of the register's defects were found exactly there, and each new guard is now mutation-verified by hand, which does not scale | M |
+| **VER-1** | Measure mutation coverage across the runtime | The suite reports 956 tests. That is a count of intention, not of coverage. The real number is what fraction bites when the thing it guards is broken — five of the register's defects were found exactly there, and each new guard is now mutation-verified by hand, which does not scale | M |
 | **VER-2** | Visual regression on the console | Two defects this session were visible on a screenshot and invisible to every test (D-15, D-16) | M |
 | **VER-3** | Deployed-environment smoke on a schedule | CI proves the image works. Nothing proves the deployment still does | S |
 
@@ -58,7 +58,6 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **P-5** | **The open-deal exclusion: an `opportunity` object end to end** | The costliest thing on this list to get wrong. Outbound into an account the sales team is already in a deal with is the failure a buyer remembers, and today it cannot be expressed: there is no `opportunity` table, the CRM contract reads accounts and contacts only, and the clause is absent from program 01 rather than written as one that always passes. Needs a protocol method, three connector implementations, a table, a sync and the clause restored (decision 32) | M |
 | **P-1** | Zero-copy over a customer warehouse | ADR-003 stated it in the present tense with no implementation, now corrected (decision 29). It returns as a real item when a partner's DPO or data volume makes the copy the objection | L |
 | **P-2** | Program editing beyond the eleven dials | The console emits DSL for money-and-risk parameters (ADR-029). Audience SQL and play copy deliberately stay in a pull request (decision 30). Revisit when an operator asks for a twelfth | M |
 | **P-3** | Brand voice classifier trained on the tenant's own material | Today the copywriter is guarded by evals and provenance, not by a model of the customer's voice | L |
@@ -77,6 +76,7 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Measurement** | Holdout mandatory or waived in writing; MDE reported beside lift; the unread share of conversions disclosed on the same screen | ADR-016, `docs/10` |
 | **Billing** | Eight priced actions all executable and metered; graduated overage; a closed period keeps its terms; an unpriced action raises | ADR-017, ADR-024, ADR-025, ADR-027 |
 | **CRM** | Three native connectors on one contract; the long tail connected by a mapping document, not code | ADR-006, ADR-013, ADR-014, ADR-018 |
+| **Deals** | Accounts already in a live sales conversation are excluded from outbound, and a CRM that cannot say which asks the program to refuse rather than assuming none | ADR-038, `test_opportunity.py` |
 | **Deliverability** | Per-domain capacity, warmup, circuit breakers, mailbox fleet with reputation kept where it was earned | ADR-020 |
 | **Enrichment** | Waterfall bought in the declared order with measured hit rates; a miss is absorbed, not billed | ADR-021 |
 | **Signals** | Nine definitions; the runtime goes and looks rather than waiting to be told; priced per account-day | ADR-022 |

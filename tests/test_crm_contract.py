@@ -20,7 +20,8 @@ import httpx
 import pytest
 
 from runtime.connectors import crm
-from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
+from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContact,
+                                    CrmOpportunity, DealStatus)
 from runtime.connectors.generic import GenericSource
 from runtime.connectors.hubspot import HubSpotConnector
 from runtime.connectors.pipedrive import PipedriveConnector
@@ -43,12 +44,35 @@ HUBSPOT_PAGES = {
                                       "hs_email_optout": "true"}},
         {"id": "9003", "properties": {"firstname": "No Email"}},
     ]},
+    # A deal's company is an association rather than a property, which is the
+    # part a connector gets wrong: asking only for properties returns every
+    # deal with no account, and an exclusion keyed on the account then
+    # excludes nobody.
+    "deals": {"results": [
+        {"id": "5001", "properties": {"dealname": "Northwind expansion",
+                                      "dealstage": "contractsent", "amount": "42000",
+                                      "hs_is_closed": "false", "hs_is_closed_won": "false"},
+         "associations": {"companies": {"results": [{"id": "701"}]}}},
+        {"id": "5002", "properties": {"dealname": "Northwind pilot",
+                                      "dealstage": "closedwon", "amount": "9000",
+                                      "hs_is_closed": "true", "hs_is_closed_won": "true"},
+         "associations": {"companies": {"results": [{"id": "701"}]}}},
+    ]},
 }
 
 PIPEDRIVE_PAGES = {
     "organizations": {"data": [
         {"id": 11, "name": "Northwind", "address_country": "ES", "people_count": 120},
         {"id": 12, "name": None},                              # unnamed
+    ], "additional_data": {"pagination": {"more_items_in_collection": False}}},
+    "deals": {"data": [
+        {"id": 31, "title": "Northwind expansion", "status": "open", "value": 42000,
+         "currency": "EUR", "stage_id": 3, "org_id": {"value": 11, "name": "Northwind"}},
+        {"id": 32, "title": "Northwind pilot", "status": "won", "value": 9000,
+         "currency": "EUR", "org_id": {"value": 11}},
+        # Withdrawn by the tenant. Not a loss, and counting it as one would let
+        # an account back into outbound on a deal nobody closed.
+        {"id": 33, "title": "Typo", "status": "deleted", "org_id": {"value": 11}},
     ], "additional_data": {"pagination": {"more_items_in_collection": False}}},
     "persons": {"data": [
         {"id": 21, "name": "Dana Cruz", "job_title": "RevOps Lead",
@@ -93,6 +117,8 @@ IN_HOUSE_MAPPING = {
                          "pagination": {"kind": "none"}},
             "contacts": {"path": "/people", "records": "data.items",
                          "pagination": {"kind": "none"}},
+            "opportunities": {"path": "/deals", "records": "data.items",
+                              "pagination": {"kind": "none"}},
         },
         "accounts": {"external_id": "id | str", "name": "legal_name",
                      "domain": "website | domain",
@@ -106,6 +132,14 @@ IN_HOUSE_MAPPING = {
                                             "opted_out": "opted_out",
                                             "never_asked": "unknown"},
                                  "default": "unknown"}},
+        "opportunities": {"external_id": "id | str", "name": "label",
+                          "account_external_id": "company.id | str",
+                          "stage": "phase",
+                          "status": {"field": "phase",
+                                     "values": {"negotiating": "open",
+                                                "signed": "won",
+                                                "dropped": "lost"},
+                                     "default": "open"}},
     },
 }
 
@@ -114,6 +148,14 @@ IN_HOUSE_PAGES = {
         {"id": 11, "legal_name": "Northwind SL", "website": "https://www.northwind.test/",
          "address": {"country_code": "es"}},
         {"id": 12, "legal_name": None},                        # unnamed
+    ]}},
+    "deals": {"data": {"items": [
+        {"id": 31, "label": "Northwind expansion", "company": {"id": 11},
+         "phase": "negotiating"},
+        {"id": 32, "label": "Northwind pilot", "company": {"id": 11}, "phase": "signed"},
+        # A phase this mapping does not translate. It resolves to open, which
+        # costs a sequence nobody sent rather than a sequence into a live deal.
+        {"id": 33, "label": "Unmapped", "company": {"id": 11}, "phase": "who-knows"},
     ]}},
     "people": {"data": {"items": [
         {"id": 21, "name_parts": ["Dana", "Cruz"], "role": "RevOps Lead",
@@ -164,6 +206,18 @@ SALESFORCE_PAGES = {
             {"Id": "003C", "FirstName": "No Email", "HasOptedOutOfEmail": False},
         ]},
     ],
+    "opportunities": [
+        {"done": True, "records": [
+            {"Id": "006A", "Name": "Northwind expansion", "AccountId": "001A",
+             "StageName": "Proposal/Price Quote", "Amount": 42000,
+             "IsClosed": False, "IsWon": False},
+            # Closed *and* won. A connector reading `IsClosed` first files
+            # every win as a loss, which reopens the account to outbound.
+            {"Id": "006B", "Name": "Northwind pilot", "AccountId": "001A",
+             "StageName": "Closed Won", "Amount": 9000,
+             "IsClosed": True, "IsWon": True},
+        ]},
+    ],
 }
 
 
@@ -171,8 +225,25 @@ def _salesforce_handler(request: httpx.Request) -> httpx.Response:
     if "/query/" in request.url.path:                # the paged continuation
         return httpx.Response(200, json=SALESFORCE_PAGES["accounts"][1])
     soql = request.url.params.get("q", "")
-    which = "contacts" if "FROM Contact" in soql else "accounts"
+    which = ("contacts" if "FROM Contact" in soql
+             else "opportunities" if "FROM Opportunity" in soql
+             else "accounts")
     return httpx.Response(200, json=SALESFORCE_PAGES[which][0])
+
+
+def _without_deals(mapping: dict) -> dict:
+    """The same mapping by an author who never wrote the deals section.
+
+    It is in this suite because otherwise nothing is: all four other sources
+    read deals, so the tests for a source that cannot would skip every time
+    and pass forever. The honest gap needs a source that has it.
+    """
+    stripped = json.loads(json.dumps(mapping))
+    stripped["metadata"] = {**stripped["metadata"], "provider": "acme-basic",
+                            "name": "Acme internal CRM, deals not mapped"}
+    stripped["spec"].pop("opportunities", None)
+    stripped["spec"]["transport"].pop("opportunities", None)
+    return stripped
 
 
 SOURCES = {
@@ -181,6 +252,8 @@ SOURCES = {
     "salesforce": (lambda: SalesforceConnector.from_config(
         {"instance_url": SALESFORCE_INSTANCE}), _salesforce_handler),
     "in-house-mapping": (lambda: GenericSource(IN_HOUSE_MAPPING), _in_house_handler),
+    "in-house-no-deals": (lambda: GenericSource(_without_deals(IN_HOUSE_MAPPING)),
+                          _in_house_handler),
 }
 
 
@@ -248,6 +321,61 @@ def test_account_links_resolve_to_ids_this_source_also_returns(source):
     linked = {c.account_external_id for c in source.contacts("credential")
               if c.account_external_id}
     assert linked <= account_ids, f"orphan account references: {linked - account_ids}"
+
+
+# -- deals: the field that decides whether outbound is embarrassing ------
+
+def test_opportunities_are_canonical_records_with_a_stable_id(source):
+    """A source declaring it reads deals must actually return some.
+
+    Same rule as `reads_opt_out`, and it exists for the same reason: an honest
+    gap is handled — the audience refuses to enrol — while a false claim is
+    trusted, and being trusted here means emailing an account the sales team
+    is in a live deal with.
+    """
+    if not source.capabilities.reads_opportunities:
+        pytest.skip(f"{source.capabilities.provider} does not claim to read deals")
+    deals = list(source.opportunities("credential"))
+    assert deals, "it claims reads_opportunities and returned none"
+    assert all(isinstance(d, CrmOpportunity) for d in deals)
+    ids = [d.external_id for d in deals]
+    assert all(ids) and len(ids) == len(set(ids))
+
+
+def test_a_won_deal_is_not_an_open_one(source):
+    """The mapping that costs money to get wrong.
+
+    Every fixture carries a closed-won deal. HubSpot reports two booleans,
+    Salesforce reports two booleans, Pipedrive reports a word, and a
+    connector that reads "closed" before "won" files every win as a loss —
+    which puts a customer we just signed back into cold outbound.
+    """
+    if not source.capabilities.reads_opportunities:
+        pytest.skip(f"{source.capabilities.provider} does not claim to read deals")
+    states = {d.status for d in source.opportunities("credential")}
+    assert DealStatus.OPEN in states and DealStatus.WON in states, (
+        f"a fixture with one live and one won deal produced {sorted(s.value for s in states)}")
+
+
+def test_a_deal_resolves_to_an_account_this_source_also_returns(source):
+    """A deal pointing at a company the account pass never yielded excludes
+    nobody: the exclusion joins on the account, and an orphan deal joins on
+    nothing."""
+    if not source.capabilities.reads_opportunities:
+        pytest.skip(f"{source.capabilities.provider} does not claim to read deals")
+    accounts = {a.external_id for a in source.accounts("credential")}
+    linked = {d.account_external_id for d in source.opportunities("credential")
+              if d.account_external_id}
+    assert linked, "no deal named an account; the exclusion would match nothing"
+    assert linked <= accounts, f"orphan account references: {linked - accounts}"
+
+
+def test_a_source_that_cannot_read_deals_returns_nothing_rather_than_failing(source):
+    """The honest gap has to be callable. `pull` asks every source and reads
+    the capability to decide what the empty answer means."""
+    if source.capabilities.reads_opportunities:
+        pytest.skip(f"{source.capabilities.provider} reads deals")
+    assert list(source.opportunities("credential")) == []
 
 
 # -- consent: the field that decides whether a connector is a liability ---
