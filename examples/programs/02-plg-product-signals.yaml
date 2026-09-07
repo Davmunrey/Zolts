@@ -20,15 +20,21 @@ spec:
     dedupe: {key: account_id, cooldown: 60d}
 
   audience:
+    # Plan tier, activity and activation are the tenant's own product facts.
+    # They arrive in `attributes` rather than in tables Zolts invents, and the
+    # numeric comparisons go through `jsonb_path_exists` so an attribute that
+    # is missing, or a string where a number was expected, is false rather
+    # than an error that stops the whole audience.
     sql: |
       select a.id as account_id
       from account a
-      join workspace w on w.account_id = a.id
-      where w.plan_tier in ('free','starter')
-        and w.weekly_active_users >= 3
-        and w.activation_score >= 0.6
+      where a.attributes ->> 'plan_tier' in ('free','starter')
+        and jsonb_path_exists(a.attributes, '$.weekly_active_users ? (@ >= 3)')
+        and jsonb_path_exists(a.attributes, '$.activation_score ? (@ >= 0.6)')
         and a.employee_band not in ('1-10')
-
+        and not exists (
+              select 1 from suppression s
+               where s.scope = 'account' and s.value = a.id::text)
   enrich:
     person:
       # in PLG the user is already known; the economic buyer is not

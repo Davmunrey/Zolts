@@ -592,7 +592,7 @@
         "t2": true
       },
       "budget": 6000,
-      "specHash": "b533364a89adc888",
+      "specHash": "24f9fba6e02dbc45",
       "name": "New site and reputation",
       "spec": {
         "trigger": {
@@ -616,7 +616,7 @@
           }
         },
         "audience": {
-          "sql": "select a.id as account_id\nfrom account a\nwhere a.industry_code_group in ('healthcare_clinics','auto_services','fitness')\n  and a.location_count between 2 and 40\n  and a.country = 'ES'\n  and a.territory_id is not null\n"
+          "sql": "select a.id as account_id\nfrom account a\nwhere a.industry_code in ('healthcare_clinics','auto_services','fitness')\n  and jsonb_path_exists(a.attributes, '$.location_count ? (@ >= 2 && @ <= 40)')\n  and a.country = 'ES'\n  and a.attributes ? 'territory_id'\n  and not exists (\n        select 1 from suppression s\n         where s.scope = 'account' and s.value = a.id::text)\n"
         },
         "enrich": {
           "account": {
@@ -827,7 +827,7 @@
         "t2": true
       },
       "budget": 8000,
-      "specHash": "3c12de132950a26c",
+      "specHash": "2b1afe7aec489230",
       "name": "Replenishment winback",
       "spec": {
         "trigger": {
@@ -849,7 +849,7 @@
           }
         },
         "audience": {
-          "sql": "select p.id as person_id\nfrom person p\njoin customer c on c.person_id = p.id\nwhere c.lifetime_orders >= 1\n  and c.marketing_consent_email = true       -- B2C: consent is mandatory\n  and c.predicted_churn_risk between 0.3 and 0.85\n  and p.country in ('ES','PT','FR','IT')\n"
+          "sql": "select p.id as person_id\nfrom person p\nwhere jsonb_path_exists(p.attributes, '$.lifetime_orders ? (@ >= 1)')\n  and jsonb_path_exists(\n        p.attributes, '$.predicted_churn_risk ? (@ >= 0.3 && @ <= 0.85)')\n  and p.consent_state ->> 'email' = 'consent'\n  and p.country in ('ES','PT','FR','IT')\n  and not exists (\n        select 1 from suppression s\n         where s.scope = 'person' and s.value = p.id::text)\n"
         },
         "enrich": {
           "person": {
@@ -1044,7 +1044,7 @@
         "t3": false
       },
       "budget": 40000,
-      "specHash": "4f47fce9b47d1d62",
+      "specHash": "ae0fdcdf14bd59c0",
       "name": "Series A hiring surge",
       "spec": {
         "trigger": {
@@ -1066,7 +1066,7 @@
           }
         },
         "audience": {
-          "sql": "select a.id as account_id\nfrom account a\nwhere a.employee_band in ('51-200','201-500')\n  and a.industry_code_group = 'software'\n  and a.country in ('ES','FR','DE','NL','GB','US')\n  and not exists (select 1 from suppression s where s.account_id = a.id)\n  and not exists (select 1 from opportunity o where o.account_id = a.id and o.state = 'open')\n"
+          "sql": "select a.id as account_id\nfrom account a\nwhere a.employee_band in ('51-200','201-500')\n  and a.industry_code = 'software'\n  and a.country in ('ES','FR','DE','NL','GB','US')\n  and not exists (\n        select 1 from suppression s\n         where s.scope = 'account' and s.value = a.id::text)\n"
         },
         "enrich": {
           "account": {
@@ -1342,7 +1342,7 @@
         "t2": true
       },
       "budget": 12000,
-      "specHash": "1fa40d773438578e",
+      "specHash": "fb81ae6dba4e11bd",
       "name": "Workspace expansion trigger",
       "spec": {
         "trigger": {
@@ -1364,7 +1364,7 @@
           }
         },
         "audience": {
-          "sql": "select a.id as account_id\nfrom account a\njoin workspace w on w.account_id = a.id\nwhere w.plan_tier in ('free','starter')\n  and w.weekly_active_users >= 3\n  and w.activation_score >= 0.6\n  and a.employee_band not in ('1-10')\n"
+          "sql": "select a.id as account_id\nfrom account a\nwhere a.attributes ->> 'plan_tier' in ('free','starter')\n  and jsonb_path_exists(a.attributes, '$.weekly_active_users ? (@ >= 3)')\n  and jsonb_path_exists(a.attributes, '$.activation_score ? (@ >= 0.6)')\n  and a.employee_band not in ('1-10')\n  and not exists (\n        select 1 from suppression s\n         where s.scope = 'account' and s.value = a.id::text)\n"
         },
         "enrich": {
           "person": {

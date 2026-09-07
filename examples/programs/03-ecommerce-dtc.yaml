@@ -21,15 +21,19 @@ spec:
     dedupe: {key: person_id, cooldown: 21d}
 
   audience:
+    # B2C, so consent is mandatory and is read from the person's own consent
+    # state rather than from a column a tenant might forget to populate.
     sql: |
       select p.id as person_id
       from person p
-      join customer c on c.person_id = p.id
-      where c.lifetime_orders >= 1
-        and c.marketing_consent_email = true       -- B2C: consent is mandatory
-        and c.predicted_churn_risk between 0.3 and 0.85
+      where jsonb_path_exists(p.attributes, '$.lifetime_orders ? (@ >= 1)')
+        and jsonb_path_exists(
+              p.attributes, '$.predicted_churn_risk ? (@ >= 0.3 && @ <= 0.85)')
+        and p.consent_state ->> 'email' = 'consent'
         and p.country in ('ES','PT','FR','IT')
-
+        and not exists (
+              select 1 from suppression s
+               where s.scope = 'person' and s.value = p.id::text)
   enrich:
     person:
       require: []                                   # first-party data: zero enrichment cost

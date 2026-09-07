@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from runtime.engine import triggers
+from runtime.engine import audience, triggers
 from runtime.repo import enrollments, ledger, programs, signals
 from zolts import experiment, expr
 
@@ -103,6 +103,24 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
             cur, entity_id, triggers.signal_types(spec), triggers.window_start(spec, now))
         reason = triggers.matches(spec, signal, history)
         if reason is None:
+            continue
+
+        # Membership, before anything that costs money or contacts anybody.
+        # The trigger says something happened; the audience says whether this
+        # subject is one the program is for. Until this call existed the second
+        # question was never asked, and a program's exclusions — a live
+        # opportunity, the wrong segment, the wrong country — were decoration.
+        try:
+            if not audience.includes(cur, spec, program["key"], str(entity_id)):
+                continue
+        except audience.AudienceError as exc:
+            # Fail closed, and say so. A program that has stopped enrolling
+            # because its audience is broken looks exactly like a program with
+            # no matching signals, and the difference is worth an audit row.
+            ledger.audit(cur, tenant_id, actor="engine", action="enrollment.refused",
+                         subject=str(program["id"]),
+                         detail={"program": program["key"], "reason": str(exc),
+                                 "entity_id": str(entity_id)})
             continue
 
         cooldown = triggers.cooldown_days(spec)

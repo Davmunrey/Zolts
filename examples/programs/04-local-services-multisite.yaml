@@ -24,11 +24,13 @@ spec:
     sql: |
       select a.id as account_id
       from account a
-      where a.industry_code_group in ('healthcare_clinics','auto_services','fitness')
-        and a.location_count between 2 and 40
+      where a.industry_code in ('healthcare_clinics','auto_services','fitness')
+        and jsonb_path_exists(a.attributes, '$.location_count ? (@ >= 2 && @ <= 40)')
         and a.country = 'ES'
-        and a.territory_id is not null
-
+        and a.attributes ? 'territory_id'
+        and not exists (
+              select 1 from suppression s
+               where s.scope = 'account' and s.value = a.id::text)
   enrich:
     account:
       require: [owner_contact, location_list, google_rating, website_tech]
