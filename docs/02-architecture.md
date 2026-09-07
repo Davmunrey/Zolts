@@ -463,3 +463,22 @@ Found by mutation, not by reading: breaking the editor's version bump to see the
 **409, not 422.** The document is valid; the version is taken. An operator republishing v2.1.0 with a new holdout needs to be told to bump it, not that their spec is wrong.
 
 The general lesson is the one this repository keeps relearning: a guard that passes when you break the thing it guards is not a guard. The mutation was cheap and the defect it exposed had been shipping since the first version of `publish`.
+
+
+**ADR-031 · The five product invariants were mutated, and two had no guard.**
+The method that found the mutable version was applied to the rest: break each invariant's enforcement point on purpose, run the suite fail-fast, and see whether anything notices. Two did not.
+
+| Invariant | Mutation | Before |
+|---|---|---|
+| 1 · Agents propose; the runtime disposes | an agent imports a connector | **nothing** — it happened not to, which is a fact about four files, not a property |
+| 2 · Every external action carries an idempotency key | the key drops the step, so a sequence's steps collide | caught |
+| 3 · Every action records a policy decision | the gate records nothing | caught |
+| 3 · …**with a reason** | the gate records `rationale=None` | **nothing** — the whole suite passed |
+| 4 · Every program declares a holdout or a written waiver | the waiver check is deleted | caught |
+| 5 · Program logic is versioned configuration | the version is not bumped | **nothing** — this is ADR-030 |
+
+**A reason is not optional.** `rationale` was a nullable column and `record_decision` took `str | None`, while `zolts.policy.PolicyDecision.rationale` has always been a plain `str` — the engine produced one and the persistence layer did not require it. The console's Policy view reads that column straight to the screen, so a null renders as a decision nobody can explain, which is the only question the table exists to answer. Migration 018 makes it `not null` with a non-blank check; `record_decision` raises `DecisionWithoutAReason` so the failure names its cause rather than surfacing as a constraint violation three layers down.
+
+**Invariant 1 is now structural.** No module under `runtime/agents/` may import `runtime.connectors`, `runtime.channels`, `runtime.fleet`, the worker, the gate or the action repository. A model call is not an external action in this sense — it is the agent thinking, it is guarded for spend, and it touches nobody's prospect. What is forbidden is reaching the machinery that contacts a person or writes to a customer's CRM. The fifth agent is the one that would have broken this, and the failure mode is an email nobody approved.
+
+The score: **three of five invariants were enforced, two were intentions.** Both are now checked, and each check was verified by the mutation that motivated it.

@@ -13,9 +13,28 @@ from typing import Any
 from runtime.db import one, rows
 
 
+class DecisionWithoutAReason(ValueError):
+    """A policy decision was recorded with nothing to explain it."""
+
+
 def record_decision(cur, tenant_id: str, *, subject_type: str, subject_id: str,
                     action: str, decision: str, rule_key: str,
-                    jurisdiction: str | None, rationale: str | None) -> str:
+                    jurisdiction: str | None, rationale: str) -> str:
+    """Record one decision. The reason is not optional.
+
+    Invariant 3 asks for allow or deny *with a reason*, and only the first two
+    thirds were enforced: the column was nullable and this signature said
+    `str | None`. A null renders in the console's Policy view as a decision
+    nobody can explain, which is the one question this table exists to answer.
+
+    Checked here as well as in the schema so the failure names its cause. A
+    NOT NULL violation surfacing from three layers down tells whoever reads it
+    that Postgres is unhappy, not that a rule forgot to say why.
+    """
+    if not (rationale or "").strip():
+        raise DecisionWithoutAReason(
+            f"{action} on {subject_type} {subject_id} decided '{decision}' under "
+            f"rule '{rule_key}' with no reason recorded")
     cur.execute(
         "insert into policy_decision (tenant_id, subject_type, subject_id, action,"
         " decision, rule_key, jurisdiction, rationale) values (%s,%s,%s,%s,%s,%s,%s,%s)"
