@@ -653,6 +653,31 @@ scripts/restore.sh backup.sql "$OWNER_URL" "$APP_PASSWORD"
 
 Four steps: create the role if absent, restore with `ON_ERROR_STOP=1`, re-grant via `migrate`, then `preflight` the result. A restore that has not been preflighted is a backup nobody has tested.
 
+## Changing a program without a deploy
+
+The console edits eleven parameters and emits a whole program document. Nothing else.
+
+| What it edits | Bound | Where the bound comes from |
+|---|---|---|
+| `experiment.holdout_pct` | 0–50 | the schema |
+| `score.floor` | 0–100 | the schema |
+| `trigger.window`, `trigger.dedupe.cooldown` | `^\d+[hdw]$`, `^\d+[dw]$` | the schema |
+| `route.strategy`, `budget.on_exceed` | three choices each | the schema |
+| `budget.monthly_credits` | ≥ 0 | the schema |
+| `policy.overrides.max_touches_per_person_per_week` | ≥ 0 | the schema |
+| `enrich.account.max_cost_per_account`, `enrich.person.max_cost_per_contact` | ≥ 0 | the schema |
+| `enrich.person.accuracy_sla` | 0–1 | the schema |
+
+`zolts.dsl.controls()` reads those bounds at call time. Nothing restates them, so the form cannot offer a value `POST /v1/programs` rejects.
+
+**It emits a document, never a patch.** The form starts from the program's own spec, applies the changed dials, bumps the patch version, and posts the whole thing — which is then validated against the schema, linted, and holdout-checked exactly as `scripts/validate.py` does offline. A patch would make the runtime decide how to merge, and a program with two authors is the divergence ADR-002 exists to prevent.
+
+**Publishing writes a new version.** v2.1.0 keeps running and v2.1.1 arrives as a draft. Editing in place would leave enrollments already executing under the old spec pointing at one that no longer describes what they did.
+
+**An emptied box is refused.** A field that held `0.35` and is now blank is ambiguous between "keep it" and "remove the ceiling", and the second uncaps what the program may spend per account. The editor names the field and disables publish.
+
+What it does not edit: the audience SQL, the plays, the trigger's events. Those decide who is contacted and what is said, and they belong in a diff somebody reviews (decision 30).
+
 ## What would break first at scale
 
 | Limit | Bites at roughly | Fix when it does |
@@ -672,7 +697,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-812 tests. 277 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+823 tests. 279 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

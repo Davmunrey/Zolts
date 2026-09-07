@@ -17,6 +17,7 @@ from typing import Any
 
 from runtime import fleet
 from runtime.repo import enrollments, programs
+from zolts import dsl
 from zolts.catalog import load_catalog
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, is_resolvable, lift, minimum_detectable_effect
 
@@ -166,6 +167,11 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
         "autoSend": {k: bool(v.get("auto_send")) for k, v in (spec.get("plays") or {}).items()},
         "budget": (spec.get("budget") or {}).get("monthly_credits"),
         "specHash": program["spec_hash"],
+        # The document itself. A console that edits a program has to emit a
+        # whole document, because that is what `POST /v1/programs` validates
+        # and versions — a patch would make the engine the author.
+        "spec": spec,
+        "meta": metadata,
         "name": metadata.get("name") or program["key"].replace("-", " ").capitalize(),
         # How much of this number rests on replies nobody read. Reported rather
         # than corrected: correcting it silently would move every tenant's
@@ -561,6 +567,10 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         # and no program file implements. Read from `zolts.catalog` so the
         # demo and a tenant render one section from one rule.
         "catalogueGaps": load_catalog().gaps(),
+        # What a console may tune, carrying the schema's own bounds. Derived
+        # rather than listed here: a control that restated a range would go on
+        # offering it after the schema moved.
+        "controls": dsl.controls(),
         "review": review_items,
         "decisions": decisions,
         "jurisdictions": sorted(decisions.keys()),

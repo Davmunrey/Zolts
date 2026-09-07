@@ -146,6 +146,27 @@ def main() -> int:
             page.wait_for_selector(".dactions .btn-p", timeout=15_000)
             report["after_activate"] = page.locator(".dactions .btn-p").first.inner_text()
 
+            # 3b. ADR-002 said the UI generates DSL, and the button that
+            #     promised it was labelled "Open in editor" and did nothing.
+            #     This drives the real one: open it, change the holdout, and
+            #     publish. What the form emits is a whole document, so the
+            #     check that matters is that the *server* accepts it — the
+            #     same schema, linter and holdout rule as `validate.py`.
+            page.click("#tunebtn")
+            page.wait_for_selector("#dsl", timeout=15_000)
+            report["editor_fields"] = page.locator(".field input, .field select").count()
+            generated = json.loads(page.locator("#dsl").inner_text())
+            report["generated_version"] = generated["metadata"]["version"]
+            # A whole document, not a patch: what the form does not tune has
+            # to survive, or publishing would quietly drop half the program.
+            report["generated_keeps_audience"] = bool(
+                (generated["spec"].get("audience") or {}).get("sql"))
+            page.fill("#c-spec-experiment-holdout_pct", "12")
+            page.wait_for_timeout(200)
+            report["publish_offered"] = not page.is_disabled("#pub")
+            page.click("#pub")
+            page.wait_for_selector("#tunebtn", timeout=20_000)
+
             # 4. The review queue: agents propose, a person disposes. Until
             #    this existed the disposing was curl, and the rail counted a
             #    queue that led nowhere.
@@ -297,6 +318,9 @@ def main() -> int:
         with db.tenant_tx(tenant_id) as cur:
             cur.execute("select key, status from program order by key")
             report["programs_in_database"] = [dict(r) for r in cur.fetchall()]
+            cur.execute("select key, version, spec->'experiment'->>'holdout_pct' as holdout"
+                        " from program order by created_at desc limit 1")
+            report["newest_program"] = dict(one) if (one := cur.fetchone()) else None
             cur.execute("select state, approved_by from proposal order by created_at")
             report["proposals_in_database"] = [dict(r) for r in cur.fetchall()]
         db.close()
@@ -322,6 +346,23 @@ def main() -> int:
             print("a row grew past its height, or a value ran outside its box",
                   file=sys.stderr)
             return 1
+        # The document the browser built is in the database, at the version it
+        # bumped to and carrying the value that was typed. Anything less and
+        # "the UI generates DSL" is a sentence in a document again.
+        newest = report.get("newest_program") or {}
+        if newest.get("version") != report.get("generated_version"):
+            print("::error::the console published no new version:", json.dumps(newest),
+                  "expected", report.get("generated_version"), file=sys.stderr)
+            return 1
+        if newest.get("holdout") != "12":
+            print("::error::the published version does not carry the edited holdout:",
+                  json.dumps(newest), file=sys.stderr)
+            return 1
+        if not report.get("generated_keeps_audience"):
+            print("::error::the generated document dropped the audience it did not tune",
+                  file=sys.stderr)
+            return 1
+
         live = [p for p in report["programs_in_database"] if p["status"] == "live"]
         if not live:
             print("::error::the button reported success and no program went live",

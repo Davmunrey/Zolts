@@ -19,6 +19,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from zolts import dsl
 from zolts.blueprint import load_blueprints
 from zolts.catalog import load_catalog
 from zolts.experiment import (MIN_CONVERSIONS_PER_ARM, assign, is_resolvable, lift,
@@ -337,6 +338,11 @@ def build() -> dict:
             "budget": program.spec["budget"]["monthly_credits"],
             "specHash": program.spec_hash,
             "name": program.raw["metadata"]["name"],
+            # The document the demo's editor reads and rewrites. A buyer who
+            # opens it sees GTM logic as versioned configuration rather than a
+            # claim that it is.
+            "spec": program.spec,
+            "meta": program.raw["metadata"],
         }
 
         if seen:
@@ -503,6 +509,9 @@ def build() -> dict:
         # the same catalogue, so the demo and a tenant show one section built
         # by one rule rather than two that drift.
         "catalogueGaps": catalog.gaps(),
+        # Same derivation the served console uses, so the demo cannot offer a
+        # bound the engine would reject either.
+        "controls": dsl.controls(),
         "decisions": decisions,
         "policyView": policy_view,
         "auditView": audit_view,

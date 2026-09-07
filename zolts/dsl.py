@@ -124,3 +124,80 @@ def lint(program: Program) -> list[str]:
         findings.append("budget continues past its ceiling with no per-account cap")
 
     return findings
+
+
+# The parameters an operator tunes, and what each one costs to get wrong. Every
+# other field in the schema describes what a program *is*; these are the dials
+# that move money and risk on a live one, which is why they are the set a
+# console may edit without a deploy.
+#
+# Only the paths are named here. Type, bounds and choices are read out of the
+# schema itself, because a control that restated them would eventually offer a
+# value the engine rejects — and the point of ADR-002 is that there is one
+# document and one validator, not a UI with its own opinion.
+TUNABLE: tuple[tuple[str, str], ...] = (
+    ("spec.experiment.holdout_pct",
+     "Share held back to measure lift. Smaller detects less; larger costs sends."),
+    ("spec.score.floor",
+     "Minimum score to enrol. Raising it enrols fewer and better."),
+    ("spec.trigger.window",
+     "How long two signals may be apart and still combine."),
+    ("spec.trigger.dedupe.cooldown",
+     "How long before the same subject may be enrolled again."),
+    ("spec.route.strategy",
+     "Who receives the enrolled account."),
+    ("spec.budget.monthly_credits",
+     "Ceiling on what this program may spend in a billing period."),
+    ("spec.budget.on_exceed",
+     "What the runtime does when the ceiling is reached."),
+    ("spec.policy.overrides.max_touches_per_person_per_week",
+     "Contact pressure. Stricter than the tenant policy is allowed; looser is not."),
+    ("spec.enrich.account.max_cost_per_account",
+     "Ceiling the waterfall may spend resolving one account."),
+    ("spec.enrich.person.max_cost_per_contact",
+     "Ceiling the waterfall may spend resolving one contact."),
+    ("spec.enrich.person.accuracy_sla",
+     "Accuracy the waterfall must meet, which decides which vendors it may use."),
+)
+
+
+def _resolve(schema: dict[str, Any], path: str) -> dict[str, Any]:
+    """Walk a dotted path into the schema, following one level of $ref.
+
+    A path that does not resolve is a programming error, not a missing value: a
+    control whose field the schema does not describe would render with no
+    bounds at all and accept anything.
+    """
+    node: dict[str, Any] = schema
+    for part in path.split("."):
+        if "$ref" in node:
+            ref = node["$ref"].split("/")[-1]
+            node = (schema.get("$defs") or schema.get("definitions") or {})[ref]
+        properties = node.get("properties")
+        if not properties or part not in properties:
+            raise ProgramError(f"the schema describes no field at '{path}'")
+        node = properties[part]
+    if "$ref" in node:
+        ref = node["$ref"].split("/")[-1]
+        node = (schema.get("$defs") or schema.get("definitions") or {})[ref]
+    return node
+
+
+def controls() -> list[dict[str, Any]]:
+    """The tunable parameters, each carrying the schema's own constraints.
+
+    What a caller renders from this cannot offer a value the schema rejects,
+    because the bounds are the schema's and are read at call time rather than
+    copied into a second place.
+    """
+    schema = load_schema()
+    found = []
+    for path, note in TUNABLE:
+        node = _resolve(schema, path)
+        control: dict[str, Any] = {"path": path, "note": note,
+                                   "type": node.get("type", "string")}
+        for key in ("minimum", "maximum", "enum", "pattern"):
+            if key in node:
+                control[key] = node[key]
+        found.append(control)
+    return found

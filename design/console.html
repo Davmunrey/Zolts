@@ -111,6 +111,25 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
    contact has none on record" on one line, so the column that carries prose
    declares itself with "w:" in the head spec and wraps to at most two lines;
    the row grows once, by a known amount, and the guard knows which views. */
+/* The editor. Inputs carry the schema's own min/max/pattern, so the browser
+   refuses an out-of-range value before the server has to. */
+.fields{display:grid;gap:12px}
+.field{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,180px);gap:4px 10px;align-items:center}
+.field label{font-size:11.5px;color:var(--ink-secondary);font-family:var(--mono);
+  white-space:normal;line-height:1.35;overflow-wrap:anywhere}
+.field input,.field select{font:450 12px/1 var(--mono);color:var(--ink);
+  background:var(--surface-2);border:1px solid var(--hairline);border-radius:4px;
+  padding:6px 8px;width:100%;min-width:0}
+.field input:focus,.field select:focus{outline:2px solid var(--accent-ring);outline-offset:-1px}
+.field input:invalid{border-color:var(--deny);background:var(--deny-dim,var(--surface-2))}
+.field .bound{grid-column:2;font:450 10.5px/1 var(--mono);color:var(--ink-tertiary);
+  text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.field .why{grid-column:1/-1;margin:0}
+.why{font-size:11px;color:var(--ink-tertiary);line-height:1.45}
+.dsl{margin:0;padding:10px;max-height:240px;overflow:auto;
+  font:450 11px/1.5 var(--mono);color:var(--ink-subtle);
+  background:var(--surface-2);border:1px solid var(--hairline);border-radius:4px;
+  white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2}
 .cell.w{white-space:normal;line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;
         -webkit-line-clamp:2;overflow:hidden;text-overflow:clip}
 .row:has(.cell.w){height:auto;min-height:36px;padding-top:6px;padding-bottom:6px}
@@ -157,7 +176,8 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .dhead{padding:14px 16px 12px;border-bottom:1px solid var(--hairline)}
 .dhead .k{font-family:var(--mono);font-size:11px;color:var(--ink-tertiary);margin-bottom:6px}
 .dhead h2{margin:0 0 8px;font-size:15px;font-weight:550;letter-spacing:-.3px;line-height:1.25}
-.dactions{display:flex;gap:6px}
+.dactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dactions .btn{white-space:nowrap;flex:none}
 .btn{height:26px;padding:0 10px;border-radius:5px;font-size:12px;font-weight:500;
      transition:background 90ms var(--ease), transform 160ms var(--ease)}
 .btn:active{transform:scale(.97)}
@@ -442,15 +462,17 @@ function csrfToken(){
   return hit ? decodeURIComponent(hit[1]) : "";
 }
 
-function act(path, method){
+function act(path, method, body){
   /* The cookie is ambient — the browser attaches it to whatever this page
      asks for — so every state-changing call carries the double-submit token
      that nothing cross-origin can read. */
-  return fetch(path, {
+  var options = {
     method: method || "POST",
     headers: {"x-zolts-csrf": csrfToken(), "content-type": "application/json"},
     credentials: "same-origin"
-  });
+  };
+  if (body !== undefined) options.body = JSON.stringify(body);
+  return fetch(path, options);
 }
 var P = D.programs;
 
@@ -462,7 +484,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "programs", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              live: false, onlySig: false, jur: "ES" };
+              live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -772,6 +794,193 @@ function unverifiedRow(p){
     + ' · ' + pct + '% unread</dd>';
 }
 
+/* ---- the editor -------------------------------------------------------
+   ADR-002 says the DSL is the source of truth and the UI generates DSL. The
+   first half was enforced from the start: `POST /v1/programs` validates a
+   whole document against the schema, lints it, checks the holdout and stores
+   a new version. The second half was a button labelled "Open in editor" that
+   did nothing.
+
+   What this emits is a complete document, never a patch. A patch would make
+   the engine the author — it would have to decide how to merge — and two
+   authors is precisely the divergence the ADR exists to prevent. The bounds
+   on each control come from `D.controls`, which the server derives from the
+   schema, so the form cannot offer a value the validator rejects. */
+
+function readPath(node, path){
+  var parts = path.split(".");
+  for (var i = 1; i < parts.length; i++){          /* skip the "spec" root */
+    if (node == null) return undefined;
+    node = node[parts[i]];
+  }
+  return node;
+}
+
+function writePath(node, path, value){
+  var parts = path.split(".");
+  for (var i = 1; i < parts.length - 1; i++){
+    if (node[parts[i]] == null) node[parts[i]] = {};
+    node = node[parts[i]];
+  }
+  node[parts[parts.length - 1]] = value;
+}
+
+function bump(version){
+  /* A new version, never an edit of the published one. Program logic is
+     versioned configuration: overwriting v2.1.0 would leave every enrollment
+     already running under it pointing at a spec that no longer describes what
+     it did. */
+  var parts = String(version || "0.0.0").split(".").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return "0.0.1";
+  return parts[0] + "." + parts[1] + "." + (parts[2] + 1);
+}
+
+function controlField(c, value){
+  var id = "c-" + c.path.replace(/\./g, "-");
+  var label = c.path.split(".").slice(1).join(" · ");
+  var input;
+  if (c.enum){
+    input = '<select id="' + id + '" data-path="' + esc(c.path) + '">'
+      + c.enum.map(function(o){
+          return '<option' + (o === value ? " selected" : "") + '>' + esc(o) + '</option>';
+        }).join("") + '</select>';
+  } else if (c.type === "number" || c.type === "integer"){
+    input = '<input id="' + id + '" data-path="' + esc(c.path) + '" type="number"'
+      + (c.minimum != null ? ' min="' + c.minimum + '"' : "")
+      + (c.maximum != null ? ' max="' + c.maximum + '"' : "")
+      + ' step="' + (c.type === "integer" ? "1" : "any") + '"'
+      + ' value="' + (value == null ? "" : esc(String(value))) + '">';
+  } else {
+    input = '<input id="' + id + '" data-path="' + esc(c.path) + '" type="text"'
+      + (c.pattern ? ' pattern="' + esc(c.pattern) + '"' : "")
+      + ' value="' + (value == null ? "" : esc(String(value))) + '">';
+  }
+  var bound = c.enum ? c.enum.length + " choices"
+    : c.pattern ? "matches " + c.pattern
+    : (c.minimum != null ? c.minimum : "") + "–" + (c.maximum != null ? c.maximum : "∞");
+  return '<div class="field"><label for="' + id + '">' + esc(label) + '</label>'
+    + input + '<span class="bound">' + esc(String(bound)) + '</span>'
+    + '<p class="why">' + esc(c.note) + '</p></div>';
+}
+
+function draftDocument(p){
+  /* The document as it stands in the form. Built from the program's own spec
+     so every field the console does not tune survives untouched. */
+  var spec = JSON.parse(JSON.stringify(p.spec || {}));
+  (D.controls || []).forEach(function(c){
+    var el = document.getElementById("c-" + c.path.replace(/\./g, "-"));
+    if (!el) return;
+    var raw = el.value;
+    if (raw === "") return;
+    var value = (c.type === "number") ? Number(raw)
+              : (c.type === "integer") ? parseInt(raw, 10)
+              : raw;
+    if (typeof value === "number" && isNaN(value)) return;
+    writePath(spec, c.path, value);
+  });
+  var meta = JSON.parse(JSON.stringify(p.meta || {}));
+  meta.version = bump(p.version);
+  return {apiVersion: "zolts/v1", kind: "Program", metadata: meta, spec: spec};
+}
+
+function cleared(p){
+  /* A field that had a value and is now empty. Keeping the old number would
+     publish something the operator did not see; dropping the key would remove
+     a spend ceiling by accident. Neither is safe, so it is refused. */
+  return (D.controls || []).map(function(c){
+    var el = document.getElementById("c-" + c.path.replace(/\./g, "-"));
+    var had = readPath(p.spec || {}, c.path);
+    return (el && el.value === "" && had != null) ? c.path : null;
+  }).filter(Boolean);
+}
+
+function outOfBounds(){
+  /* The browser's own validity, which reads the min/max/pattern the schema
+     put on the inputs. Reported before the request rather than after, but the
+     server validates the same document again — this is a courtesy, not the
+     authority. */
+  return (D.controls || []).map(function(c){
+    var el = document.getElementById("c-" + c.path.replace(/\./g, "-"));
+    return (el && !el.checkValidity()) ? c.path : null;
+  }).filter(Boolean);
+}
+
+function renderEditor(p){
+  var body = document.getElementById("tune");
+  if (!body) return;
+  var document_ = draftDocument(p);
+  var bad = outOfBounds().concat(cleared(p));
+  var preview = document.getElementById("dsl");
+  if (preview) preview.textContent = JSON.stringify(document_, null, 2);
+  var out = document.getElementById("pub");
+  if (out) out.disabled = !LIVE || bad.length > 0;
+  var say = document.getElementById("pubnote");
+  var empty = cleared(p);
+  if (say) say.textContent = empty.length
+    ? "Emptied: " + empty[0].split(".").slice(-1)[0] + ". Removing a ceiling is a decision, not a blank box."
+    : bad.length
+    ? bad.length + " value" + (bad.length > 1 ? "s" : "") + " outside the schema"
+    : !LIVE ? "Static preview: this is the document a publish would send."
+    : "Publishes " + document_.metadata.key + " v" + document_.metadata.version + " as a draft.";
+}
+
+function editorPanel(p){
+  if (!p.spec || !(D.controls || []).length) return "";
+  var fields = D.controls.map(function(c){
+    return controlField(c, readPath(p.spec, c.path));
+  }).join("");
+  return '<div class="block" id="tune"><div class="blabel">Tune</div>'
+    + '<p class="why" style="margin:0 0 10px">Every bound below is the schema\'s own. '
+    + 'Publishing writes a new version — v' + esc(bump(p.version))
+    + ' — and never edits the one already running.</p>'
+    + '<div class="fields">' + fields + '</div>'
+    + '<div class="blabel" style="margin-top:14px">Generated document</div>'
+    + '<pre class="dsl" id="dsl"></pre>'
+    + '<div class="dactions" style="margin-top:10px">'
+    + '<button class="btn btn-p" id="pub"' + (LIVE ? "" : " disabled") + '>Publish version</button>'
+    + '<span class="why" id="pubnote"></span></div>'
+    + '</div>';
+}
+
+function wireEditor(p){
+  var panel = document.getElementById("tune");
+  if (!panel) return;
+  panel.addEventListener("input", function(){ renderEditor(p); });
+  panel.addEventListener("change", function(){ renderEditor(p); });
+  var out = document.getElementById("pub");
+  if (out) out.addEventListener("click", function(){
+    var body = draftDocument(p);
+    out.disabled = true;
+    out.textContent = "Publishing…";
+    act("/v1/programs", "POST", {
+      key: body.metadata.key, version: body.metadata.version,
+      name: body.metadata.name, blueprint: body.metadata.blueprint,
+      owner: body.metadata.owner, description: body.metadata.description,
+      spec: body.spec
+    }).then(function(res){
+      if (res.ok){ window.location.reload(); return; }
+      /* The server's reason, not a shrug. A 422 here names the field that
+         failed, and hiding it would send the operator back to a form that
+         looks correct. */
+      return res.text().then(function(text){
+        out.disabled = false;
+        out.textContent = "Publish version";
+        var say = document.getElementById("pubnote");
+        if (say) say.textContent = res.status === 409
+          ? "That version already exists with different content. A published "
+            + "version is never rewritten — the one running keeps its spec."
+          : "Rejected (" + res.status + "): " + text.slice(0, 160);
+      });
+    }).catch(function(){
+      out.disabled = false;
+      out.textContent = "Publish version";
+      var say = document.getElementById("pubnote");
+      if (say) say.textContent = "Failed (network)";
+    });
+  });
+  renderEditor(p);
+}
+
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
@@ -823,7 +1032,8 @@ function renderDetail(){
       + '<div class="k">' + p.key + ' · v' + p.version + ' · ' + p.specHash + '</div>'
       + '<h2>' + p.name + '</h2>'
       + '<div class="dactions">' + primaryAction(p)
-      + '<button class="btn btn-s">Open in editor</button></div>'
+      + '<button class="btn btn-s" id="tunebtn" aria-expanded="' + (state.tuning ? "true" : "false")
+      + '">' + (state.tuning ? "Close editor" : "Open editor") + '</button></div>'
     + '</div>'
     + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
@@ -841,6 +1051,7 @@ function renderDetail(){
           return '<dt style="font-family:var(--mono);font-size:11.5px">' + sg + '</dt>'
                + '<dd>armed</dd>'; }).join("")
     + '</dl></div>'
+    + (state.tuning ? editorPanel(p) : "")
     + '<div class="block" style="border-bottom:0">'
       + '<div class="blabel" style="display:flex;align-items:center;gap:8px">Policy decisions'
       + '<span class="seg" style="margin-left:auto" id="jur">'
@@ -852,6 +1063,13 @@ function renderDetail(){
       + 'Evaluated by the policy engine, not transcribed. Switching jurisdiction '
       + 'replays the same actions against that pack.</p>'
     + '</div>';
+
+  var tuner = document.getElementById("tunebtn");
+  if (tuner) tuner.addEventListener("click", function(){
+    state.tuning = !state.tuning;
+    renderDetail();
+  });
+  if (state.tuning) wireEditor(p);
 
   var seg = document.getElementById("jur");
   if (seg) seg.addEventListener("click", function(e){
