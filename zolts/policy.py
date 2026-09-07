@@ -11,7 +11,7 @@ before production use.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace, field
 from datetime import datetime, time
 from enum import Enum
 
@@ -130,14 +130,19 @@ def evaluate(
     contact: Contact,
     context: ActionContext,
     pack: dict[str, JurisdictionRule] | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> PolicyDecision:
     """Evaluate one action. The first failing rule wins and is recorded.
 
     Order matters: opt-out and suppression are checked before anything else,
     because an unsubscribed contact must not be reachable even under a valid
     legal basis or a customer override.
+
+    `overrides` is the program's own policy block, applied to the
+    jurisdiction's rule before anything is evaluated. It may only tighten;
+    `tighten` raises on anything that would relax the pack.
     """
-    rule = rule_for(contact.country, pack)
+    rule = tighten(rule_for(contact.country, pack), overrides or {})
     channel = context.channel
     jurisdiction = rule.country
 
@@ -181,6 +186,126 @@ def evaluate(
                               f"{context.remaining_budget_eur:.4f} EUR remaining", jurisdiction)
 
     return PolicyDecision(Decision.ALLOW, "ok", "all checks passed", jurisdiction)
+
+
+class OverrideNotUnderstood(ValueError):
+    """A program declared an override the runtime cannot interpret."""
+
+
+# Kept as an alias: the first version of this refused a looser override, and
+# the name is what callers still catch.
+OverrideIsLooser = OverrideNotUnderstood
+
+
+def _quiet_span(window: tuple[time, time]) -> int:
+    """How many hours a quiet window covers, crossing midnight if it must."""
+    start, end = window[0].hour, window[1].hour
+    return (end - start) % 24 or 24
+
+
+def tighten(rule: JurisdictionRule, overrides: dict[str, Any]) -> JurisdictionRule:
+    """Apply a program's policy overrides, refusing any that loosen the rule.
+
+    The schema has always said "Only overrides stricter than the tenant policy
+    are accepted", and the runtime accepted none of them: the gate read
+    `max_touches_per_person_per_week` and ignored `quiet_hours`,
+    `channels_require_basis` and `lists_check`. A program declaring that it
+    must not send between 21:00 and 08:00 sent at three in the morning, and a
+    program naming an extra suppression list did not check it.
+
+    Ignoring is the worst of the three possible behaviours. Honouring an
+    override does what the operator asked; refusing it tells them it cannot be
+    done; ignoring it lets them believe they are protected.
+
+    **The stricter of the two always wins, per field and per jurisdiction.** A
+    program cannot weaken the pack, and it does not need to be refused for
+    trying: a program shipped for six countries states one baseline, and under
+    a stricter jurisdiction the jurisdiction is what applies. The first version
+    of this raised instead, and refused all four shipped programs — program 01
+    declares `email: legitimate_interest`, which is the ES baseline and a
+    relaxation of the DE and CA packs.
+
+    So the operator is never less protected than they asked for, and never less
+    protected than the law where the contact lives.
+
+      quiet_hours              the longer of the two windows
+      channels_require_basis   the basis that is harder to satisfy
+      lists_check              the union; a program cannot drop one by omission
+
+    A refusal is reserved for a declaration nobody can act on — a half-written
+    window, a timezone nothing implements. Those are configuration mistakes,
+    not relaxations.
+
+    **Not the same question as `zolts.overlay`, which answers a similar one.**
+    `overlay.resolve` merges the customer's own configuration layers —
+    blueprint, industry pack, tenant, program — and there a lower layer that
+    weakens an inherited policy is a hard error, because the layers are all the
+    customer's and one of them contradicting another is a mistake somebody
+    made.
+
+    This function merges the customer's configuration with the *jurisdiction's*
+    rule, which nobody in the customer's organisation authored. A program sold
+    in six countries states one baseline, and under a stricter country the
+    country wins without anybody having made a mistake. Raising there would
+    reject correct programs, which is what the first version of this did.
+
+    Two layers of the same shape, two different answers, for a reason worth
+    keeping: a customer may not contradict themselves, and may not overrule
+    the law.
+    """
+    if not overrides:
+        return rule
+
+    quiet = rule.quiet_hours
+    declared = overrides.get("quiet_hours")
+    if declared:
+        # `start`/`end` is the vocabulary the programs and the schema use. The
+        # schedule block says `opens`/`closes` for sending windows, and reading
+        # one with the other's names is how this was written wrong the first
+        # time: every shipped program was refused because none of them use the
+        # words the code was looking for.
+        start, end = declared.get("start"), declared.get("end")
+        if not (start and end):
+            raise OverrideIsLooser(
+                "quiet_hours needs both `start` and `end`; a half-declared "
+                f"window is not a window (got {sorted(declared)})")
+        zone = declared.get("tz", "contact_local")
+        if zone != "contact_local":
+            # The gate derives the local hour from the contact's country. A
+            # program naming another zone would be silently evaluated in the
+            # contact's anyway, which is the ignoring this ADR exists to stop.
+            raise OverrideIsLooser(
+                f"quiet_hours tz '{zone}' is not implemented; quiet hours are "
+                "evaluated in the contact's local time")
+        window = (time.fromisoformat(start), time.fromisoformat(end))
+        # The longer window. A program declaring a shorter quiet period than
+        # the jurisdiction does not get more sending hours out of it.
+        if _quiet_span(window) > _quiet_span(rule.quiet_hours):
+            quiet = window
+
+    basis = dict(rule.required_basis)
+    for channel, name in (overrides.get("channels_require_basis") or {}).items():
+        wanted = Basis(name)
+        current = basis.get(channel)
+        # Stricter means the current basis would no longer satisfy the new
+        # requirement. Consent satisfies legitimate interest, so demanding
+        # consent where the pack asks for legitimate interest is a tightening;
+        # the reverse is not.
+        # The harder of the two to satisfy. `_basis_satisfies(current, wanted)`
+        # means the pack's requirement already meets the program's, so the
+        # program is asking for no more than the jurisdiction and the
+        # jurisdiction stands.
+        if current is not None and _basis_satisfies(current, wanted):
+            continue
+        basis[channel] = wanted
+
+    lists = tuple(rule.suppression_lists)
+    for name in overrides.get("lists_check") or []:
+        if name not in lists:
+            lists = lists + (name,)
+
+    return replace(rule, required_basis=basis, quiet_hours=quiet,
+                   suppression_lists=lists)
 
 
 def _basis_satisfies(held: Basis, required: Basis) -> bool:

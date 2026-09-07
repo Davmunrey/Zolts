@@ -94,7 +94,11 @@ def check(cur, tenant_id: str, *, person: dict[str, Any], channel: str,
         channel=channel, now=now, local_hour=local_hour, max_touches_per_week=cap,
         remaining_budget_eur=remaining_budget_eur, action_cost_eur=action_cost_eur)
 
-    verdict = policy.evaluate(contact, context)
+    # The program's own policy block, applied to the jurisdiction's rule. The
+    # schema has always allowed four overrides and the runtime read one: a
+    # program declaring stricter quiet hours sent at three in the morning, and
+    # one naming an extra suppression list did not check it.
+    verdict = policy.evaluate(contact, context, overrides=overrides)
     decision_id = ledger.record_decision(
         cur, tenant_id, subject_type="person", subject_id=str(person["id"]),
         action=f"{channel}.send", decision=verdict.decision.value,

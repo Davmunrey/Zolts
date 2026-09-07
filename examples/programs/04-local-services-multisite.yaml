@@ -24,18 +24,23 @@ spec:
     sql: |
       select a.id as account_id
       from account a
-      where a.industry_code_group in ('healthcare_clinics','auto_services','fitness')
-        and a.location_count between 2 and 40
+      where a.industry_code in ('healthcare_clinics','auto_services','fitness')
+        and jsonb_path_exists(a.attributes, '$.location_count ? (@ >= 2 && @ <= 40)')
         and a.country = 'ES'
-        and a.territory_id is not null
-
+        and a.attributes ? 'territory_id'
+        and not exists (
+              select 1 from suppression s
+               where s.scope = 'account' and s.value = a.id::text)
   enrich:
     account:
-      require: [owner_contact, location_list, google_rating, website_tech]
+      # Decision 33: only fields the price list carries. owner_contact,
+      # location_list, google_rating and website_tech have no price, and a
+      # runtime that buys what it cannot bill pays for its customers.
+      require: [firmographics]
       max_cost_per_account: 0.25
     person:
       buying_roles: [economic]
-      require: [phone_mobile, work_email]
+      require: [phone, email]
       accuracy_sla: 0.90
       max_contacts_per_account: 2
 

@@ -29,6 +29,12 @@ SPEC = {
         "window": "30d",
         "dedupe": {"key": "account_id", "cooldown": "180d"},
     },
+    # Every program the schema accepts declares an audience, and this fixture
+    # did not: it reached the database through the repo layer, which does not
+    # validate. Once the runtime began reading the audience, a spec without one
+    # enrolled nobody — which is the correct answer to an invalid program and
+    # broke 43 tests that had been relying on the field being ignored.
+    "audience": {"sql": "select id as account_id from account"},
     "score": {"floor": 55},
     "route": {"tiers": [{"key": "t1", "when": "score >= 80"},
                         {"key": "t2", "when": "score >= 55"}]},

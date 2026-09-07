@@ -213,11 +213,18 @@ def _credential(cur, row: dict[str, Any], secret_key: str | None) -> str | None:
 
 def resolve(cur, tenant: dict[str, Any], *, field_name: str, entity: dict[str, Any],
             account: dict[str, Any] | None = None, legal_basis: str,
-            secret_key: str | None = None, now: datetime | None = None) -> Resolved:
+            secret_key: str | None = None, now: datetime | None = None,
+            budget_micros: int | None = None) -> Resolved:
     """Buy one field for one entity, cheapest expected order first.
 
     Returns rather than raises on a miss: not finding a phone number is an
     answer, and the optimiser learns from it.
+
+    `budget_micros` is what the caller has left to spend on this subject. A
+    provider that costs more than that is not tried, because a cap can only be
+    honoured by the code that knows the prices — checking it between fields
+    permits one purchase that crosses it, and a program declaring a 0.50 cap
+    that spends 0.80 has overcharged somebody who can prove it.
     """
     from runtime import metering
 
@@ -263,6 +270,9 @@ def resolve(cur, tenant: dict[str, Any], *, field_name: str, entity: dict[str, A
     spent = 0
     for key in plan.order:
         row = by_key[key]
+        if budget_micros is not None and int(row["unit_cost_micros"]) > budget_micros - spent:
+            tried.append(f"{key}:over-budget")
+            continue
         try:
             found = get_provider(key).resolve(
                 lookup, credential=_credential(cur, row, secret_key),

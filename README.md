@@ -36,6 +36,9 @@
 | 19 | [Reference core](docs/19-reference-core.md) | Which claims are proven, and what building it changed |
 | 20 | [The runtime](docs/20-runtime.md) | What actually runs, how a signal becomes a gated action, what breaks first |
 | 21 | [The demo](docs/21-demo.md) | What is synthetic and what is not, the four beats, and what a buyer will push on |
+| 22 | [Defect register](docs/22-defect-register.md) | Every defect this repository found in itself, how it was found, and what stops it returning |
+| 23 | [Security register](docs/23-security-register.md) | Controls and the test that holds each one, findings with a security dimension, and the risks that are open |
+| 24 | [Backlog](docs/24-backlog.md) | What is built, what is next, and what is blocked on a decision rather than on engineering |
 
 ## Technical artefacts
 
@@ -66,7 +69,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 833 tests, each backing a specific claim made in `docs/`; 282 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
+- `tests/` — 892 tests, each backing a specific claim made in `docs/`; 300 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -76,12 +79,12 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 833 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 892 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
 
-The reference core exists to test the plan; the runtime exists to run it. Building both has corrected thirteen defects so far. Ten came from the core: five in the example programs, one over-generalised product invariant, one overlay bug that would have voided the compliance guarantee, and one roadmap exit criterion that was unmeasurable as written — four of them the same failure in different clothing, an opt-out path that silently did not work. Three came from the runtime: a schema named after a database role, which made a second migration run duplicate every table and report success; a migration runner whose version ledger rolled back while its DDL committed; and a connector branch that could never execute because the helper raised on the status it was meant to inspect. See [19](docs/19-reference-core.md) and [20](docs/20-runtime.md).
+The reference core exists to test the plan; the runtime exists to run it. Building both, and then running what was built, has corrected **31 defects** — recorded one by one in [22](docs/22-defect-register.md) with how each was found. Twenty-two of them were the same shape: a complete specification with no caller. A price in `docs/12` nothing charged, a column no code set, a button labelled for a feature that did not exist, a process table CI never ran, a restore script that ends by telling you to test it. The register's most useful column is not the defect, it is **how it was found**: reading found the fewest, and every high-cost one came from executing the thing or from breaking a guard on purpose to see whether it bites. See [19](docs/19-reference-core.md), [20](docs/20-runtime.md) and [22](docs/22-defect-register.md).
 
 Two more came from rendering the console against live data: the surface crashed on a program with no measurement yet — which is every program on day one — and it reported EUR 1.75m of incremental pipeline against a control arm with zero observed conversions, because its detectable effect had been computed from a floor rather than an estimate. That second one is now a rule in the core: no effect is declared while either arm carries fewer than five observed conversions.
 

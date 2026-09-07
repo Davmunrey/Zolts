@@ -26,7 +26,7 @@ from runtime.connectors.base import PermanentError, Request, Result, TransientEr
 from runtime.connectors.registry import get_connector, providers_for
 from runtime.crypto import open_sealed
 from runtime.db import Database, one
-from runtime.engine import gate, generate, planner
+from runtime.engine import enrich_step, gate, generate, planner
 from runtime import channels, fleet, metering
 from runtime.repo import actions, enrollments, entities, ledger, programs, signals
 
@@ -94,6 +94,22 @@ class Worker:
                                         step_index=int(enrollment["step_index"]),
                                         state=str(enrollment["state"]), next_run_at=None)
                     continue
+                # Buy what the program declared, before the step that needs
+                # it. `spec.enrich` was read by nothing: the waterfall existed,
+                # was priced and was measured, and the only way to trigger it
+                # was an operator typing a CLI command for one field of one
+                # entity. A miss is absorbed and does not stop the step.
+                if int(enrollment["step_index"]) == 0:
+                    cur.execute("select * from tenant where id = %s", (tenant_id,))
+                    enrich_step.ensure(
+                        cur, dict(cur.fetchone()), spec=program["spec"],
+                        program_key=str(program["key"]),
+                        entity_type=str(enrollment["entity_type"]),
+                        entity_id=str(enrollment["entity_id"]),
+                        legal_basis=str(enrollment.get("legal_basis")
+                                        or "legitimate_interest"),
+                        secret_key=self.secret_key)
+
                 result = planner.plan_next(cur, tenant_id, enrollment, program, now=now)
                 if result and result.queued:
                     planned += 1

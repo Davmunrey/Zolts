@@ -24,11 +24,11 @@ from runtime.api.schemas import (AccountIn, EnrichIn, EnrollmentOut, HealthOut,
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
-from runtime.engine import enroll
+from runtime.engine import audience, enrich_step, enroll
 from runtime.repo import (actions, enrollments, entities, ledger, mappings, programs,
                           proposals)
 from runtime.surface import content_security_policy, document, inject
-from zolts import dsl, experiment
+from zolts import dsl, experiment, policy
 
 SURFACE = Path(__file__).resolve().parent.parent.parent / "design" / "console.html"
 
@@ -501,6 +501,26 @@ def create_app(db: Database, *, install_connectors: bool = True,
         try:
             enroll.holdout_pct(body.spec, body.key)
         except enroll.HoldoutMissing as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            # An audience the runtime cannot evaluate becomes a program that
+            # enrols nobody and says nothing. A 422 here costs a retry; finding
+            # it after activation costs a campaign that looks armed.
+            audience.check(body.spec, body.key)
+        except audience.AudienceError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            enrich_step.check(body.spec, body.key)
+        except enrich_step.EnrichmentNotPriced as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            # An override that relaxes the pack is refused rather than ignored.
+            # Ignoring is the worst of the three: it lets an operator believe
+            # they are protected by a rule nothing applies.
+            for country in policy.PACK_V1:
+                policy.tighten(policy.PACK_V1[country],
+                               (body.spec.get("policy") or {}).get("overrides") or {})
+        except policy.OverrideIsLooser as exc:
             raise HTTPException(422, str(exc)) from exc
 
         with db.tenant_tx(principal.tenant_id) as cur:
