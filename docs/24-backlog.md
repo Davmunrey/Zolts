@@ -8,8 +8,8 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | | Count | Evidence |
 |---|---|---|
-| Epics delivered | 33 | `docs/22`, ADR-001 … ADR-033 |
-| Tests | 892 | 300 against a real Postgres; CI fails a run that skipped them |
+| Epics delivered | 34 | `docs/22`, ADR-001 … ADR-037 |
+| Tests | 912 | 303 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce |
@@ -50,7 +50,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Measure mutation coverage across the runtime | The suite reports 840 tests. That is a count of intention, not of coverage. The real number is what fraction bites when the thing it guards is broken — and five defects this session were found exactly there | M |
+| **VER-1** | Measure mutation coverage across the runtime | The suite reports 912 tests. That is a count of intention, not of coverage. The real number is what fraction bites when the thing it guards is broken — five of the register's defects were found exactly there, and each new guard is now mutation-verified by hand, which does not scale | M |
 | **VER-2** | Visual regression on the console | Two defects this session were visible on a screenshot and invisible to every test (D-15, D-16) | M |
 | **VER-3** | Deployed-environment smoke on a schedule | CI proves the image works. Nothing proves the deployment still does | S |
 
@@ -58,6 +58,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
+| **P-5** | **The open-deal exclusion: an `opportunity` object end to end** | The costliest thing on this list to get wrong. Outbound into an account the sales team is already in a deal with is the failure a buyer remembers, and today it cannot be expressed: there is no `opportunity` table, the CRM contract reads accounts and contacts only, and the clause is absent from program 01 rather than written as one that always passes. Needs a protocol method, three connector implementations, a table, a sync and the clause restored (decision 32) | M |
 | **P-1** | Zero-copy over a customer warehouse | ADR-003 stated it in the present tense with no implementation, now corrected (decision 29). It returns as a real item when a partner's DPO or data volume makes the copy the objection | L |
 | **P-2** | Program editing beyond the eleven dials | The console emits DSL for money-and-risk parameters (ADR-029). Audience SQL and play copy deliberately stay in a pull request (decision 30). Revisit when an operator asks for a twelfth | M |
 | **P-3** | Brand voice classifier trained on the tenant's own material | Today the copywriter is guarded by evals and provenance, not by a model of the customer's voice | L |
@@ -82,9 +83,10 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Console** | Eight views, no dead links, operable on a phone, and it emits DSL | ADR-023, ADR-028, ADR-029 |
 | **Deploy** | Image built, migrated, seeded, preflighted and booted in CI — on the same two commands `fly.toml` runs | ADR-032 |
 | **Restore** | `restore.sh` executed end to end against a real dump, with the failure it guards against reproduced | ADR-033 |
+| **Admission** | A program is checked where it is stored, not where it arrives: holdout, audience, enrichment pricing and policy overrides run inside `publish`, so signup and the CLI get the same answer as the API | ADR-037, `test_admission.py` |
 
 ## How an item earns its place
 
-The register in `docs/22` is the evidence for this ordering. Twenty-two of thirty defects were a specification with no caller, and every high-cost one was found by executing or mutating rather than by reading.
+The register in `docs/22` is the evidence for this ordering. Twenty-four of thirty-four defects were a specification with no caller. Reading found eight of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
 
 So an item is only "done" when something runs it and that run can fail. A specification, a document, a column, a button and a process table have each been the whole of a feature in this repository, and each was found by an execution nobody had performed.

@@ -25,6 +25,24 @@ import uuid
 
 import pytest
 
+# The smallest program admission accepts. `publish` used to store anything —
+# these tests published `{"a": 1}` — and now runs the four checks that every
+# caller but the HTTP handler used to skip, so a fixture has to be a program.
+ADMISSIBLE = {
+    "trigger": {"events": [{"signal": "funding.round"}], "window": "30d"},
+    "audience": {"sql": "select id as account_id from account"},
+    "score": {"floor": 0},
+    "route": {"tiers": [{"key": "t1"}]},
+    "plays": {"t1": {}},
+    "experiment": {"holdout_pct": 10, "unit": "account", "salt": "invariants"},
+}
+
+
+def _spec(floor: int) -> dict:
+    """The same program with one dial moved, which is what a republish is."""
+    return {**ADMISSIBLE, "score": {"floor": floor}}
+
+
 # -- a version is written once --------------------------------------------
 
 @pytest.mark.db
@@ -41,17 +59,17 @@ def test_republishing_a_version_with_different_content_is_refused(db, tenant):
 
     with db.tenant_tx(tenant['id']) as cur:
         first = programs.publish(cur, tenant['id'], key="immutable-demo", version="1.0.0",
-                                 spec={"a": 1}, spec_hash="hash-one")
-        assert first["spec"] == {"a": 1}
+                                 spec=_spec(0), spec_hash="hash-one")
+        assert first["spec"]["score"]["floor"] == 0
 
         with pytest.raises(programs.VersionIsImmutable, match="already exists"):
             programs.publish(cur, tenant['id'], key="immutable-demo", version="1.0.0",
-                             spec={"a": 2}, spec_hash="hash-two")
+                             spec=_spec(80), spec_hash="hash-two")
 
     with db.tenant_tx(tenant['id']) as cur:
         cur.execute("select spec from program where key = %s and version = %s",
                     ("immutable-demo", "1.0.0"))
-        assert cur.fetchone()["spec"] == {"a": 1}, "the stored spec was replaced"
+        assert cur.fetchone()["spec"]["score"]["floor"] == 0, "the stored spec was replaced"
 
 
 @pytest.mark.db
@@ -63,11 +81,11 @@ def test_republishing_identical_content_still_succeeds(db, tenant):
 
     with db.tenant_tx(tenant['id']) as cur:
         programs.publish(cur, tenant['id'], key="idempotent-demo", version="1.0.0",
-                         spec={"a": 1}, spec_hash="same-hash")
+                         spec=_spec(0), spec_hash="same-hash")
         again = programs.publish(cur, tenant['id'], key="idempotent-demo", version="1.0.0",
-                                 spec={"a": 1}, spec_hash="same-hash",
+                                 spec=_spec(0), spec_hash="same-hash",
                                  metadata={"name": "renamed"})
-        assert again["spec"] == {"a": 1}
+        assert again["spec"] == _spec(0)
         assert again["metadata"]["name"] == "renamed", (
             "an identical republish should still be able to correct a label")
 
