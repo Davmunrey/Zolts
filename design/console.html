@@ -327,14 +327,28 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   /* Each row becomes its own block of label/value pairs. */
   .row{grid-template-columns:1fr; height:auto; gap:0; padding:11px 12px 12px;
        align-items:start}
-  .row.sub .cell.k{padding-left:0}
-  .row .st{position:absolute; left:12px; top:15px}
+  /* The sub-row's key cell keeps the gutter. Cancelling it put the text
+     under the absolutely-positioned status dot, so a mailbox read
+     `e@outbound.example` on a phone — the dot sitting on the first
+     character of the address an operator uses to tell two mailboxes
+     apart. Nothing was clipped and nothing overflowed, so every layout
+     check passed; it was visible in a screenshot. D-38. */
+  /* Size it here as well as in `.st`. Positioned absolutely inside the
+     stacked row it rendered 30px wide — three times its own rule — and
+     drew over the first characters of every program name. */
+  .row .st{position:absolute; left:12px; top:15px; width:9px; height:9px}
   .cell{white-space:normal; overflow:visible; text-overflow:clip;
         display:flex; gap:8px; padding-left:16px; min-height:19px}
   .cell.k{font-size:14px; font-weight:500; margin-bottom:3px}
   .cell::before{content:attr(data-l); flex:none; width:96px; font-size:11px;
                 color:var(--ink-tertiary); text-transform:lowercase}
   .cell.k::before{display:none}
+  /* A prose cell clamps to two lines with `display:-webkit-box`, and that
+     beats the `display:flex` above — so its label stopped being a flex item,
+     lost its 96px column, and rendered as `reasongoogle`. On a phone there is
+     no column to protect and no reason to clamp: the cell lays out like every
+     other one and the text wraps. D-38. */
+  .cell.w{display:flex; -webkit-line-clamp:none; overflow:visible}
   .cell.r,.cell.n{text-align:left}
   .cell:empty{display:none}
   /* The Programs row is the one that builds its own markup. It stacks the
@@ -364,7 +378,13 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   .btn:active,.chipbtn:active,.row:active,.pitem:active{transform:none}
   .track i{transition:none}
 }
-  .draft{margin:0;padding:12px 14px;white-space:pre-wrap;font:inherit;
+  /* `pre`, not any `.draft`. A status marker is `<span class="st draft">`,
+     so this rule for the generated-copy block was also padding every draft
+     status dot by 12px 14px — a 9px dot rendered as a 28x24 rounded block
+     over the first character of every program name on a phone. Two meanings
+     of one word, one of them a component and one of them a value, colliding
+     in the only place they are both visible. D-38. */
+  pre.draft{margin:0;padding:12px 14px;white-space:pre-wrap;font:inherit;
     background:var(--surface-2,rgba(127,127,127,.06));border-radius:8px}
   .ev{padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5}
   .ev:last-child{border-bottom:0}
