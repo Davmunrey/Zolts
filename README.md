@@ -39,6 +39,7 @@
 | 22 | [Defect register](docs/22-defect-register.md) | Every defect this repository found in itself, how it was found, and what stops it returning |
 | 23 | [Security register](docs/23-security-register.md) | Controls and the test that holds each one, findings with a security dimension, and the risks that are open |
 | 24 | [Backlog](docs/24-backlog.md) | What is built, what is next, and what is blocked on a decision rather than on engineering |
+| 25 | [Runbook](docs/25-runbook.md) | What an operator does when a signal fails, with every command executed while it was written |
 
 ## Technical artefacts
 
@@ -69,7 +70,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 972 tests, each backing a specific claim made in `docs/`; 326 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
+- `tests/` — 975 tests, each backing a specific claim made in `docs/`; 327 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -79,7 +80,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 972 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 975 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```

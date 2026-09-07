@@ -8,8 +8,8 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | | Count | Evidence |
 |---|---|---|
-| Epics delivered | 36 | `docs/22`, ADR-001 … ADR-039 |
-| Tests | 972 | 326 against a real Postgres; CI fails a run that skipped them |
+| Epics delivered | 37 | `docs/22`, ADR-001 … ADR-039 |
+| Tests | 975 | 327 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -42,14 +42,13 @@ What is built, what is next, and what is blocked on a decision rather than on en
 |---|---|---|---|
 | **SEC-2** | Backup schedule and a restore drill on a real managed Postgres | The restore script is now executed in tests (ADR-033) against a local cluster. It has never run against Neon | S |
 | **SEC-3** | Document what a model provider sees, and the gateway option | Enterprise diligence asks. `base_url` is configurable (ADR-011); nobody has written down that it is a control | XS |
-| **OPS-1** | Alerting on the outbox: stalled actions, dead letters, breaker trips | `liveness` reports them and nothing watches it | S |
-| **OPS-2** | Runbook: what an operator does when a domain burns, a provider 429s, or the queue stalls | The knowledge exists in ADRs, not in a page somebody follows at 3am | S |
+| **OPS-3** | Route the 503 somewhere that wakes a person | `/health/liveness` now answers 503 and `docs/25` says what to do about each signal, so this is a URL in an uptime checker rather than a project — but it is not done until a real monitor is pointed at a real deployment | XS |
 
 ### Verification
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Measure mutation coverage across the runtime | The suite reports 972 tests. That is a count of intention, not of coverage. The real number is what fraction bites when the thing it guards is broken — five of the register's defects were found exactly there, and each new guard is now mutation-verified by hand, which does not scale | M |
+| **VER-1** | Measure mutation coverage across the runtime | The suite reports 975 tests. That is a count of intention, not of coverage. The real number is what fraction bites when the thing it guards is broken — five of the register's defects were found exactly there, and each new guard is now mutation-verified by hand, which does not scale | M |
 | **VER-2** | Visual regression on the console | Two defects this session were visible on a screenshot and invisible to every test (D-15, D-16) | M |
 | **VER-3** | Deployed-environment smoke on a schedule | CI proves the image works. Nothing proves the deployment still does | S |
 
@@ -83,6 +82,7 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Deploy** | Image built, migrated, seeded, preflighted and booted in CI — on the same two commands `fly.toml` runs | ADR-032 |
 | **Restore** | `restore.sh` executed end to end against a real dump, with the failure it guards against reproduced | ADR-033 |
 | **Key rotation** | The key sealing every credential can be replaced with no downtime: both keys open during the window, `rotate-key` re-seals resumably, and preflight reports what is still on the old one | ADR-039, `test_key_rotation.py` |
+| **Operations** | The liveness endpoint answers 503 when a signal fails, so a monitor pointed at it fires; `docs/25` says what to do about each signal, and every command on that page was executed while it was written | D-36, `docs/25`, `test_runbook.py` |
 | **Admission** | A program is checked where it is stored, not where it arrives: holdout, audience, enrichment pricing and policy overrides run inside `publish`, so signup and the CLI get the same answer as the API | ADR-037, `test_admission.py` |
 
 ## How an item earns its place

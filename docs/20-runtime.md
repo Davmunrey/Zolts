@@ -631,7 +631,7 @@ Register a fleet with `zolts sending-domain --tenant … --name outbound.example
 
 `/health` answers "can I reach the database". That is nearly always yes, including on the morning the worker died at 3am, the outbox has been growing for six hours and a paying partner's campaign has sent nothing. Both states report `"status": "ok"`, which makes the endpoint an alibi rather than a signal.
 
-`GET /health/liveness`, and `python3 -m runtime.cli liveness`, answer whether the deployment is doing its job. Point a monitor at it.
+`GET /health/liveness`, and `python3 -m runtime.cli liveness`, answer whether the deployment is doing its job. **A failing signal answers 503**, because what a monitor reads is the status code — for eleven months this endpoint answered 200 with `draining: false` in the body, so an uptime check pointed at it, exactly as this sentence instructs, saw a healthy deployment while the outbox was stalled (D-36). Fly's own check probes `/health`, not this path, so a stalled outbox does not restart the API. What to do about each signal is `docs/25`.
 
 | Signal | Fails when | Why it is silent otherwise |
 |---|---|---|
@@ -717,7 +717,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-972 tests. 326 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+975 tests. 327 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
