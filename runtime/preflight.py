@@ -73,6 +73,7 @@ def run(settings: Settings, db: Database) -> Report:
     _migrations(report, db)
     _forced_rls(report, db)
     _isolation(report, db)
+    _sealed_credentials(report, settings, db, production)
     _pooling(report, settings)
     _behaviour_flags(report, settings, production)
     return report
@@ -253,6 +254,42 @@ def _isolation(report: Report, db: Database) -> None:
 
 class _Probe(Exception):
     """Unwinds the probe's transaction without leaving anything behind."""
+
+
+def _sealed_credentials(report: Report, settings: Settings, db: Database,
+                        production: bool) -> None:
+    """Can this deployment open every credential it stores?
+
+    The question a rotation makes askable. Before `secret_key_id` existed the
+    only way to find out was to send something and watch it fail, which is the
+    worst possible moment: a connector credential that cannot be opened is a
+    tenant whose sequences stop, and the runtime would have started cleanly.
+    """
+    from runtime import rotation
+
+    try:
+        state = rotation.outstanding(db, settings.keyring)
+    except Exception as exc:  # noqa: BLE001 - a schema older than migration 020
+        report.add("sealed credentials", False,
+                   f"could not be counted: {str(exc).strip()[:120]}", fatal=False)
+        return
+
+    if state.unopenable:
+        report.add("sealed credentials", False,
+                   f"{state.unopenable} of {state.total} credentials are sealed under a "
+                   "key this deployment does not hold. They cannot be opened and cannot "
+                   "be recovered: add the old key to ZOLTS_PREVIOUS_SECRET_KEYS, or "
+                   "re-enter those credentials", fatal=production)
+    elif state.total and not state.complete:
+        pending = state.on_previous + state.unknown
+        report.add("sealed credentials", False,
+                   f"{pending} of {state.total} credentials are still sealed under a "
+                   "previous key. The runtime opens them, so nothing is broken — but "
+                   "the old key stays live until `zolts rotate-key` finishes",
+                   fatal=False)
+    else:
+        report.add("sealed credentials", True,
+                   f"{state.total} sealed under the current key ({settings.keyring.primary_id})")
 
 
 def _pooling(report: Report, settings: Settings) -> None:

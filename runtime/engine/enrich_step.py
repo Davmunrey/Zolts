@@ -35,6 +35,7 @@ from decimal import Decimal
 from typing import Any
 
 from runtime import enrichment
+from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.connectors.dataprovider import unresolved
 from runtime.repo import entities
 
@@ -91,7 +92,7 @@ def _cap(block: dict[str, Any], key: str) -> Decimal | None:
 
 def ensure(cur, tenant: dict[str, Any], *, spec: dict[str, Any], program_key: str,
            entity_type: str, entity_id: str, legal_basis: str,
-           secret_key: str | None = None) -> Bought:
+           secret_key: "str | Keyring | None" = None) -> Bought:
     """Buy the declared fields for this enrollment's subject.
 
     Called before the step is planned, so the first send has whatever the

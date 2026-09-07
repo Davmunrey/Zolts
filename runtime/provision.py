@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from runtime.crypto import new_api_token, seal
+from runtime.crypto import Keyring, new_api_token, seal
 from runtime.db import Database, one
 
 
@@ -93,7 +93,8 @@ def rotate_api_key(db: Database, tenant_id: str, key_id: str) -> IssuedKey:
 
 
 def create_webhook_endpoint(db: Database, tenant_id: str, *, provider: str,
-                            secret_key: str, secret: str | None = None) -> dict[str, str]:
+                            secret_key: "str | Keyring",
+                            secret: str | None = None) -> dict[str, str]:
     """Create an inbound endpoint. Returns the URL path and the signing secret.
 
     The secret is generated when not supplied and returned once, like an API
@@ -106,12 +107,14 @@ def create_webhook_endpoint(db: Database, tenant_id: str, *, provider: str,
     signing_secret = secret or _secrets.token_urlsafe(32)
     with db.tenant_tx(tenant_id) as cur:
         cur.execute(
-            "insert into webhook_endpoint (tenant_id, provider, token, secret_enc)"
-            " values (%s,%s,%s,%s)"
+            "insert into webhook_endpoint (tenant_id, provider, token, secret_enc,"
+            " secret_key_id) values (%s,%s,%s,%s,%s)"
             " on conflict (tenant_id, provider) do update set"
             "   token = excluded.token, secret_enc = excluded.secret_enc,"
+            "   secret_key_id = excluded.secret_key_id,"
             "   active = true returning token",
-            (tenant_id, provider, token, seal(signing_secret, secret_key)))
+            (tenant_id, provider, token, seal(signing_secret, secret_key),
+             Keyring.of(secret_key).primary_id))
         stored = one(cur)["token"]
     return {"path": f"/webhooks/{stored}", "secret": signing_secret,
             "note": "store the secret now; it is not recoverable"}
@@ -123,7 +126,7 @@ def store_connection(
     *,
     provider: str,
     secret: str,
-    secret_key: str,
+    secret_key: "str | Keyring",
     display_name: str = "default",
     config: dict[str, Any] | None = None,
 ) -> str:
@@ -131,12 +134,14 @@ def store_connection(
 
     with db.tenant_tx(tenant_id) as cur:
         cur.execute(
-            "insert into connection (tenant_id, provider, display_name, secret_enc, config)"
-            " values (%s,%s,%s,%s,%s)"
+            "insert into connection (tenant_id, provider, display_name, secret_enc,"
+            " secret_key_id, config) values (%s,%s,%s,%s,%s,%s)"
             " on conflict (tenant_id, provider, display_name) do update"
             "   set secret_enc = excluded.secret_enc, config = excluded.config,"
+            "       secret_key_id = excluded.secret_key_id,"
             "       status = 'active', last_error = null, updated_at = now()"
             " returning id",
-            (tenant_id, provider, display_name, seal(secret, secret_key), json.dumps(config or {})),
+            (tenant_id, provider, display_name, seal(secret, secret_key),
+             Keyring.of(secret_key).primary_id, json.dumps(config or {})),
         )
         return str(one(cur)["id"])

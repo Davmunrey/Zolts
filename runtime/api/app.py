@@ -24,6 +24,7 @@ from runtime.api.schemas import (AccountIn, EnrichIn, EnrollmentOut, HealthOut,
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
+from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
 from runtime.repo import (actions, enrollments, entities, ledger, mappings, programs,
                           proposals)
@@ -63,10 +64,13 @@ def _triage_factory():
 
 
 def create_app(db: Database, *, install_connectors: bool = True,
-               secret_key: str | None = None) -> FastAPI:
+               secret_key: "str | Keyring | None" = None) -> FastAPI:
     app = FastAPI(title="Zolts", version="0.1.0",
                   description="The GTM runtime: signal in, gated action out.")
     app.state.db = db
+    # A ring when the caller has one, so a credential sealed under a key being
+    # rotated out still opens; a bare key when the app is built from the
+    # environment alone.
     app.state.secret_key = secret_key or os.environ.get("ZOLTS_SECRET_KEY", "")
     if install_connectors:
         install_default_connectors()

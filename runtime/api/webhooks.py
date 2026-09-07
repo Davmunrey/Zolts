@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
-from runtime.crypto import open_sealed
+from runtime.crypto import Keyring, open_sealed
 from runtime.db import Database
 from runtime.engine import inbound
 
@@ -53,7 +53,7 @@ def verify(provider: str, secret: str, body: bytes, headers: dict[str, str],
     return hmac.compare_digest(expected, signature.replace("sha256=", ""))
 
 
-def router(db: Database, secret_key: str) -> APIRouter:
+def router(db: Database, secret_key: "str | Keyring") -> APIRouter:
     api = APIRouter()
 
     @api.post("/webhooks/{token}", status_code=status.HTTP_202_ACCEPTED)

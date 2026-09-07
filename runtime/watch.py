@@ -39,7 +39,7 @@ from typing import Any
 
 from runtime.connectors.signalsource import (Detection, SignalSourceError, Subject,
                                              get_source)
-from runtime.crypto import open_sealed
+from runtime.crypto import Keyring, open_sealed
 from runtime.db import one
 from zolts.signals import SignalDefinition, catalogue
 
@@ -121,7 +121,7 @@ def _billed_today(cur, entity_id: str, now: datetime) -> bool:
     return cur.fetchone() is not None
 
 
-def _credential(cur, connector: str, secret_key: str | None) -> str | None:
+def _credential(cur, connector: str, secret_key: "str | Keyring | None") -> str | None:
     if not secret_key:
         return None
     cur.execute("select secret_enc from connection where provider = %s"
@@ -156,7 +156,7 @@ def _ingest(cur, tenant_id: str, definition: SignalDefinition,
     return len(result.enrollments)
 
 
-def once(cur, tenant: dict[str, Any], *, secret_key: str | None = None,
+def once(cur, tenant: dict[str, Any], *, secret_key: "str | Keyring | None" = None,
          limit: int = 500, now: datetime | None = None,
          only: str | None = None) -> Pass:
     """One pass: look for every signal a live program wants, and act on it."""

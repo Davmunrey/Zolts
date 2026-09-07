@@ -34,7 +34,7 @@ from runtime.connectors.dataprovider import (Found, Lookup, ProviderError, cohor
                                              get_provider, unresolved)
 from psycopg.errors import UniqueViolation
 
-from runtime.crypto import open_sealed
+from runtime.crypto import Keyring, open_sealed
 from runtime.db import one
 from zolts.billing import credits_for
 from zolts.waterfall import Provider, optimise
@@ -192,7 +192,7 @@ def _apply(cur, entity_type: str, entity_id: str, field_name: str,
              values.get("country"), entity_id))
 
 
-def _credential(cur, row: dict[str, Any], secret_key: str | None) -> str | None:
+def _credential(cur, row: dict[str, Any], secret_key: "str | Keyring | None") -> str | None:
     """Unseal the provider's credential.
 
     `data_provider.connection_id` has pointed at a stored credential since the
@@ -213,7 +213,7 @@ def _credential(cur, row: dict[str, Any], secret_key: str | None) -> str | None:
 
 def resolve(cur, tenant: dict[str, Any], *, field_name: str, entity: dict[str, Any],
             account: dict[str, Any] | None = None, legal_basis: str,
-            secret_key: str | None = None, now: datetime | None = None,
+            secret_key: "str | Keyring | None" = None, now: datetime | None = None,
             budget_micros: int | None = None) -> Resolved:
     """Buy one field for one entity, cheapest expected order first.
 
