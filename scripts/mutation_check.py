@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""Break each guard on purpose, and require a test to notice.
+
+Every guard in this repository was verified once, by hand, at the moment it was
+written: change the line, watch a test fail, change it back. That verification
+is not repeatable, and a guard erodes silently — somebody simplifies it, the
+test still passes because it asserts the wrong thing, and the protection is
+gone with a green build. It has happened here twice (D-17, D-26), both times to
+a test that had been watched to fail once.
+
+**This is not a mutation coverage measurement.** It does not generate mutants,
+it does not sample, and it says nothing about the code it does not name. It
+re-proves a curated list of guards whose failure would be expensive, which is
+a smaller claim and an honest one. `docs/24` VER-1 keeps the larger item open.
+
+Two rules make it worth running:
+
+* A mutation whose target string is no longer in the file is an **error**, not
+  a skip. Code moving under a mutation is exactly when the check stops being
+  applied, and skipping quietly is how a suite of guards becomes decoration.
+* It refuses to run against a dirty working tree. It edits source files and
+  restores them; doing that on top of uncommitted work risks losing it.
+
+    python3 scripts/mutation_check.py            # all of them
+    python3 scripts/mutation_check.py audience   # the ones whose id matches
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+@dataclass(frozen=True)
+class Mutation:
+    id: str
+    claim: str          # the property, in the words the product uses for it
+    path: str
+    find: str
+    replace: str
+    tests: str          # what must fail once the guard is broken
+
+
+MUTATIONS = (
+    Mutation(
+        id="admission-at-the-choke-point",
+        claim="a program is admitted where it is stored, not in one of five callers",
+        path="runtime/repo/programs.py",
+        find="    admission.check(spec, key)\n",
+        replace="",
+        tests="tests/test_admission.py"),
+    Mutation(
+        id="a-version-is-written-once",
+        claim="republishing a live version with different content is refused",
+        path="runtime/repo/programs.py",
+        find='"   where program.spec_hash = excluded.spec_hash"',
+        replace='""',
+        tests="tests/test_product_invariants.py"),
+    Mutation(
+        id="a-decision-carries-a-reason",
+        claim="every policy decision records why, not only allow or deny",
+        path="runtime/repo/ledger.py",
+        find='    if not (rationale or "").strip():',
+        replace="    if False:",
+        tests="tests/test_product_invariants.py"),
+    Mutation(
+        id="deals-must-be-answerable",
+        claim="an audience that excludes open deals refuses until a CRM delivers some",
+        path="runtime/engine/audience.py",
+        find="    if relies_on_deals(sql) and not deals_are_answerable(cur):",
+        replace="    if False:",
+        tests="tests/test_opportunity.py"),
+    Mutation(
+        id="a-previous-key-still-opens",
+        claim="a credential sealed under the old key opens during a rotation",
+        path="runtime/crypto.py",
+        find="    for candidate in (ring.primary, *ring.previous):",
+        replace="    for candidate in (ring.primary,):",
+        tests="tests/test_key_rotation.py"),
+    Mutation(
+        id="liveness-can-fail",
+        claim="a failing signal answers 503, because a monitor reads the status code",
+        path="runtime/api/app.py",
+        find='        if not body["draining"]:\n            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE\n',
+        replace="",
+        tests="tests/test_hardening.py"),
+    Mutation(
+        id="only-priced-fields-are-bought",
+        claim="a program may only buy enrichment fields the price list carries",
+        path="runtime/engine/enrich_step.py",
+        find='BUYABLE = ("email", "phone", "firmographics")',
+        replace='BUYABLE = ("email", "phone", "firmographics", "tech_stack")',
+        tests="tests/test_enrich_step.py"),
+    Mutation(
+        id="the-stricter-quiet-window-wins",
+        claim="a policy override never buys a program more sending hours than the pack",
+        path="zolts/policy.py",
+        find="        if _quiet_span(window) > _quiet_span(rule.quiet_hours):",
+        replace="        if True:",
+        tests="tests/test_policy_overrides.py"),
+)
+
+
+def _dirty() -> bool:
+    """Modified tracked files only.
+
+    An untracked new file is not at risk from writing and restoring a tracked
+    one, and refusing to run because of it would make this script unusable in
+    the pull request that adds it.
+    """
+    out = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+                         capture_output=True, text=True).stdout.splitlines()
+    return any(not line.startswith("??") for line in out)
+
+
+def _run_tests(target: str) -> bool:
+    """True when the tests pass — which, under a mutation, is the failure."""
+    env = {**os.environ, "PYTHONPATH": "."}
+    env.setdefault("ZOLTS_SECRET_KEY", "mutation-check-secret")
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", target, "-x", "-q", "-p", "no:cacheprovider",
+         "-p", "no:randomly"],
+        cwd=ROOT, capture_output=True, text=True, env=env)
+    return result.returncode == 0
+
+
+def check(selection: str | None = None) -> int:
+    if _dirty():
+        print("::error::the working tree is dirty. This script edits source files and "
+              "restores them; run it on a clean tree so a crash cannot lose work.",
+              file=sys.stderr)
+        return 2
+
+    chosen = [m for m in MUTATIONS if selection is None or selection in m.id]
+    if not chosen:
+        print(f"::error::no mutation matches '{selection}'", file=sys.stderr)
+        return 2
+
+    survived: list[Mutation] = []
+    stale: list[Mutation] = []
+    for mutation in chosen:
+        path = ROOT / mutation.path
+        original = path.read_text()
+        if mutation.find not in original:
+            # The code moved. Not a pass and not a skip: the guard this
+            # mutation was written for is no longer where it was, so nothing
+            # here is being checked.
+            stale.append(mutation)
+            print(f"STALE   {mutation.id}: the target is no longer in {mutation.path}")
+            continue
+        path.write_text(original.replace(mutation.find, mutation.replace, 1))
+        try:
+            noticed = not _run_tests(mutation.tests)
+        finally:
+            path.write_text(original)
+        if noticed:
+            print(f"BITES   {mutation.id}: {mutation.claim}")
+        else:
+            survived.append(mutation)
+            print(f"SURVIVED {mutation.id}: {mutation.claim}")
+            print(f"         broke {mutation.path} and {mutation.tests} still passed")
+
+    print(f"\n{len(chosen) - len(survived) - len(stale)}/{len(chosen)} guards bite")
+    if stale:
+        print("::error::stale mutations (the code moved): "
+              + ", ".join(m.id for m in stale), file=sys.stderr)
+    if survived:
+        print("::error::guards that did not bite: "
+              + ", ".join(m.id for m in survived), file=sys.stderr)
+    return 1 if (survived or stale) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(check(sys.argv[1] if len(sys.argv) > 1 else None))
