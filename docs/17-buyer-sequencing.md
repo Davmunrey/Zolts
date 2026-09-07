@@ -46,12 +46,12 @@ The acts overlap by three months deliberately: in month 9 the CFO pitch is teste
 
 Reason: a baseline cannot be reconstructed retroactively. If the "before" does not exist in month 9, Act 2 either collapses or requires re-instrumenting and waiting another full cycle. Cost of doing it now: roughly 10-15% of engineering across phases 1-2. Cost of not doing it: six to nine months of delay in Act 2.
 
-Captured during the first onboarding, with no user friction:
+Captured during the first onboarding, with no user friction — and stored, since ADR-042, in `tenant_baseline`, written once (`docs/26`, step 4):
 
 - Current spend by tool and by channel (declared at onboarding, four fields).
-- Volume and conversion rates for the prior 90 days (imported from the CRM).
-- Cost per meeting and per opportunity before Zolts.
-- A frozen, signed snapshot: this is the Act 2 document.
+- Volume and conversion rates for the prior 90 days (declared today; the row carries `source` so an import from the CRM writes the same row through the same path when it exists).
+- Cost per meeting and per opportunity before Zolts (derived once and stored, so the signed number never moves with a formula).
+- A frozen, signed snapshot: this is the Act 2 document. The pilot letter quotes the row's digest, and either party can recompute it.
 
 ## The dual-buyer trap (and its guardrail)
 

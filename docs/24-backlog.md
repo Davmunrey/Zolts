@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 41 | `docs/22`, ADR-001 … ADR-042 |
-| Tests | 1065 | 346 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1072 | 351 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -79,7 +79,7 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Restore** | `restore.sh` executed end to end against a real dump, with the failure it guards against reproduced | ADR-033 |
 | **Key rotation** | The key sealing every credential can be replaced with no downtime: both keys open during the window, `rotate-key` re-seals resumably, and preflight reports what is still on the old one | ADR-039, `test_key_rotation.py` |
 | **Operations** | The liveness endpoint answers 503 when a signal fails, so a monitor pointed at it fires; a worker that stops ticking is reported within five minutes, work or no work; `docs/25` says what to do about each signal, and every command on that page was executed while it was written | D-36, D-39, `docs/25`, `test_runbook.py` |
-| **Deployed smoke** | Hourly and strict against the production URL once it is named: every liveness signal, every migration on disk applied, `/api/tick` locked to a stranger | `deploy-vercel.yml`, `scripts/smoke_deployed.py` |
+| **Deployed smoke** | Hourly and strict against the production URL once it is named: every liveness signal, every migration on disk applied, `/api/tick` locked to a stranger. The script itself is executed in tests against live servers in both shapes a deployment takes — the served API and the Vercel entry point — including the release before the secrets exist and a release whose schema is behind its code | `deploy-vercel.yml`, `scripts/smoke_deployed.py`, `test_smoke_deployed.py` |
 | **Guards that bite** | Eleven guards are broken on purpose on every push and a test has to notice. A mutation whose target moved is an error, not a skip | `scripts/mutation_check.py`, `test_mutation_targets.py` |
 | **The console on a phone** | Nothing may be drawn on top of text: the check measures where the glyphs start rather than where the box does, which is what made three collisions invisible to every clipping and overflow check | D-38, `browser_console.py` |
 | **Admission** | A program is checked where it is stored, not where it arrives: holdout, audience, enrichment pricing and policy overrides run inside `publish`, so signup and the CLI get the same answer as the API | ADR-037, `test_admission.py` |
