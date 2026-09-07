@@ -11,7 +11,7 @@
    enters a data region. */
 :root{
   --canvas:#08090a; --surface-1:#0e1011; --surface-2:#141618; --surface-3:#1a1d1f; --raised:#1f2325;
-  --hairline:#1c1f22; --hairline-strong:#2b2f34;
+  --hairline:#1c1f22; --hairline-strong:#2b2f34; --hairline-ghost:#121517;
   --ink:#f2f4f5; --ink-muted:#c2c8cc; --ink-subtle:#8b9297; --ink-tertiary:#5c6367; --ink-inverse:#fff;
   --accent:#7d4bf5; --accent-hover:#9670f7; --accent-dim:#1a1230; --accent-ring:#8f66f7;
   --lift:#3ecf7e; --control:#7d8590; --deny:#f4645a; --review:#d9a441; --live:#3bc4d4;
@@ -33,7 +33,12 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;paddin
     clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* ── three panes: rail, list, detail. The list is the protagonist. ─────── */
-.app{display:grid; grid-template-columns:216px minmax(0,1fr) 340px; height:100vh; overflow:hidden}
+/* The middle column used to take every pixel a wide screen had: at 1920 a
+   four-row table stretched across 1,360px with a dead tail on the right, and
+   the panel that holds the density stayed at 340px. The table stops at a
+   width a person can read across; the surplus goes to the panel. */
+.app{display:grid; grid-template-columns:216px minmax(0,1fr) clamp(340px,25vw,470px);
+     height:100vh; overflow:hidden}
 
 /* ── rail ─────────────────────────────────────────────────────────────── */
 .rail{border-right:1px solid var(--hairline); display:flex; flex-direction:column; padding:10px 8px; gap:18px; overflow-y:auto}
@@ -78,7 +83,15 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       gap:12px;align-items:center;height:28px;padding:0 14px;border-bottom:1px solid var(--hairline);
       font-size:11px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);flex:none}
 .head .r{text-align:right}
-.list{overflow-y:auto;flex:1}
+/* Below the last row the table keeps its ruling, so a short list reads as a
+   table that ended rather than as a hole in the page. Four mailboxes in a
+   1080px column left three quarters of the screen as flat black; the guide is
+   the same hairline the rows use, at the same pitch. */
+.list{overflow-y:auto;flex:1;
+      background-image:repeating-linear-gradient(to bottom,
+        transparent 0 35px, var(--hairline-ghost) 35px 36px)}
+/* Rows are opaque so they sit on the guide rather than under it. */
+.row,.sect{background:var(--canvas)}
 .row{display:grid;cursor:pointer;grid-template-columns:var(--cols);
      gap:12px;align-items:center;height:36px;padding:0 14px;width:100%;text-align:left;
      border-bottom:1px solid var(--hairline);position:relative;
@@ -94,14 +107,14 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .cell.r{text-align:right;font-variant-numeric:tabular-nums}
 .cell.n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-muted)}
 .cell.good{color:var(--lift)} .cell.bad{color:var(--deny)} .cell.warnt{color:var(--review)}
-.row.sub{background:transparent}
+.row.sub{background:var(--canvas)}
 .row.planned{cursor:default;opacity:.62}
-.row.planned:hover{background:transparent}
+.row.planned:hover{background:var(--canvas)}
 /* Two different tables in one list need a line between them. Detections and
    watched signals, contacts and accounts, rules and decisions: without this
    the reader cannot tell where one ends. */
 .sect{display:flex;align-items:center;gap:10px;height:26px;padding:0 14px;
-      border-bottom:1px solid var(--hairline);background:var(--surface-1);
+      border-bottom:1px solid var(--hairline);background:var(--surface-1) !important;
       font-size:10.5px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;
       color:var(--ink-tertiary)}
 .sect b{font-family:var(--mono);font-weight:450;color:var(--ink-subtle);letter-spacing:0}
@@ -163,6 +176,37 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 /* A sentence is not a value. Prose in the `dd` column, which is nowrap, ran
    over its own label — "Authentication" and "an unverified domain sends
    nothing" printed on top of each other. */
+/* The numbers a view is about, where the eye lands, in the space a wide
+   screen was wasting. They were in the side panel, two blocks tall in a
+   340px column, under a table that had already used the width. */
+.kpis{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;flex:none;
+      background:var(--hairline);border-bottom:1px solid var(--hairline)}
+.kpi{padding:13px 16px 14px;background:var(--canvas);min-width:0}
+.kpi .k{font-size:11px;color:var(--ink-tertiary);letter-spacing:.2px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Proportional figures, not tabular: at this size `tabular-nums` gives every
+   digit the width of a zero and a number like 141 reads loose. Columns of
+   numbers align; a standalone value does not need to. */
+.kpi .v{margin-top:5px;font-size:23px;font-weight:600;letter-spacing:-.6px;
+        line-height:1.1;color:var(--ink);font-variant-numeric:proportional-nums;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .u{margin-top:3px;font-size:11px;line-height:1.4;color:var(--ink-tertiary)}
+.kpi .v.good{color:var(--lift)} .kpi .v.warn{color:var(--review)} .kpi .v.bad{color:var(--deny)}
+/* A ratio against a limit. The fill carries the severity and the track is a
+   dim step of the same ramp, so the state reads across the whole bar. */
+.meter{margin-top:9px;height:4px;border-radius:9999px;background:var(--surface-3);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:9999px;background:var(--control);
+         transition:width 380ms var(--ease)}
+.meter.ok{background:var(--lift-dim)} .meter.ok i{background:var(--lift)}
+.meter.warn{background:var(--review-dim)} .meter.warn i{background:var(--review)}
+.meter.bad{background:var(--deny-dim)} .meter.bad i{background:var(--deny)}
+/* Two by two before four can clip: a label that fits at 1920 does not
+   fit at 1280, and a truncated unit changes what the number means. */
+@media (max-width:1560px){ .kpis{grid-auto-flow:row;grid-template-columns:1fr 1fr} }
+@media (max-width:900px){ .kpis{grid-template-columns:1fr} }
+.source{margin-bottom:12px;padding-top:12px;border-top:1px solid var(--hairline);
+        font-size:11px;line-height:1.55;color:var(--ink-tertiary)}
+.source b{display:block;font-weight:500;color:var(--ink-subtle);margin-bottom:2px}
 .empty{margin:0;padding:28px 24px;max-width:46ch;font-size:12.5px;line-height:1.6;
        color:var(--ink-tertiary)}
 .pnote{margin:0 0 7px;font-size:12px;line-height:1.5;color:var(--ink-subtle)}
@@ -212,8 +256,81 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   .btn-s:hover{background:var(--surface-3)}
 }
 
-@media (max-width:1180px){ .app{grid-template-columns:200px minmax(0,1fr)} .detail{display:none} }
-@media (max-width:820px){ .app{grid-template-columns:1fr} .rail{display:none} }
+/* ── narrow ────────────────────────────────────────────────────────────
+   Below 1180px the panel stacks under the list rather than disappearing: on
+   Review it is the whole point of the screen, and hiding it made the view
+   useless on the device most likely to be reading it at 8am.
+
+   Below 820px the rail used to be `display:none` outright, so a phone landed
+   on Programs with no way to reach the other seven views. The console was one
+   screen. It is a horizontal strip now — same links, same counts. */
+@media (max-width:1180px){
+  .app{grid-template-columns:220px minmax(0,1fr); grid-template-rows:1fr auto;
+       height:auto; min-height:100vh; overflow:visible}
+  .rail{grid-row:1 / span 2; position:sticky; top:0; height:100vh}
+  .centre{min-height:100vh}
+  .detail{grid-column:2; border-top:1px solid var(--hairline-strong)}
+  .list{overflow:visible}
+}
+@media (max-width:820px){
+  .app{grid-template-columns:1fr; grid-template-rows:auto 1fr auto}
+  .rail{grid-row:auto; position:static; height:auto; flex-direction:column;
+        border-right:0; border-bottom:1px solid var(--hairline);
+        padding:8px 0 0; gap:8px}
+  .rail > div:first-child{padding:0 12px}
+  .rail .sec{display:none}
+  /* One scrolling row of destinations. Labels and counts stay: a row of bare
+     icons is a quiz. */
+  nav{flex-direction:row; gap:4px; overflow-x:auto; padding:0 12px 8px;
+      scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav a{height:30px; padding:0 10px; flex:none; border-radius:999px;
+        background:var(--surface-1); white-space:nowrap}
+  nav .c{margin-left:4px}
+  .rail-foot{display:none}
+  .centre{min-height:0}
+  .bar{padding:0 12px}
+  /* The Programs filters are a desktop refinement; the title and the count
+     are what a phone has room for. */
+  .bar .chipbtn{display:none}
+  .kpis{grid-template-columns:1fr 1fr}
+  .kpi{padding:10px 12px 11px}
+  .kpi .v{font-size:19px}
+  .head{display:none}
+  /* Each row becomes its own block of label/value pairs. */
+  .row{grid-template-columns:1fr; height:auto; gap:0; padding:11px 12px 12px;
+       align-items:start}
+  .row.sub .cell.k{padding-left:0}
+  .row .st{position:absolute; left:12px; top:15px}
+  .cell{white-space:normal; overflow:visible; text-overflow:clip;
+        display:flex; gap:8px; padding-left:16px; min-height:19px}
+  .cell.k{font-size:14px; font-weight:500; margin-bottom:3px}
+  .cell::before{content:attr(data-l); flex:none; width:96px; font-size:11px;
+                color:var(--ink-tertiary); text-transform:lowercase}
+  .cell.k::before{display:none}
+  .cell.r,.cell.n{text-align:left}
+  .cell:empty{display:none}
+  /* The Programs row is the one that builds its own markup. It stacks the
+     same way rather than printing four unlabelled numbers down the right. */
+  .row .pname{padding-left:16px; margin-bottom:3px}
+  .row .bp,.row .n,.row .lift{display:flex; gap:8px; padding-left:16px;
+       text-align:left; font-size:12px}
+  .row .bp::before,.row .n::before,.row .lift::before{content:attr(data-l);
+       flex:none; width:96px; color:var(--ink-tertiary); font-size:11px;
+       font-family:var(--sans)}
+  /* The icon alone is a symbol nobody has been taught. On a phone it says
+     what it means, in the same words the panel uses. */
+  .row .sig{justify-self:start; display:flex; align-items:center; gap:8px;
+       width:auto; height:auto; margin:5px 0 0 16px; font-size:11px}
+  .row .sig::after{content:attr(data-l); color:var(--ink-tertiary);
+       font-family:var(--sans)}
+  .row .sig svg{width:13px; height:13px; flex:none}
+  .row .owner{justify-self:start; margin-left:16px}
+  .sect{padding:0 12px}
+  .foot{height:auto; padding:10px 12px; flex-wrap:wrap; gap:10px 14px}
+  .detail{grid-column:1}
+  .source{display:none}
+}
 @media (prefers-reduced-motion:reduce){
   /* Fewer and gentler, not zero: colour and opacity aid comprehension and
      stay; movement is what causes sickness, so only that is removed. */
@@ -252,6 +369,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
     </nav>
 
     <div class="rail-foot">
+      <div class="source" id="source"></div>
       <span class="hint"><kbd>⌘</kbd><kbd>K</kbd> Command</span>
       <span class="hint"><kbd>J</kbd><kbd>K</kbd> Move</span>
     </div>
@@ -272,6 +390,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       <button class="chipbtn" id="open-pal"><kbd style="border:0;background:none;padding:0;color:var(--ink-tertiary)">⌘K</kbd></button>
     </div>
 
+    <div class="kpis" id="kpis"></div>
     <div class="head" id="head" role="row"></div>
     <div class="list" id="list" role="listbox" aria-label="Programs" tabindex="0"
          aria-activedescendant=""></div>
@@ -356,6 +475,16 @@ function renderList(){
   var proven = rows.filter(sig);
   var enrolled = rows.reduce(function(a, p){ return a + p.enrolled; }, 0);
   var spend = rows.reduce(function(a, p){ return a + p.spend; }, 0);
+  kpis([
+    {label: "Live programs", value: nf(live.length),
+     unit: rows.length - live.length ? (rows.length - live.length) + " not live" : "all live"},
+    {label: "With proven lift", value: nf(proven.length),
+     unit: "of " + nf(rows.length) + " · the rest cannot resolve one yet",
+     tone: proven.length ? "good" : "",
+     share: rows.length ? proven.length / rows.length : 0},
+    {label: "Accounts enrolled", value: nf(enrolled)},
+    {label: "Spend, quarter to date", value: "€" + nf(Math.round(spend))}
+  ]);
   document.getElementById("foot").innerHTML =
       '<span><b>' + live.length + '</b> live</span>'
     + '<span><b>' + proven.length + '</b> with proven lift</span>'
@@ -374,12 +503,14 @@ function renderList(){
     b.innerHTML =
       '<span class="st ' + p.status + '" title="' + p.status + '"></span>'
     + '<span class="pname"><b>' + p.name + '</b><span>' + p.key + ' · v' + p.version + '</span></span>'
-    + '<span class="bp">' + (p.blueprint || "—") + '</span>'
-    + '<span class="n">' + (p.enrolled ? nf(p.enrolled) : "—") + '</span>'
-    + '<span class="lift ' + cls + '">' + (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2) + " pp") + '</span>'
-    + '<span class="n">' + p.holdout + '%</span>'
-    + '<span class="n">' + (p.p95 == null ? "—" : p.p95 + " m") + '</span>'
-    + '<span class="sig" style="color:' + (d == null ? "var(--ink-tertiary)" : sig(p) ? "var(--lift)" : "var(--review)") + '">'
+    + '<span class="bp" data-l="blueprint">' + (p.blueprint || "—") + '</span>'
+    + '<span class="n" data-l="enrolled">' + (p.enrolled ? nf(p.enrolled) : "—") + '</span>'
+    + '<span class="lift ' + cls + '" data-l="lift">' + (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2) + " pp") + '</span>'
+    + '<span class="n" data-l="holdout">' + p.holdout + '%</span>'
+    + '<span class="n" data-l="p95">' + (p.p95 == null ? "—" : p.p95 + " m") + '</span>'
+    + '<span class="sig" data-l="' + (d == null ? "no effect resolvable"
+        : sig(p) ? "significant" : "not significant yet") + '" style="color:'
+      + (d == null ? "var(--ink-tertiary)" : sig(p) ? "var(--lift)" : "var(--review)") + '">'
       + (d == null ? "" : sig(p) ? ICON_SIG : ICON_UND) + '</span>';
     b.addEventListener("click", function(){ state.sel = p.key; renderList(); renderDetail(); });
     list.appendChild(b);
@@ -442,6 +573,18 @@ function renderChrome(){
   var aud = document.getElementById("nav-audit");
   if (aud) aud.textContent = nf(((D.auditView || {}).entries || []).length);
 
+  // What this console is reading. The first question when a number looks
+  // wrong is whether it came from anywhere, and the page never said.
+  var src = document.getElementById("source");
+  if (src){
+    src.innerHTML = LIVE
+      ? '<b>' + esc((D.tenant || {}).name || "This tenant") + '</b>'
+        + 'Live data · ' + esc((D.tenant || {}).region || "—")
+        + ' · ' + esc((D.tenant || {}).blueprint || "no blueprint")
+      : '<b>Demo</b>Computed from this repository\u2019s own programs, '
+        + 'blueprints and reference core. No customer data.';
+  }
+
   var F = D.fleet;
   var sending = document.getElementById("nav-sending");
   if (sending) sending.textContent = !F ? "—" : (F.managed ? nf(F.remaining) : "—");
@@ -471,16 +614,30 @@ function renderReviewList(){
   list.innerHTML = R.map(function(r){
     return '<div class="row' + (r.id === state.rsel ? " on" : "") + '" data-r="'
       + esc(r.id) + '" role="row" tabindex="0">'
-      + dot(r.spendVerdict === "no" ? "deny" : "warn")
-      + cell(r.agent + " · " + (r.step || r.channel || ""), "k")
-      + cell(r.channel || "", "m")
-      + cell(r.evalScore == null ? "—" : r.evalScore.toFixed(2), "n")
-      + cell(r.state, "m warnt")
+      + labelled([dot(r.spendVerdict === "no" ? "deny" : "warn"),
+                  cell(r.agent + " · " + (r.step || r.channel || ""), "k"),
+                  cell(r.channel || "", "m"),
+                  cell(r.evalScore == null ? "—" : r.evalScore.toFixed(2), "n"),
+                  cell(r.state, "m warnt")])
       + '</div>';
   }).join("");
-  foot([[nf(R.length), "waiting for a person"],
-        [nf(R.filter(function(r){ return r.spendVerdict === "no"; }).length),
-         "refused by the spend guard"]]);
+  var refused = R.filter(function(r){ return r.spendVerdict === "no"; }).length;
+  var scored = R.filter(function(r){ return r.evalScore != null; });
+  kpis([
+    {label: "Waiting for a person", value: nf(R.length),
+     unit: R.length ? "none can send itself" : "queue is clear",
+     tone: R.length ? "warn" : "good"},
+    {label: "Refused by the spend guard", value: nf(refused),
+     unit: refused ? "no model call was made" : "none", tone: refused ? "bad" : ""},
+    {label: "Median eval score", value: scored.length
+        ? scored.map(function(r){ return r.evalScore; }).sort()[Math.floor(scored.length / 2)]
+          .toFixed(2) : "—",
+     unit: "auto-send needs 0.85"},
+    {label: "Spent on these drafts", value: "€" + R.reduce(function(a, r){
+        return a + (r.costEur || 0); }, 0).toFixed(4),
+     unit: "the model call, not the send"}
+  ]);
+  foot([[nf(R.length), "waiting for a person"], [nf(refused), "refused by the spend guard"]]);
 
   list.querySelectorAll("[data-r]").forEach(function(el){
     el.addEventListener("click", function(){
@@ -933,9 +1090,46 @@ function cell(text, cls){
   return '<span class="cell ' + (cls || "") + '" title="' + esc(v) + '">' + esc(v) + '</span>';
 }
 function dot(kind){ return '<span class="st ' + (kind || "") + '"></span>'; }
-function rowOf(cells, cls){
-  return '<div class="row' + (cls ? " " + cls : "") + '" role="row">' + cells.join("") + '</div>';
+// Each cell carries its column's name. On a phone the eight-column grid
+// becomes eight stacked label/value pairs, because a table that clips four of
+// its columns off the right edge is a table nobody can read — and it clipped
+// them without even offering a horizontal scroll.
+//
+// Its own function, not a step inside `rowOf`, because the review queue builds
+// its rows by hand to carry a click target and skipped the labelling entirely:
+// on a phone it printed "email · 0.81 · needs_human" with nothing saying which
+// was which.
+function labelled(cells){
+  var head = (VIEWS[state.view] || {}).head || [];
+  return cells.map(function(c, i){
+    var label = String(head[i] || "").replace(/^r:/, "");
+    return label ? c.replace('<span class="cell',
+                             '<span data-l="' + esc(label) + '" class="cell') : c;
+  }).join("");
 }
+
+function rowOf(cells, cls){
+  return '<div class="row' + (cls ? " " + cls : "") + '" role="row">'
+       + labelled(cells) + '</div>';
+}
+/* A stat tile: label, value, an optional unit and an optional ratio against a
+   limit. `tone` is a status, so it is never the only carrier — the label and
+   the unit say the same thing in words. */
+function kpis(tiles){
+  document.getElementById("kpis").innerHTML = (tiles || []).map(function(tile){
+    var meter = "";
+    if (tile.share !== undefined && tile.share !== null){
+      var pct = Math.max(0, Math.min(1, tile.share)) * 100;
+      meter = '<div class="meter ' + (tile.tone || "") + '">'
+            + '<i style="width:' + pct.toFixed(1) + '%"></i></div>';
+    }
+    return '<div class="kpi"><div class="k">' + esc(tile.label) + '</div>'
+      + '<div class="v ' + (tile.tone || "") + '">' + esc(String(tile.value)) + '</div>'
+      + (tile.unit ? '<div class="u">' + esc(tile.unit) + '</div>' : "")
+      + meter + '</div>';
+  }).join("");
+}
+
 function sect(label, note){
   return '<div class="sect">' + esc(label)
     + (note ? '<b>' + esc(note) + '</b>' : "") + '</div>';
@@ -1000,15 +1194,33 @@ function renderSending(){
     return head + boxes;
   }).join("");
 
+  var boxes = (F.domains || []).reduce(function(a, d){
+    return a.concat(d.mailboxes || []); }, []);
+  var cap = boxes.reduce(function(a, m){ return a + (m.capacity || m.remaining || 0); }, 0);
+  var alarm = boxes.filter(function(m){ return m.health !== "ok"; }).length;
+  kpis([
+    {label: "Sends left today", value: nf(F.remaining || 0)},
+    {label: "Mailboxes", value: nf(boxes.length),
+     unit: alarm ? alarm + " not ok" : "all ok", tone: alarm ? "warn" : ""},
+    {label: "Domains", value: nf((F.domains || []).length),
+     unit: (F.pausedDomains || []).length ? "one paused" : "none paused",
+     tone: (F.pausedDomains || []).length ? "bad" : ""},
+    {label: "Capacity used today",
+     value: (cap ? Math.round((1 - (F.remaining || 0) / cap) * 100) : 0) + "%",
+     unit: nf(F.remaining || 0) + " of " + nf(cap) + " sends left",
+     share: cap ? 1 - (F.remaining || 0) / cap : 0,
+     tone: cap && (F.remaining || 0) / cap < 0.2 ? "warn" : "ok"}
+  ]);
+
   list.innerHTML = rows || empty("No sending domain is registered yet.");
-  detail.innerHTML = block("Capacity today", [
-    ["Sends remaining", nf(F.remaining || 0), "hi"],
-    ["Domains", nf((F.domains || []).length)],
-    ["Paused", nf((F.pausedDomains || []).length)]
-  ]) + note("Why capacity moves", [
+  detail.innerHTML = note("Why capacity moves", [
     ["Warm-up.", "A new mailbox earns its cap over the ramp."],
     ["Reputation.", "Engagement raises it; complaints halve it."],
     ["Authentication.", "An unverified domain sends nothing at all."]
+  ]) + block("The fleet", [
+    ["Mailboxes", nf(boxes.length)],
+    ["Not ok", nf(alarm), alarm ? "hi" : ""],
+    ["Domains paused", nf((F.pausedDomains || []).length)]
   ]);
   foot([[nf(F.remaining || 0), "sends left today"],
         [nf((F.domains || []).length), "domains"]]);
@@ -1048,6 +1260,20 @@ function renderProspects(){
                   cell(a.domain, "m"), cell(nf(a.contacts) + (a.contacts === 1 ? " contact" : " contacts"), "m"),
                   cell(state, "m" + (a.dossier ? "" : " warnt"))], "sub");
   }).join("");
+
+  var missing = (m.email || 0) + (m.phone || 0) + (m.firmographics || 0);
+  var covered = R2.accounts ? (R2.withDossier || 0) / R2.accounts : 0;
+  kpis([
+    {label: "Accounts", value: nf(accounts.length)},
+    {label: "Contacts", value: nf(people.length),
+     unit: people.filter(function(c){ return c.optedOut; }).length + " opted out"},
+    {label: "Fields missing", value: nf(missing), unit: "buyable",
+     tone: missing ? "warn" : ""},
+    {label: "Accounts researched", value: Math.round(covered * 100) + "%",
+     unit: nf(R2.withDossier || 0) + " of " + nf(R2.accounts || 0)
+           + (R2.stale ? ", " + nf(R2.stale) + " stale" : ""),
+     share: covered, tone: R2.stale ? "warn" : "ok"}
+  ]);
 
   list.innerHTML = rows;
   detail.innerHTML = block("Missing fields", [
@@ -1096,6 +1322,18 @@ function renderSignals(){
                   cell(String(w.lastChecked).slice(0, 10), "m")], "sub");
   }).join("");
 
+  var stale = watched.reduce(function(a, w){ return a + w.staleRefused; }, 0);
+  var slow = L.detectionP95Minutes || 0, ours = L.executionP95Minutes || 0;
+  kpis([
+    {label: "Detected", value: nf(recent.length)},
+    {label: "Signals watched", value: nf(watched.length),
+     unit: stale ? stale + " stale refused" : "none stale",
+     tone: stale ? "warn" : ""},
+    {label: "The source noticing", value: nf(slow), unit: "min, p95",
+     tone: slow > ours ? "warn" : ""},
+    {label: "This runtime acting", value: nf(ours), unit: "min, p95", tone: "good"}
+  ]);
+
   list.innerHTML = rows;
   var mins = function(v){ return v === null || v === undefined ? "—" : nf(v) + " min"; };
   detail.innerHTML = block("Time to touch, p95", [
@@ -1125,6 +1363,14 @@ function renderSpend(){
   }
   document.getElementById("shown").textContent = nf(S.consumed);
   var pct = Math.round((S.shareUsed || 0) * 100);
+  var tone = pct >= 100 ? "bad" : S.alerting ? "warn" : "ok";
+  kpis([
+    {label: "Credits consumed", value: nf(S.consumed)},
+    {label: "Remaining", value: nf(S.remaining), unit: "of " + nf(S.included)},
+    {label: "Ceiling used", value: pct + "%", share: S.shareUsed || 0,
+     unit: S.alerting ? "past the 80% alert" : "the alert is at 80%", tone: tone},
+    {label: "Plan", value: S.plan, unit: "billed monthly"}
+  ]);
 
   var rows = (S.byKind || []).map(function(k){
     return rowOf([dot(""), cell(k.kind, "k m"), cell(nf(k.credits) + " cr", "n"),
@@ -1177,6 +1423,18 @@ function renderPolicy(){
                   cell(d.rationale || d.jurisdiction, "m")], "sub");
   }).join("");
 
+  kpis([
+    {label: "Allowed", value: nf(tt.allow || 0), tone: "good"},
+    {label: "Denied", value: nf(tt.deny || 0),
+     unit: "by the gate", tone: tt.deny ? "bad" : ""},
+    {label: "Share denied", value: tt.denyRate === null || tt.denyRate === undefined
+        ? "—" : Math.round(tt.denyRate * 100) + "%",
+     unit: "of every decision recorded",
+     share: tt.denyRate || 0, tone: (tt.denyRate || 0) > 0.5 ? "warn" : "ok"},
+    {label: "Rules that fired", value: nf(rules.length),
+     unit: (P3.jurisdictions || []).length + " jurisdictions"}
+  ]);
+
   list.innerHTML = rows;
   detail.innerHTML = block("Decisions", [
     ["Allowed", nf(tt.allow || 0)],
@@ -1215,6 +1473,15 @@ function renderAudit(){
     if (/rotated|overridden|waived/.test(action)) return "warn";
     return "live";
   }
+  var removals = entries.filter(function(e){ return weight(e.action) !== "live"; }).length;
+  kpis([
+    {label: "Entries", value: nf(entries.length)},
+    {label: "Actors", value: nf((A.actors || []).length), unit: "keys"},
+    {label: "Kinds of action", value: nf((A.byAction || []).length)},
+    {label: "Removals and rotations", value: nf(removals),
+     unit: "of what is shown", tone: removals ? "warn" : ""}
+  ]);
+
   list.innerHTML = entries.map(function(e){
     return rowOf([dot(weight(e.action)), cell(e.action, "k m"), cell(e.actor, "m"),
                   cell(e.subject, "m"),
@@ -1237,6 +1504,7 @@ function render(){
   // the columns its header has to name. Doing it inside each renderer is how
   // five of them came to share the Programs header.
   chrome(state.view);
+  kpis([]);
   if (state.view === "prospects"){ renderProspects(); return; }
   if (state.view === "signals"){ renderSignals(); return; }
   if (state.view === "spend"){ renderSpend(); return; }
