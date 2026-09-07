@@ -126,7 +126,7 @@ Named, with an owner. Two are the founder's decision and are not blocked on engi
 | **Single-region data residency** | `fly.toml` pins `mad`. A tenant with a US residency requirement has no answer | Region is per-deployment, not per-tenant | Product — `docs/18` |
 | **No penetration test** | Nothing external has attacked this | Not commissioned | **Founder**, pre-first-customer |
 | **No SOC 2 / ISO 27001** | Enterprise buyers will ask | Not started; `docs/17` sequences it after the first paying partner | **Founder** |
-| **Model provider sees prospect text** | Drafts and replies are sent to Anthropic for generation and classification | `base_url` is configurable, so a tenant can route through their own gateway (ADR-011). Not documented as a customer-facing control | Engineering — SEC-3 |
+| **Model provider sees prospect text** | Drafts and replies are sent to Anthropic for generation and classification | Documented in `docs/11`: what each agent sends and never sends, that the layer is off by default, and that `ZOLTS_MODEL_BASE_URL` moves every call to a gateway — **per deployment, not per tenant**; this row used to promise a per-tenant control the code never had (D-42). Per-tenant routing is decision 36 | Documented — SEC-3 closed; product for the per-tenant case |
 | **Agents are off by default** | Reduces the above to zero until a tenant enables them | Reported by preflight | — |
 
 ## What would be a real incident

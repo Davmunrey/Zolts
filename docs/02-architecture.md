@@ -118,7 +118,7 @@ Three properties make the tool usable as a gate rather than as a report: it neve
 Fail-closed: an unreachable guard refuses. A cost control that opens when it breaks is not a cost control.
 
 **ADR-011 · One SDK, a movable endpoint.**
-Agents call Claude through the official Anthropic SDK. `base_url` is configurable, so a tenant can route through their own gateway — OmniRoute serves the Messages API shape, so the SDK reaches it unchanged — without this repository growing a provider-neutral abstraction that has to be kept honest against every provider it claims to support.
+Agents call Claude through the official Anthropic SDK. `base_url` is configurable, so a deployment can route through a gateway of its own — a customer's, or one that logs, filters or pins a region; OmniRoute serves the Messages API shape, so the SDK reaches it unchanged — without this repository growing a provider-neutral abstraction that has to be kept honest against every provider it claims to support. One endpoint per deployment, set by `ZOLTS_MODEL_BASE_URL`, not one per tenant: this sentence used to promise per-tenant routing, and no tenant has ever had a place to store an endpoint (D-42, decision 36). `docs/11` states what each agent sends.
 
 **ADR-012 · A generated message is a proposal, never a send.**
 An agent writes a row in `proposal`. It cannot write to `action`. The only two paths from generated text to a provider are the eval gate approving it and a human approving it, and both record which one it was. The question "who approved this message" has a row as its answer, and the answer distinguishes a threshold from a person.
@@ -728,6 +728,6 @@ Vercel has functions and a cron, and no processes and no release hook. Each abse
 
 **The row and the letter check each other.** The digest is sha256 over the canonical fields (`zolts.baseline`, pure) and the pilot letter quotes it; either party can recompute it. What cannot be true is refused before it is frozen — a window that ends before it starts, more replies than contacts — because a signed typo is worse than no baseline.
 
-**Activation without a baseline is noted, not refused (decision 35).** The activation response carries a `lint` line and the audit log an `program.activated_without_baseline` row. Refusing would put the one irreversible requirement behind the one step every onboarding wants to reach quickly, and the operator running the onboarding (`docs/26`) is the person the note is for.
+**Activation without a baseline is noted, not refused (decision 35).** The activation response carries a `lint` line, the audit log an `program.activated_without_baseline` row, and the console keeps the line across its reload and shows it on the program it was about — it reloaded and discarded it at first (D-43). Refusing would put the one irreversible requirement behind the one step every onboarding wants to reach quickly, and the operator running the onboarding (`docs/26`) is the person the note is for.
 
 **What this constrains.** The baseline's fields are the letter's fields; adding one is a migration, a schema change and a new digest, never a silent recalculation. Any future import from a CRM writes the same row through the same `freeze`, with `source = 'crm'`, and is refused the same way if one exists.

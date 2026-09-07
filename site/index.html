@@ -574,7 +574,10 @@ function renderList(){
         : sig(p) ? "significant" : "not significant yet") + '" style="color:'
       + (d == null ? "var(--ink-tertiary)" : sig(p) ? "var(--lift)" : "var(--review)") + '">'
       + (d == null ? "" : sig(p) ? ICON_SIG : ICON_UND) + '</span>';
-    b.addEventListener("click", function(){ state.sel = p.key; renderList(); renderDetail(); });
+    b.addEventListener("click", function(){
+      if (state.sel !== p.key) forgetActivationNote();
+      state.sel = p.key; renderList(); renderDetail();
+    });
     list.appendChild(b);
   });
   // What the blueprints promise and nothing implements yet. Shown because a
@@ -798,6 +801,25 @@ function wireReviewActions(r){
       });
     });
   });
+}
+
+function activationNote(p){
+  /* What the last activation answered, on the program it was about. Kept
+     until the operator moves to another program, so a re-render does not
+     eat it; a note nobody saw is a note that was not given. */
+  var raw = null;
+  try { raw = sessionStorage.getItem("zolts.activation-note"); } catch (e) {}
+  if (!raw) return "";
+  var note = null;
+  try { note = JSON.parse(raw); } catch (e) { return ""; }
+  if (!note || note.id !== p.id || !note.lines || !note.lines.length) return "";
+  return '<div class="note fail" id="activation-note">' + ICON_UND
+    + '<span><b style="color:var(--ink)">Activated, with a note.</b> '
+    + note.lines.map(esc).join(" ") + '</span></div>';
+}
+
+function forgetActivationNote(){
+  try { sessionStorage.removeItem("zolts.activation-note"); } catch (e) {}
 }
 
 function primaryAction(p){
@@ -1068,6 +1090,7 @@ function renderDetail(){
       + '<button class="btn btn-s" id="tunebtn" aria-expanded="' + (state.tuning ? "true" : "false")
       + '">' + (state.tuning ? "Close editor" : "Open editor") + '</button></div>'
     + '</div>'
+    + activationNote(p)
     + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
       + '<dt>Status</dt><dd class="hi">' + p.status + '</dd>'
@@ -1117,7 +1140,20 @@ function renderDetail(){
     go.disabled = true;
     go.textContent = "Activating…";
     act("/v1/programs/" + go.dataset.id + "/activate").then(function(res){
-      if (res.ok) { window.location.reload(); return; }
+      if (res.ok) {
+        /* The answer can carry a note — no baseline is frozen, for one — and
+           a reload discarded it. Decision 35 says noted where an operator
+           looks, and this is where they look: kept across the reload and
+           shown on the program it was about. */
+        return res.json().then(function(body){
+          try {
+            if (body && body.lint && body.lint.length)
+              sessionStorage.setItem("zolts.activation-note",
+                JSON.stringify({id: go.dataset.id, lines: body.lint}));
+          } catch (e) {}
+          window.location.reload();
+        });
+      }
       /* Named, not swallowed. A button that fails quietly is the reason the
          console shipped with buttons that did nothing at all. */
       go.disabled = false;

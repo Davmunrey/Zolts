@@ -212,6 +212,27 @@ def main() -> int:
     worker = Worker(db, secret_key=settings.secret_key)
     tick = worker.tick([tid])
 
+    # The flagship program lands a step Monday to Friday, 08:00-18:00 in
+    # Madrid, and the planner moves a send into that window rather than
+    # dropping it. Outside it — every evening, every weekend — the step the
+    # tick just planned is due the next morning, nothing is claimed, and this
+    # script reported four dead stages for the one reason that is not a
+    # defect (D-44). The window is the product's behaviour and stays as it is;
+    # what this script proves is that the stages connect, so a step deferred
+    # by the window alone is pulled forward here, in the smoke tenant only,
+    # and the report says so.
+    deferred_by_window = _pull_forward(db, tid)
+    if deferred_by_window:
+        print(f"::notice::outside the program's sending window at "
+              f"{datetime.now(timezone.utc):%H:%M} UTC; {len(deferred_by_window)} step(s) "
+              f"due {', '.join(deferred_by_window)} pulled forward in the smoke tenant",
+              file=sys.stderr)
+        again = worker.tick([tid])
+        for name in ("planned", "claimed", "succeeded", "cancelled", "deferred",
+                     "failed", "dead"):
+            setattr(tick, name, getattr(tick, name) + getattr(again, name))
+        tick.errors.extend(again.errors)
+
     # Close the loop. A reply arriving from the sending provider is what turns
     # a touch into an outcome, and an outcome into a measurable effect. Without
     # this half, "measured by incrementality" depends on someone remembering to
@@ -257,6 +278,7 @@ def main() -> int:
         "touches": touches,
         "policy_decisions": decisions,
         "still_queued": queued,
+        "deferred_by_window": deferred_by_window,
         "webhook_effects": webhook_effects,
         "synced": {"accounts": synced.accounts, "people": synced.people,
                    "links": synced.links, "opportunities": synced.opportunities,
@@ -307,6 +329,24 @@ def main() -> int:
               file=sys.stderr)
         return 1
     return 0
+
+
+def _pull_forward(db, tid: str) -> list[str]:
+    """Bring the smoke tenant's window-deferred steps due now.
+
+    Returns when each was due, for the report. Only steps the planner pushed
+    into the future are touched: a step due now is left to the tick.
+    """
+    with db.tenant_tx(tid) as cur:
+        cur.execute("select id, run_after from action"
+                    " where state = 'pending' and run_after > now()")
+        rows = cur.fetchall()
+        if not rows:
+            return []
+        cur.execute("update action set run_after = now() where id = any(%s)",
+                    ([r["id"] for r in rows],))
+    return [r["run_after"].astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            for r in rows]
 
 
 if __name__ == "__main__":

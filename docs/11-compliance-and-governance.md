@@ -59,6 +59,20 @@ Typical GTM usage falls in the **limited risk** band (transparency obligations),
 - **Technical documentation of the scoring system**: per-factor explainability is mandatory in the engine (`explain: true` is not optional).
 - **Prohibitions**: no inference of special categories of data (health, orientation, religion, union membership, political belief) and no scoring based on them. A hard engine rule, not a setting.
 
+## What a model provider sees
+
+The agent layer is **off by default** (`ZOLTS_AGENTS` unset): until a deployment turns it on, nothing leaves the runtime for a model provider. When it is on, three agents call the model, and each sends a retrieved subset rather than the record (`runtime/engine/generate.py`, `runtime/research.py`):
+
+| Agent | What is sent | What is never sent |
+|---|---|---|
+| Copywriter | the account's name, employee band and country; the contact's full name; the signal payloads that enrolled them, as the source delivered them | email addresses, phone numbers, the CRM record, anything of another tenant's |
+| Researcher | the account's name, domain, employee band and country; its contacts' names, titles, seniority and buying roles; its recent signals | the same |
+| Triage | the text of one reply, truncated to 2,000 characters | the sender's address, the thread, the recipient |
+
+Every call is priced before it is made and recorded after it (`docs/08`), and every generated message is a proposal that a gate or a person approves before anything is sent (ADR-012). The provider is Anthropic, through the official SDK, under the API terms in force when the deployment is configured; those terms govern retention and training, not this page, and a customer's DPA names the provider as a sub-processor.
+
+**The endpoint is a control, and it is per deployment.** `ZOLTS_MODEL_BASE_URL` moves every call to a gateway that serves the Messages API shape — a customer's own, or one that logs, filters or pins a region — with no change to the code (ADR-011). It is one variable per deployment, not per tenant: a tenant who needs their own gateway needs their own deployment today, and per-tenant routing is decision 36. ADR-011 read as though a tenant could route on their own, and `docs/23` repeated it as a mitigation; both said more than the code does (D-42).
+
 ## Security and certifications (sequence)
 
 | Phase | Milestone | Why in that order |
