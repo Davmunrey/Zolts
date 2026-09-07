@@ -677,3 +677,21 @@ One key seals every connector credential and every webhook signing secret, for e
 **A credential nothing can open is named, not raised on.** Raising would abandon every other credential in the database on account of one whose key is already gone. The row keeps its key id, `outstanding` keeps counting it, the CLI exits non-zero, and preflight refuses to start in production — but the other credentials are safe by then.
 
 **What actually retires the old key is removing it from the environment**, not running the command. The CLI says so on completion, because a rotation that leaves the old key configured has moved the ciphertext and kept the exposure.
+
+
+**ADR-040 · A payload that cannot answer a question is answering "no".**
+`POST /v1/signals` is the front door for data this runtime does not control. `runtime/engine/triggers.py` has always said so — *signal payloads are external data and a partial one is a non-match, not an outage* — and that was true only of a field that is absent. A field that is **present and unusable** raised `TypeError` and came out of the endpoint as a 500 (D-37).
+
+| The payload | The answer | Who is told |
+|---|---|---|
+| the field, correctly typed | matches, or does not | nobody — this is the normal path |
+| the field absent | non-match | nobody — a partial payload is a non-match by design |
+| the field present and unusable | non-match | **the sender, in the response; the operator, in the audit log** |
+
+**The third row is the whole ADR.** Silence would make a source that quotes its numbers indistinguishable from a source with nothing to report, and the two need opposite responses: one is a normal quiet week, the other is an integration that has been broken since a deploy nobody connected to it. So `triggers.matches` collects what it could not evaluate, `enroll` turns each into an `IngestOut.warnings` entry and a `signal.unanswerable` audit row, and the 200 stays a 200.
+
+**The sender is told first**, because the sender is the only party who can stop quoting the number. A warning in the response reaches the engineer whose integration is failing; a log line reaches somebody who has to be looking.
+
+**Only `TypeError` is absorbed.** It is the shape a data problem takes when a comparison meets the wrong type. An expression that is invalid — a typo, an unknown function — is a broken program rather than a bad payload, and it still raises.
+
+**What this constrains.** Any future path that evaluates a tenant's expression against external data follows the same three rows: absent is quiet, unusable is named, invalid still raises. A path that raises on the second is a 500 waiting for the first customer whose CRM exports strings.

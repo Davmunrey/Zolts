@@ -7,7 +7,7 @@ denominator, and no action is ever queued against it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dc_field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,6 +35,10 @@ class IngestResult:
     """
     signal_id: str | None
     enrollments: list["Enrolled"]
+    # Predicates this payload could not answer, in the sender's own terms.
+    # Returned rather than only logged: the source that quotes a number is the
+    # only party who can stop quoting it, and it is holding the response.
+    warnings: list[str] = dc_field(default_factory=list)
 
     @property
     def deduplicated(self) -> bool:
@@ -95,13 +99,31 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
         return IngestResult(signal_id=None, enrollments=[])
 
     results: list[Enrolled] = []
+    warnings: list[str] = []
     for program in programs.live(cur):
         spec = program["spec"]
         if type not in triggers.signal_types(spec):
             continue
         history = signals.within_window(
             cur, entity_id, triggers.signal_types(spec), triggers.window_start(spec, now))
-        reason = triggers.matches(spec, signal, history)
+        unanswerable: list[triggers.Unanswerable] = []
+        reason = triggers.matches(spec, signal, history, notes=unanswerable)
+        if unanswerable:
+            # A payload that carries the field and cannot answer the question:
+            # a number sent as a string, a null where a figure goes. It is a
+            # non-match, and it is reported twice — to the sender, in the
+            # ingest response, and to the operator, here — because a source
+            # sending the wrong type looks exactly like a source sending
+            # nothing that matches, and the two need opposite responses. D-37.
+            seen = {(note.clause, note.detail) for note in unanswerable}
+            ledger.audit(cur, tenant_id, actor="engine", action="signal.unanswerable",
+                         subject=str(program["id"]),
+                         detail={"program": program["key"], "signal": type,
+                                 "clauses": [{"where": clause, "error": detail}
+                                             for clause, detail in sorted(seen)]})
+            warnings.extend(
+                f"program '{program['key']}' could not evaluate `{clause}`: {detail}"
+                for clause, detail in sorted(seen))
         if reason is None:
             continue
 
@@ -157,4 +179,5 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
                              "tier": tier, "reason": reason})
         results.append(Enrolled(str(row["id"]), program["key"], variant,
                                 effective_score, tier, reason))
-    return IngestResult(signal_id=str(signal["id"]), enrollments=results)
+    return IngestResult(signal_id=str(signal["id"]), enrollments=results,
+                        warnings=warnings)
