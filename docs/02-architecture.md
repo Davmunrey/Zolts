@@ -43,7 +43,7 @@ The loop is closed: L3 writes outcomes back into L1, which feed retraining in L5
 ### 1. Durable runtime
 A GTM program is a long-running workflow: wait three days, retry a downed provider, respect quiet hours, pause when the contact replies. Implementing this with cron plus queues is guaranteed debt.
 
-- **Temporal** as the engine: durable execution, retries, workflow versioning, deterministic replay.
+- **A Postgres outbox with leases** as the engine (ADR-007): every external action is a row written in the same transaction as the state that justified it, claimed under a lease, retried with backoff, dead-lettered. Temporal was the plan this section was written around; what ships needs no second system, and ADR-007 says what would make that the wrong call.
 - Every execution produces an **auditable trace**: which signal triggered it, which data was purchased and from whom, what the scorer decided, which text which model generated from which prompt, what was sent, and what happened.
 - Cost is attributed per execution (credits, tokens, sends) — the basis of the per-play P&L.
 
@@ -61,13 +61,15 @@ Deterministic assignment (stable hash of `account_id + program_id + salt`) to co
 
 ## Technical stack (decisions)
 
-| Layer | Choice | Rejected alternative | Reason |
-|---|---|---|---|
-| Core language | TypeScript (Node 22) | Go | Iteration speed, one language front to back, connector ecosystem |
-| ML / scoring | Python (FastAPI + scikit/LightGBM) | Pure TS | Mature modelling tooling; isolated service |
-| Workflow runtime | Temporal | BullMQ / Airflow | Durability and replay; Airflow is batch, not event-driven |
-| OLTP | Postgres 16 + RLS | MySQL | RLS for multi-tenancy, JSONB, pgvector, extensions |
-| OLAP | ClickHouse | Own BigQuery | Per-event cost on touches and traces; dashboard latency |
+The table was written before a line of the runtime existed, and two of its rows are not what ships (D-45). The column on the right is the measurement; the ADRs below record why it differs.
+
+| Layer | Planned | Rejected alternative | Reason | **What ships** |
+|---|---|---|---|---|
+| Core language | TypeScript (Node 22) | Go | Iteration speed, one language front to back, connector ecosystem | **Python 3.11**, one language for the reference core, the runtime and the API (FastAPI). TypeScript remains the plan for a studio front end, which does not exist yet |
+| ML / scoring | Python (FastAPI + scikit/LightGBM) | Pure TS | Mature modelling tooling; isolated service | **Deterministic scoring in `zolts/`**, explainable per factor; no trained model yet |
+| Workflow runtime | Temporal | BullMQ / Airflow | Durability and replay; Airflow is batch, not event-driven | **A Postgres outbox with leases** (ADR-007); on Vercel the worker is a cron-invoked tick (ADR-041) |
+| OLTP | Postgres 16 + RLS | MySQL | RLS for multi-tenancy, JSONB, pgvector, extensions | **Postgres 16 with RLS forced** on every tenant-scoped table (ADR-008) |
+| OLAP | ClickHouse | Own BigQuery | Per-event cost on touches and traces; dashboard latency | **Not built.** Touches, decisions and costs are Postgres rows; the console reads them directly. Returns when a tenant's volume makes that the bottleneck (`docs/20`, "what would break first at scale") |
 | Customer warehouse | Snowflake/BigQuery/Databricks/Postgres (BYO) | Copy everything into Zolts | Removes the data governance objection and storage COGS |
 | Streaming | Redpanda (Kafka API) | SQS | Event replay, log semantics |
 | Cache / rate limiting | Redis | — | Per-provider and per-mailbox quotas |
@@ -498,7 +500,7 @@ The worker is the product. The API answers questions; the worker is what actuall
 
 **Parsing is not running.** A command that parses can still fail on a missing file, an unset variable or a wrong working directory, so CI now also executes both — the worker with `--once` so it drains and exits, the API against the port `fly.toml` routes to.
 
-What is still unverified is Fly itself, and that is correct: it needs an account and three secrets that are the founder's to hold. Everything up to the boundary of that account is now executed rather than described.
+What is still unverified is Fly itself, and that is correct: it needs an account and three secrets that are the founder's to hold. Everything up to the boundary of that account is now executed rather than described. The host was later decided to be Vercel (ADR-041); the container path this ADR describes stays built and executed in CI as the option for a customer who insists on their own infrastructure.
 
 
 **ADR-033 · The restore is run, and the first attempt to run it proved nothing.**

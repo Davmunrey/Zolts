@@ -122,6 +122,23 @@ def test_the_readme_counts_the_register():
         f"{register.group(1)}")
 
 
+def test_the_stack_table_names_what_ships():
+    """`docs/02` chose TypeScript, Temporal and ClickHouse before a line of the
+    runtime existed, and kept saying so after the runtime was Python on a
+    Postgres outbox (D-45). The plan may stay in the table; the column beside
+    it has to be the measurement."""
+    text = ARCHITECTURE.read_text()
+    table = text[text.index("## Technical stack"):text.index("## ", text.index("## Technical stack") + 5)]
+    rows = {line.split("|")[1].strip(): line for line in table.splitlines()
+            if line.startswith("| ") and not line.startswith("| Layer")}
+    assert "outbox" in rows["Workflow runtime"].lower(), (
+        "the stack table's runtime row no longer says what ships is a Postgres outbox")
+    assert "python" in rows["Core language"].lower(), (
+        "the stack table's language row no longer says what ships is Python")
+    typescript = [p for d in ("runtime", "zolts") for p in (ROOT / d).rglob("*.ts")]
+    assert not typescript, f"TypeScript has arrived: {typescript[:3]}; the stack table is stale again"
+
+
 # -- what the documents cite must exist -----------------------------------
 
 def _cited(pattern: str) -> dict[int, set[str]]:

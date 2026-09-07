@@ -4,7 +4,7 @@
 
 | Role | FTE | Responsibility | Loaded cost/month (Europe) |
 |---|---|---|---|
-| Founding engineer — backend/runtime | 1.0 | Temporal, DSL, idempotency, policy engine | €9-11k |
+| Founding engineer — backend/runtime | 1.0 | Durable runtime (the outbox, ADR-007), DSL, idempotency, policy engine | €9-11k |
 | Data/platform engineer | 1.0 | Ingestion, identity graph, waterfall router, warehouse | €8-10k |
 | Full-stack engineer | 1.0 | Studio, CLI, onboarding, billing | €7-9k |
 | AI/ML engineer | 0.5-1.0 | Agents, evals, scoring | €9-12k |

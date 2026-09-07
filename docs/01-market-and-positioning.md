@@ -38,7 +38,7 @@ Explicit anti-positioning: not a CRM, not a contact database, not an autonomous 
 
 | Component | Decision | Structural rationale |
 |---|---|---|
-| Durable execution runtime | **Build** (on Temporal) | The core of the moat; competitors cannot replicate it without rewriting their product |
+| Durable execution runtime | **Build** (a Postgres outbox with leases today, ADR-007; Temporal was the plan) | The core of the moat; competitors cannot replicate it without rewriting their product |
 | Program DSL and versioning | **Build** | Defines the ontology; creates legitimate switching cost, not data lock-in |
 | Identity graph / resolution | **Build** | Quality here determines everything downstream; impossible to outsource |
 | Jurisdictional policy engine | **Build** | Regulatory moat, European advantage, nobody has it |
