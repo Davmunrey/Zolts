@@ -37,6 +37,22 @@ RESTORE = Path("scripts/restore.sh")
 PASSWORD = "restore-test-not-a-secret"
 
 
+def _environment(**extra: str) -> dict[str, str]:
+    """The environment every subprocess here needs, in one place.
+
+    `ZOLTS_SECRET_KEY` is not set in CI's test job, and `Settings.from_env`
+    builds the whole configuration before dispatching, so even `migrate` — which
+    never seals anything — refuses without it. A call that inherited the
+    environment and happened to work locally is a test whose requirements are
+    undeclared: it passed here and failed in CI, which is the only way that
+    class of defect ever announces itself.
+    """
+    return dict(os.environ, PYTHONPATH=".", ZOLTS_ENV="development",
+                ZOLTS_SECRET_KEY=os.environ.get("ZOLTS_SECRET_KEY",
+                                                "restore-test-key"),
+                **extra)
+
+
 def _with_database(url: str, name: str) -> str:
     parts = urlsplit(url)
     return urlunsplit((parts.scheme, parts.netloc, f"/{name}",
@@ -86,10 +102,7 @@ def restored(db, tmp_path):
         pytest.skip(f"cannot create a database to restore into: {created.stderr[:160]}")
 
     url = _with_database(OWNER_URL, name)
-    environment = dict(os.environ, PYTHONPATH=".", ZOLTS_ENV="development",
-                       APP_ROLE=role,
-                       ZOLTS_SECRET_KEY=os.environ.get("ZOLTS_SECRET_KEY",
-                                                       "restore-test-key"))
+    environment = _environment(APP_ROLE=role)
     result = subprocess.run(["bash", str(RESTORE), str(dump), url, PASSWORD],
                             capture_output=True, text=True, env=environment,
                             timeout=300)
@@ -173,8 +186,7 @@ def test_the_restored_schema_is_current(restored):
     assert result.returncode == 0, result.stderr[-1500:]
     check = subprocess.run(
         ["python3", "-m", "runtime.cli", "migrate"],
-        capture_output=True, text=True,
-        env=dict(os.environ, PYTHONPATH=".", ZOLTS_DATABASE_URL=url))
+        capture_output=True, text=True, env=_environment(ZOLTS_DATABASE_URL=url))
     assert check.returncode == 0, check.stderr[-1000:]
     # `migrate` reports what it applied. On a restored database that step 3
     # already brought forward there is nothing left to apply; anything here is
@@ -225,10 +237,7 @@ def test_a_restore_that_hits_an_error_fails_instead_of_reporting_success(db, tmp
             ["bash", str(RESTORE), str(dump),
              _with_database(OWNER_URL, name), PASSWORD],
             capture_output=True, text=True, timeout=300,
-            env=dict(os.environ, PYTHONPATH=".", ZOLTS_ENV="development",
-                     APP_ROLE=role,
-                     ZOLTS_SECRET_KEY=os.environ.get("ZOLTS_SECRET_KEY",
-                                                     "restore-test-key")))
+            env=_environment(APP_ROLE=role))
         assert result.returncode != 0, (
             "the restore reported success on a dump it could not fully apply")
     finally:
@@ -324,10 +333,7 @@ def test_a_dump_from_an_older_schema_is_brought_forward(db, tmp_path):
         result = subprocess.run(
             ["bash", str(RESTORE), str(dump), restored_url, PASSWORD],
             capture_output=True, text=True, timeout=300,
-            env=dict(os.environ, PYTHONPATH=".", ZOLTS_ENV="development",
-                     APP_ROLE=role,
-                     ZOLTS_SECRET_KEY=os.environ.get("ZOLTS_SECRET_KEY",
-                                                     "restore-test-key")))
+            env=_environment(APP_ROLE=role))
         assert result.returncode == 0, (
             f"restoring an older dump failed:\n{result.stdout[-1500:]}\n"
             f"{result.stderr[-1500:]}")
