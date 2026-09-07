@@ -115,7 +115,9 @@ def test_keys_are_tenant_scoped(db, client, key, other_tenant):
 
 @requires_db
 def test_liveness_reports_a_draining_deployment(client):
-    body = client.get("/health/liveness").json()
+    answer = client.get("/health/liveness")
+    assert answer.status_code == 200
+    body = answer.json()
     assert body["draining"] is True
     assert {s["name"] for s in body["signals"]} == {
         "outbox draining", "actions completing", "connections healthy",
@@ -142,7 +144,12 @@ def test_a_stalled_outbox_is_reported_while_health_still_says_ok(db, client, ten
     assert not stalled.ok
     assert stalled.value == 3
     assert "no worker is running" in stalled.detail
-    assert client.get("/health/liveness").json()["draining"] is False
+    answer = client.get("/health/liveness")
+    assert answer.json()["draining"] is False
+    assert answer.status_code == 503, (
+        "`docs/20` says point a monitor at this endpoint, and what a monitor reads "
+        "is the status code. Answering 200 with the failure in the body is a check "
+        "that cannot fail where it is read")
 
 
 @requires_db
@@ -196,9 +203,11 @@ def test_liveness_answers_even_when_the_database_is_gone(db):
 
     broken = Database("postgresql://nobody:nobody@127.0.0.1:1/nothing")
     client = TestClient(create_app(broken), raise_server_exceptions=False)
-    body = client.get("/health/liveness").json()
+    answer = client.get("/health/liveness")
+    body = answer.json()
     assert body["draining"] is False
     assert body["signals"][0]["name"] == "database"
+    assert answer.status_code == 503, "a database that is gone is not a healthy deployment"
 
 
 # -- the throttle --------------------------------------------------------

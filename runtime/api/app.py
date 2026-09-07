@@ -112,21 +112,35 @@ def create_app(db: Database, *, install_connectors: bool = True,
             connectors=sorted({p for c in ("email", "task", "crm") for p in providers_for(c)}))
 
     @app.get("/health/liveness")
-    def liveness() -> dict[str, Any]:
+    def liveness(response: Response) -> dict[str, Any]:
         """Whether this deployment is doing its job, not whether it is up.
 
         Deliberately not tenant-scoped and deliberately counts only: it answers
         an operator's question, and returning a tenant's identifiers on an
         unauthenticated path would answer a different one.
+
+        **A failing signal answers 503.** `docs/20` says "point a monitor at
+        it", and what a monitor reads is the status code: this endpoint used to
+        answer 200 with `draining: false` in the body, so an uptime check saw a
+        healthy deployment while the outbox was stalled. `smoke_deployed.py`
+        was already written for the 503 that nothing sent.
+
+        Fly's own health check probes `/health`, not this path, so a stalled
+        outbox does not make Fly restart the API — which would be the wrong
+        response to a worker's problem, and would make it worse.
         """
         from runtime import liveness as liveness_module
 
         try:
             report = liveness_module.check(db)
         except Exception as exc:  # noqa: BLE001 - a monitor must get an answer
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return {"draining": False, "signals": [
                 {"name": "database", "ok": False, "detail": str(exc), "value": 0}]}
-        return report.as_dict()
+        body = report.as_dict()
+        if not body["draining"]:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return body
 
     # -- keys ------------------------------------------------------------
 
