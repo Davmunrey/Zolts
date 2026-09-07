@@ -256,3 +256,35 @@ def test_the_app_role_may_use_every_sequence(db):
     assert not ungranted, (
         f"the role that serves tenant requests cannot use {ungranted}; every "
         f"insert into the owning table fails")
+
+
+def test_adr_003_does_not_claim_a_warehouse_the_runtime_does_not_read():
+    """ADR-003 was written in the present tense — "Zolts materialises only what
+    execution requires" — and the word `warehouse` appears nowhere in the
+    runtime. What ships copies contacts and accounts into Zolts's own Postgres.
+
+    A buyer's security review reads that ADR and asks to see the connector.
+    This guard runs in both directions: while nothing reads a warehouse the
+    document must say so, and the day something does, the document is stale
+    and this fails until it is corrected.
+    """
+    import re
+    from pathlib import Path
+
+    runtime = " ".join(p.read_text(encoding="utf-8")
+                       for p in Path("runtime").rglob("*.py"))
+    implemented = bool(re.search(r"\bwarehouse\b|\bsnowflake\b|\bbigquery\b",
+                                 runtime, re.I))
+    adr = Path("docs/02-architecture.md").read_text(encoding="utf-8")
+    block = adr[adr.index("**ADR-003 ·"):]
+    block = block[:block.index("**ADR-004")]
+    disclaimed = "not what ships" in block or "not yet implementation" in block
+
+    if implemented:
+        assert not disclaimed, (
+            "the runtime reads a warehouse now; ADR-003 still says it does not")
+    else:
+        assert disclaimed, (
+            "ADR-003 claims zero-copy over a warehouse in the present tense and "
+            "nothing in runtime/ reads one. The document is corrected, never "
+            "the measurement")

@@ -504,10 +504,16 @@ def create_app(db: Database, *, install_connectors: bool = True,
             raise HTTPException(422, str(exc)) from exc
 
         with db.tenant_tx(principal.tenant_id) as cur:
-            row = programs.publish(cur, principal.tenant_id, key=body.key, version=body.version,
-                                   spec=body.spec, spec_hash=program.spec_hash,
-                                   status="draft", created_by=principal.key_id,
-                                   metadata=metadata)
+            try:
+                row = programs.publish(cur, principal.tenant_id, key=body.key,
+                                       version=body.version, spec=body.spec,
+                                       spec_hash=program.spec_hash, status="draft",
+                                       created_by=principal.key_id, metadata=metadata)
+            except programs.VersionIsImmutable as exc:
+                # 409, not 422: the document is valid, the version is taken.
+                # An operator who republishes v2.1.0 with a new holdout needs
+                # to be told to bump it, not that their spec is wrong.
+                raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
             if body.activate:
                 row = programs.activate(cur, str(row["id"]))
             ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
