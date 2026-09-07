@@ -235,6 +235,23 @@ def tighten(rule: JurisdictionRule, overrides: dict[str, Any]) -> JurisdictionRu
     A refusal is reserved for a declaration nobody can act on — a half-written
     window, a timezone nothing implements. Those are configuration mistakes,
     not relaxations.
+
+    **Not the same question as `zolts.overlay`, which answers a similar one.**
+    `overlay.resolve` merges the customer's own configuration layers —
+    blueprint, industry pack, tenant, program — and there a lower layer that
+    weakens an inherited policy is a hard error, because the layers are all the
+    customer's and one of them contradicting another is a mistake somebody
+    made.
+
+    This function merges the customer's configuration with the *jurisdiction's*
+    rule, which nobody in the customer's organisation authored. A program sold
+    in six countries states one baseline, and under a stricter country the
+    country wins without anybody having made a mistake. Raising there would
+    reject correct programs, which is what the first version of this did.
+
+    Two layers of the same shape, two different answers, for a reason worth
+    keeping: a customer may not contradict themselves, and may not overrule
+    the law.
     """
     if not overrides:
         return rule
