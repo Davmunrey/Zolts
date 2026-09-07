@@ -176,6 +176,13 @@ def main() -> int:
             page.wait_for_selector(".dactions .btn-p", timeout=15_000)
             report["after_activate"] = page.locator(".dactions .btn-p").first.inner_text()
 
+            # 3a. The activation answered with a note — this tenant has no
+            #     baseline — and the console's reload used to discard it.
+            #     Decision 35 says noted where an operator looks, and this is
+            #     where they look (D-43).
+            page.wait_for_selector("#activation-note", timeout=15_000)
+            report["activation_note"] = page.locator("#activation-note").inner_text()
+
             # 3b. ADR-002 said the UI generates DSL, and the button that
             #     promised it was labelled "Open in editor" and did nothing.
             #     This drives the real one: open it, change the holdout, and
@@ -389,6 +396,10 @@ def main() -> int:
         if report["drawn_over_text_on_a_phone"]:
             print("something is drawn on top of text at 390px:",
                   json.dumps(report["drawn_over_text_on_a_phone"])[:400], file=sys.stderr)
+            return 1
+        if "baseline" not in (report.get("activation_note") or ""):
+            print("the activation answered with a note and the console did not show it:",
+                  json.dumps(report.get("activation_note")), file=sys.stderr)
             return 1
         # The document the browser built is in the database, at the version it
         # bumped to and carrying the value that was typed. Anything less and

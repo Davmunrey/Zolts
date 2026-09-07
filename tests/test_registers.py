@@ -99,6 +99,29 @@ def test_every_defect_states_how_it_was_found():
             f"five ways this register counts")
 
 
+def test_the_readme_counts_the_register():
+    """The README quotes how many defects the register holds and how many share
+    the recurring shape. It said 31 and twenty-two while the register held 41
+    and twenty-six: a number in prose is not re-measurable, so it is never
+    re-measured — the same defect as the finding-method table, one document up.
+    """
+    readme = (ROOT / "README.md").read_text()
+    stated = re.search(r"corrected \*\*(\d+) defects\*\*", readme)
+    assert stated, "the README no longer says how many defects were corrected"
+    assert int(stated.group(1)) == len(_rows(DEFECTS)), (
+        f"the README says {stated.group(1)} defects and the register holds "
+        f"{len(_rows(DEFECTS))}. The document is corrected, never the measurement")
+
+    shape = re.search(r"([A-Z][a-z]+(?:-[a-z]+)?) of them were the same shape", readme)
+    assert shape, "the README no longer says how many defects share the recurring shape"
+    register = re.search(r"([A-Z][a-z]+(?:-[a-z]+)?) of the [a-z]+(?:-[a-z]+)? are one defect",
+                         DEFECTS.read_text())
+    assert register, "the register no longer states the recurring-shape count"
+    assert _numeral(shape.group(1)) == _numeral(register.group(1)), (
+        f"the README says {shape.group(1)} share the shape and the register says "
+        f"{register.group(1)}")
+
+
 # -- what the documents cite must exist -----------------------------------
 
 def _cited(pattern: str) -> dict[int, set[str]]:

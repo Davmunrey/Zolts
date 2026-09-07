@@ -1,9 +1,10 @@
 """The model client.
 
-One SDK, one shape. `base_url` is configurable so a tenant can route through a
-gateway — OmniRoute serves the Messages API shape, so the official Anthropic
-SDK reaches it unchanged — without this repository growing a second, provider
-neutral abstraction that has to be kept honest.
+One SDK, one shape. `base_url` is configurable so a deployment can route
+through a gateway — OmniRoute serves the Messages API shape, so the official
+Anthropic SDK reaches it unchanged — without this repository growing a second,
+provider-neutral abstraction that has to be kept honest. `docs/11` says what
+each agent sends through it.
 
 Every call is priced before it happens and recorded after it. The token count
 that the spend guard judges comes from `count_tokens`, not from an estimate:
@@ -59,7 +60,8 @@ class ModelClient:
         if api_key:
             kwargs["api_key"] = api_key
         if self.base_url:
-            # A tenant routing through their own gateway. The SDK is the same;
+            # A deployment routing through a gateway — one endpoint per
+            # deployment, not per tenant (decision 36). The SDK is the same;
             # only the endpoint moves.
             kwargs["base_url"] = self.base_url
         self._client = anthropic.Anthropic(**kwargs)

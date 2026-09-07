@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 41 | `docs/22`, ADR-001 … ADR-042 |
-| Tests | 1060 | 346 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1065 | 346 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -40,7 +40,6 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | ID | Item | Consequence of not doing it | Size |
 |---|---|---|---|
 | **SEC-2** | Backup schedule and a restore drill on a real managed Postgres | The restore script is now executed in tests (ADR-033) against a local cluster. It has never run against Neon | S |
-| **SEC-3** | Document what a model provider sees, and the gateway option | Enterprise diligence asks. `base_url` is configurable (ADR-011); nobody has written down that it is a control | XS |
 | **OPS-3** | Route the 503 somewhere that wakes a person | Narrower than it was: once `ZOLTS_URL` is set, the hourly strict smoke in `deploy-vercel.yml` fails and notifies the repository owner when any signal fails, including a cron that stopped ticking. What remains is a monitor with a pager rather than an email | XS |
 
 ### Verification
@@ -85,6 +84,7 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **The console on a phone** | Nothing may be drawn on top of text: the check measures where the glyphs start rather than where the box does, which is what made three collisions invisible to every clipping and overflow check | D-38, `browser_console.py` |
 | **Admission** | A program is checked where it is stored, not where it arrives: holdout, audience, enrichment pricing and policy overrides run inside `publish`, so signup and the CLI get the same answer as the API | ADR-037, `test_admission.py` |
 | **Baseline** | What a tenant cost and produced before Zolts, frozen once at onboarding with a digest the pilot letter quotes; activation without one is noted where an operator looks | ADR-042, `test_baseline.py`, `docs/26` |
+| **Model provider disclosure** | What each agent sends and never sends, that the agent layer is off by default, and that the endpoint is a per-deployment control — with the per-tenant promise two documents made and the code did not keep corrected | `docs/11`, D-42, `test_model_provider_disclosure.py` |
 
 ## How an item earns its place
 
