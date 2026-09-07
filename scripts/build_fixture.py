@@ -190,15 +190,30 @@ def _prospects() -> dict[str, object]:
         ("Chloé Marchand", "chloe@vireo.example", None, "Vireo Labs", ["phone"]),
         ("Diego Sastre", "diego@kestrel.example", "+34600333444", "Kestrel Data", []),
         ("Eve Lindqvist", None, "+46700555666", "Harbour Systems", ["email"]),
+        ("Farid Haddad", "farid@ternary.example", "+4915112233", "Ternary AG", []),
+        ("Greta Nowak", "greta@nordwind.example", None, "Nordwind BV", ["phone"]),
+        ("Hugo Beltrán", None, None, "Almacen Sur", ["email", "phone"]),
+        ("Iris Lambert", "iris@pallas.example", "+34611445566", "Pallas Retail", []),
+        ("Jonas Rieger", "jonas@orbit.example", None, "Orbit Freight", ["phone"]),
+        ("Kaia Lindholm", None, "+358401234567", "Cobalt Health", ["email"]),
+        ("Luca Ferrari", "luca@vireo.example", "+390212345678", "Vireo Labs", []),
+        ("Marta Sousa", "marta@harbour.example", None, "Harbour Systems", ["phone"]),
+        ("Nils Bergqvist", "nils@ternary.example", "+46812345678", "Ternary AG", []),
     ]
     # The last column is the dossier: one complete, one thin because the
     # verifier struck claims out of it, and two with none. A demo where every
     # account is researched shows nothing about what researching costs.
     accounts = [
         ("Northwind Traders", "northwind.example", "ES", "51-200", "62.01", 2, [], "complete"),
-        ("Vireo Labs", "vireo.example", "FR", "11-50", "72.19", 1, [], "thin"),
+        ("Vireo Labs", "vireo.example", "FR", "11-50", "72.19", 2, [], "thin"),
         ("Kestrel Data", "kestrel.example", "DE", None, None, 1, ["firmographics"], None),
-        ("Harbour Systems", "harbour.example", "GB", "201-500", "61.90", 1, [], None),
+        ("Harbour Systems", "harbour.example", "GB", "201-500", "61.90", 2, [], "complete"),
+        ("Ternary AG", "ternary.example", "DE", "501-1000", "62.09", 2, [], None),
+        ("Nordwind BV", "nordwind.example", "NL", "51-200", "46.90", 1, [], "complete"),
+        ("Almacen Sur", "almacensur.example", "ES", None, None, 1, ["firmographics"], None),
+        ("Pallas Retail", "pallas.example", "ES", "201-500", "47.11", 1, [], "thin"),
+        ("Orbit Freight", "orbit.example", "ES", "11-50", "52.29", 1, [], None),
+        ("Cobalt Health", "cobalt.example", "FI", "1001-5000", "86.10", 1, [], "complete"),
     ]
     return {
         "accounts": [{"id": f"acct-{i}", "name": n, "domain": d, "country": c,
@@ -213,9 +228,9 @@ def _prospects() -> dict[str, object]:
         # demo shows the number that matters beside the one that flatters.
         "research": {"accounts": len(accounts),
                      "withDossier": sum(1 for a in accounts if a[7]),
-                     "stale": 1,
-                     "byState": {"complete": {"count": 1, "stale": 1},
-                                 "thin": {"count": 1, "stale": 0}}},
+                     "stale": 2,
+                     "byState": {"complete": {"count": 4, "stale": 2},
+                                 "thin": {"count": 2, "stale": 0}}},
         "missingCounts": {
             "firmographics": sum(1 for a in accounts if a[6]),
             "email": sum(1 for p in people if "email" in p[4]),
@@ -233,29 +248,48 @@ def _signals_view() -> dict[str, object]:
     from zolts.signals import catalogue
 
     defined = catalogue()
+    # Every signal a shipped program triggers on, so the watch list is the
+    # order rather than the menu — and the stale column has something in it,
+    # because a source that keeps finding things too late is the one to
+    # replace and it only shows up if staleness is counted.
     watched = [
-        ("funding.round", 412, 3, 0),
-        ("hiring.role_opened", 412, 11, 1),
-        ("product.limit_hit", 2140, 27, 0),
+        ("funding.round", 412, 3, 0, "2026-09-06"),
+        ("hiring.role_opened", 412, 11, 1, "2026-09-06"),
+        ("product.limit_hit", 2140, 27, 0, "2026-09-06"),
+        ("product.multi_user_signup", 2140, 34, 0, "2026-09-06"),
+        ("local.new_location_detected", 168, 6, 2, "2026-09-05"),
+        ("local.review_velocity_drop", 168, 4, 0, "2026-09-06"),
+        ("local.ads_activity_started", 168, 9, 1, "2026-09-05"),
+        ("commerce.cart_abandoned", 8930, 214, 0, "2026-09-06"),
+        ("commerce.replenishment_due", 8930, 96, 3, "2026-09-06"),
     ]
     recent = [
-        ("funding.round", "press_feed", "Northwind Traders", 0.7, 46),
-        ("hiring.role_opened", "jobs_feed", "Vireo Labs", 0.6, 18),
-        ("product.limit_hit", "product_events", "Harbour Systems", 0.8, 2),
+        ("funding.round", "press_feed", "Northwind Traders", 0.7, 46, "2026-09-06"),
+        ("hiring.role_opened", "jobs_feed", "Vireo Labs", 0.6, 18, "2026-09-06"),
+        ("product.limit_hit", "product_events", "Harbour Systems", 0.8, 2, "2026-09-06"),
+        ("product.multi_user_signup", "product_events", "Ternary AG", 0.5, 3, "2026-09-06"),
+        ("commerce.cart_abandoned", "commerce_events", "Iris Lambert", 0.4, 1, "2026-09-06"),
+        ("hiring.role_opened", "jobs_feed", "Cobalt Health", 0.6, 92, "2026-09-06"),
+        ("local.ads_activity_started", "ads_intel", "Almacen Sur", 0.5, 141, "2026-09-05"),
+        ("commerce.replenishment_due", "commerce_events", "Jonas Rieger", 0.6, 4, "2026-09-05"),
+        ("local.new_location_detected", "places_feed", "Pallas Retail", 0.7, 220, "2026-09-05"),
+        ("funding.round", "press_feed", "Nordwind BV", 0.9, 31, "2026-09-05"),
+        ("product.limit_hit", "product_events", "Orbit Freight", 0.8, 2, "2026-09-04"),
+        ("local.review_velocity_drop", "places_feed", "Kestrel Data", 0.5, 74, "2026-09-04"),
     ]
     return {
         "recent": [{"type": t, "source": src, "subject": subj, "strength": st,
-                    "observedAt": "", "detectionMinutes": mins}
-                   for t, src, subj, st, mins in recent
+                    "observedAt": seen, "detectionMinutes": mins}
+                   for t, src, subj, st, mins, seen in recent
                    if t in defined],
         "watched": [{"signal": k, "checks": c, "detected": d, "staleRefused": s,
-                     "lastChecked": ""}
-                    for k, c, d, s in watched if k in defined],
+                     "lastChecked": seen}
+                    for k, c, d, s, seen in watched if k in defined],
         # Detection dominates: the sources take longer to notice than the
         # runtime takes to act, which is the honest shape and the one that
         # tells an operator where to spend effort.
-        "latency": {"touches": 41, "detectionP95Minutes": 46,
-                    "executionP95Minutes": 4, "totalP95Minutes": 50},
+        "latency": {"touches": 388, "detectionP95Minutes": 141,
+                    "executionP95Minutes": 4, "totalP95Minutes": 145},
     }
 
 
@@ -413,26 +447,30 @@ def build() -> dict:
     # a key issued, a program published and activated, a draft approved.
     audit_view = {
         "entries": [
-            {"actor": "key:3b9fc918", "action": "program.activated",
-             "subject": "series-a", "detail": {"version": "1.2.0"},
-             "at": "2026-09-04T09:12:00+00:00"},
-            {"actor": "key:3b9fc918", "action": "proposal.approved",
-             "subject": "9f21ac04", "detail": {"tier": "t1"},
-             "at": "2026-09-04T09:08:00+00:00"},
-            {"actor": "key:3b9fc918", "action": "program.published",
-             "subject": "series-a", "detail": {"version": "1.2.0"},
-             "at": "2026-09-03T17:40:00+00:00"},
-            {"actor": "key:0c4471de", "action": "api_key.rotated",
-             "subject": "0c4471de", "detail": {"replaced": "1a77bd90"},
-             "at": "2026-09-02T11:05:00+00:00"},
-            {"actor": "key:0c4471de", "action": "api_key.created",
-             "subject": "3b9fc918", "detail": {"scopes": ["read", "write"]},
-             "at": "2026-09-01T08:30:00+00:00"},
+            {"actor": a, "action": act, "subject": s, "detail": {}, "at": at}
+            for act, a, s, at in [
+                ("proposal.approved", "key:3b9fc918", "c41d7e02", "2026-09-06T18:22:00+00:00"),
+                ("program.activated", "key:3b9fc918", "series-a", "2026-09-06T18:10:00+00:00"),
+                ("program.published", "key:3b9fc918", "series-a", "2026-09-06T18:04:00+00:00"),
+                ("sending_domain.verified", "key:0c4471de", "outbound", "2026-09-06T11:47:00+00:00"),
+                ("connection.stored", "key:0c4471de", "smartlead", "2026-09-06T11:40:00+00:00"),
+                ("proposal.rejected", "key:3b9fc918", "77ba1c39", "2026-09-05T16:31:00+00:00"),
+                ("proposal.approved", "key:3b9fc918", "1e9042aa", "2026-09-05T16:28:00+00:00"),
+                ("program.paused", "key:3b9fc918", "winback", "2026-09-05T09:15:00+00:00"),
+                ("api_key.rotated", "key:0c4471de", "0c4471de", "2026-09-04T11:05:00+00:00"),
+                ("program.published", "key:3b9fc918", "winback", "2026-09-03T17:40:00+00:00"),
+                ("connection.stored", "key:0c4471de", "hubspot", "2026-09-03T10:02:00+00:00"),
+                ("api_key.created", "key:0c4471de", "3b9fc918", "2026-09-01T08:30:00+00:00"),
+                ("tenant.created", "key:0c4471de", "northbeam", "2026-09-01T08:12:00+00:00"),
+            ]
         ],
-        "byAction": [{"action": "program.published", "count": 4},
-                     {"action": "proposal.approved", "count": 3},
-                     {"action": "program.activated", "count": 2},
+        "byAction": [{"action": "proposal.approved", "count": 14},
+                     {"action": "program.published", "count": 6},
+                     {"action": "connection.stored", "count": 4},
+                     {"action": "program.activated", "count": 4},
+                     {"action": "proposal.rejected", "count": 3},
                      {"action": "api_key.created", "count": 2},
+                     {"action": "program.paused", "count": 2},
                      {"action": "api_key.rotated", "count": 1}],
         "actors": ["key:0c4471de", "key:3b9fc918"],
     }
@@ -460,6 +498,11 @@ def build() -> dict:
         "programs": programs,
         "blueprints": sorted(catalog.blueprints),
         "plannedPrograms": sorted(catalog.planned_programs),
+        # What the blueprints promise and no file implements yet, with the
+        # blueprint that promises each. The served console computes it from
+        # the same catalogue, so the demo and a tenant show one section built
+        # by one rule rather than two that drift.
+        "catalogueGaps": catalog.gaps(),
         "decisions": decisions,
         "policyView": policy_view,
         "auditView": audit_view,

@@ -48,6 +48,20 @@ class Catalog:
             declared |= set(blueprint.programs)
         return declared - {p.key for p in self.programs}
 
+    def gaps(self) -> list[dict[str, str]]:
+        """The planned programs with the blueprint that promises each.
+
+        A key on its own is a name nobody can act on. The blueprint is what
+        tells an operator which of these is theirs, and it is the difference
+        between a list and a pipeline.
+        """
+        owner: dict[str, str] = {}
+        for key, blueprint in sorted(self.blueprints.items()):
+            for program in blueprint.programs:
+                owner.setdefault(program, key)
+        return [{"key": k, "blueprint": owner.get(k, "")}
+                for k in sorted(self.planned_programs)]
+
 
 def load_catalog(program_dir: Path | None = None) -> Catalog:
     source = program_dir or PROGRAM_DIR
