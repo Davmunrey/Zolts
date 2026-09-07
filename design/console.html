@@ -167,6 +167,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
        color:var(--ink-tertiary)}
 .pnote{margin:0 0 7px;font-size:12px;line-height:1.5;color:var(--ink-subtle)}
 .pnote:last-child{margin-bottom:0}
+.pnote + .props{margin-top:11px}
 .pnote b{font-weight:500;color:var(--ink-muted)}
 .arm{display:grid;grid-template-columns:64px 1fr 54px;gap:9px;align-items:center;font-size:12px;margin-bottom:7px}
 .arm em{font-style:normal;color:var(--ink-subtle)}
@@ -472,7 +473,7 @@ function renderReviewList(){
       + esc(r.id) + '" role="row" tabindex="0">'
       + dot(r.spendVerdict === "no" ? "deny" : "warn")
       + cell(r.agent + " · " + (r.step || r.channel || ""), "k")
-      + cell(r.program || r.channel || "", "m")
+      + cell(r.channel || "", "m")
       + cell(r.evalScore == null ? "—" : r.evalScore.toFixed(2), "n")
       + cell(r.state, "m warnt")
       + '</div>';
@@ -525,14 +526,19 @@ function renderReviewDetail(){
     + '</div>'
     + '<div class="block"><div class="blabel">Draft</div>' + body + '</div>'
     + dropped
+    // The reasons are sentences and the measurements are values, and they
+    // were in one property list. `.props dd` is nowrap and right-aligned, so
+    // "eval 0.81 below the 0.85 auto-send threshold" printed over the word
+    // "Gate" and ran off the panel — on the screen whose entire job is telling
+    // a person why they are being asked.
     + '<div class="block"><div class="blabel">Why a person is being asked</div>'
-      + '<dl class="props">'
-      + '<dt>Gate</dt><dd class="hi">' + esc(r.gateReason || "—") + '</dd>'
-      + '<dt>Eval score</dt><dd>' + (r.evalScore == null ? "—" : r.evalScore.toFixed(2)) + '</dd>'
-      + (r.evalFailures.length
-          ? '<dt>Failed checks</dt><dd class="hi">' + esc(r.evalFailures.join(", ")) + '</dd>' : "")
+      + '<p class="pnote"><b>Gate.</b> ' + esc(r.gateReason || "not recorded") + '</p>'
       + (r.needsHumanReason
-          ? '<dt>Provenance</dt><dd>' + esc(r.needsHumanReason) + '</dd>' : "")
+          ? '<p class="pnote"><b>Provenance.</b> ' + esc(r.needsHumanReason) + '</p>' : "")
+      + (r.evalFailures.length
+          ? '<p class="pnote"><b>Failed checks.</b> ' + esc(r.evalFailures.join(", ")) + '</p>' : "")
+      + '<dl class="props">'
+      + '<dt>Eval score</dt><dd class="hi">' + (r.evalScore == null ? "—" : r.evalScore.toFixed(2)) + '</dd>'
       + '<dt>Spend guard</dt><dd>' + esc(r.spendVerdict || "—") + '</dd>'
       + '<dt>Cost</dt><dd>€' + (r.costEur || 0).toFixed(4) + '</dd>'
       + '</dl></div>'
@@ -622,7 +628,7 @@ function renderDetail(){
     + '<div class="arm c"><em>Control</em><span class="track"><i style="transform:scaleX('
         + Math.min(1, p.ctrl / 25).toFixed(3) + ')"></i></span><span class="v">'
         + p.ctrl.toFixed(2) + '%</span></div>'
-    + '<dl class="props" style="margin-top:11px">'
+    + '<dl class="props">'
       + '<dt>Absolute lift</dt><dd class="hi">' + (d > 0 ? "+" : "") + d.toFixed(2) + ' pp</dd>'
       + '<dt>Minimum detectable effect</dt><dd class="hi">' + p.mde.toFixed(2) + ' pp</dd>'
       + '<dt>Treatment · control</dt><dd>' + nf(p.nTreat) + ' · ' + nf(p.nControl) + '</dd>'
@@ -861,7 +867,7 @@ var VIEWS = {
   review: {
     title: "Review queue",
     cols: "22px minmax(160px,1.4fr) 110px 90px 1fr",
-    head: ["", "Draft", "Program", "r:Score", "Waiting on"]
+    head: ["", "Draft", "Channel", "r:Score", "Waiting on"]
   },
   sending: {
     title: "Sending",

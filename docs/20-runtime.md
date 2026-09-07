@@ -458,7 +458,11 @@ Three defects came out of opening it in a browser rather than reading it:
 | `.seg` was never written | Six jurisdiction buttons rendered as one run of letters, `CADEESFRGBUS`, in the middle of a heading |
 | Prose sat in the `dd` column | `.props dd` is `nowrap`, so a sentence printed straight over its own label |
 
+The review queue's own panel had the third of these: the reason a person is being asked was a sentence in the `dd` column, so *"eval 0.81 below the 0.85 auto-send threshold"* printed over the word **Gate** and ran off the panel — on the screen whose entire job is telling a person why they are being asked. Reasons are prose now and measurements are values, which is what they always were.
+
 They share a shape: a name used in one place and defined in another, with nothing holding the two together. `tests/test_console_surface.py` holds them together now — it reads the view registry out of the script and asserts each view labels exactly the columns it has, and that every class the markup uses has a rule of its own. Each assertion was verified by breaking the thing it guards and watching it fail.
+
+`scripts/browser_console.py` measures the rest, on every view rather than three, and **exits non-zero** on either: a row taller than its declared height means a cell wrapped; a panel element wider than its box means a value is clipped or printing over its label. Neither is a matter of taste.
 
 The Programs list also shows what the blueprints promise and no program file implements — 25 plays across 11 blueprints, computed by `Catalog.gaps()` and read by the served console and the demo alike, so a list of four programs in a column built for hundreds no longer reads as a product with four programs.
 

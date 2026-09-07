@@ -175,10 +175,38 @@ def main() -> int:
             report["rail"] = [t.replace("\n", " ")
                               for t in page.locator("nav a").all_inner_texts()]
             report["dead_links"] = page.locator("nav a:not([data-view])").count()
-            for view in ("prospects", "signals", "spend"):
-                page.click(f'nav a[data-view="{view}"]')
+
+            # Every view, not three, and measured rather than eyeballed. Two
+            # things went wrong here that no test could see: five views wore
+            # the Programs header over columns sized for a different table, so
+            # values wrapped and rows grew into each other; and a sentence in
+            # a property list's value column, which is nowrap, printed over
+            # its own label and ran off the panel.
+            #
+            # A row taller than its declared height means a cell wrapped. A
+            # panel element wider than its box means a value is clipped or
+            # overlapping. Neither is a matter of taste.
+            wrapped, clipped = [], []
+            for entry in page.locator("nav a[data-view]").all():
+                view = entry.get_attribute("data-view")
+                entry.click()
                 page.wait_for_selector("#list .row, #list .empty", timeout=15_000)
+                tall = page.evaluate(
+                    "() => [...document.querySelectorAll('.row')]"
+                    ".filter(r => r.getBoundingClientRect().height > 40).length")
+                if tall:
+                    wrapped.append({"view": view, "rows": tall})
+                # `.cell` ellipsises on purpose; the detail panel never should.
+                over = page.evaluate(
+                    "() => [...document.querySelectorAll('.detail dt, .detail dd,"
+                    " .detail .pnote, .detail .blabel')]"
+                    ".filter(e => e.scrollWidth > e.clientWidth + 1)"
+                    ".map(e => e.textContent.slice(0, 40))")
+                if over:
+                    clipped.append({"view": view, "elements": over})
                 report[f"{view}_view"] = page.locator("#list").inner_text()[:120]
+            report["rows_that_wrapped"] = wrapped
+            report["clipped_in_panel"] = clipped
 
             report["page_errors"] = errors
             report["csp_violations"] = violations
@@ -197,6 +225,10 @@ def main() -> int:
         db.close()
 
         print(json.dumps(report, indent=2))
+        if report["rows_that_wrapped"] or report["clipped_in_panel"]:
+            print("a row grew past its height, or a value ran outside its box",
+                  file=sys.stderr)
+            return 1
         live = [p for p in report["programs_in_database"] if p["status"] == "live"]
         if not live:
             print("::error::the button reported success and no program went live",
