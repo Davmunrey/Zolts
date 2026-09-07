@@ -24,7 +24,7 @@ from runtime.api.schemas import (AccountIn, EnrichIn, EnrollmentOut, HealthOut,
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
-from runtime.engine import audience, enroll
+from runtime.engine import audience, enrich_step, enroll
 from runtime.repo import (actions, enrollments, entities, ledger, mappings, programs,
                           proposals)
 from runtime.surface import content_security_policy, document, inject
@@ -508,6 +508,10 @@ def create_app(db: Database, *, install_connectors: bool = True,
             # it after activation costs a campaign that looks armed.
             audience.check(body.spec, body.key)
         except audience.AudienceError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            enrich_step.check(body.spec, body.key)
+        except enrich_step.EnrichmentNotPriced as exc:
             raise HTTPException(422, str(exc)) from exc
 
         with db.tenant_tx(principal.tenant_id) as cur:

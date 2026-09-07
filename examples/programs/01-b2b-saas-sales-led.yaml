@@ -44,11 +44,14 @@ spec:
     # it reads as protection. Decision 32.
   enrich:
     account:
-      require: [tech_stack, headcount_by_dept, funding_history]
+      # Decision 33: a program may ask for the fields the price list carries
+      # and no others. tech_stack, headcount_by_dept and funding_history have
+      # no price, so a runtime that bought them would pay for its customers.
+      require: [firmographics]
       max_cost_per_account: 0.35    # EUR
     person:
       buying_roles: [economic, champion, technical]
-      require: [work_email, linkedin_urn, title]
+      require: [email, phone]
       accuracy_sla: 0.95            # the router picks a waterfall that meets this
       max_contacts_per_account: 4
       max_cost_per_contact: 0.60

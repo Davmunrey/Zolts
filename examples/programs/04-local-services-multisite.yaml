@@ -33,11 +33,14 @@ spec:
                where s.scope = 'account' and s.value = a.id::text)
   enrich:
     account:
-      require: [owner_contact, location_list, google_rating, website_tech]
+      # Decision 33: only fields the price list carries. owner_contact,
+      # location_list, google_rating and website_tech have no price, and a
+      # runtime that buys what it cannot bill pays for its customers.
+      require: [firmographics]
       max_cost_per_account: 0.25
     person:
       buying_roles: [economic]
-      require: [phone_mobile, work_email]
+      require: [phone, email]
       accuracy_sla: 0.90
       max_contacts_per_account: 2
 

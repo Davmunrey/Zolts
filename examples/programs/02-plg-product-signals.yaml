@@ -39,7 +39,7 @@ spec:
     person:
       # in PLG the user is already known; the economic buyer is not
       buying_roles: [economic]
-      require: [work_email, title]
+      require: [email]
       accuracy_sla: 0.92
       max_contacts_per_account: 2
       skip_if_known: true            # never pay for data the product already holds

@@ -24,7 +24,9 @@ SPEC = {
                 "combine": "any_within", "window": "30d",
                 "dedupe": {"key": "account_id", "cooldown": "180d"}},
     "audience": {"sql": "select id as account_id from account"},
-    "enrich": {"account": {"require": ["funding_history"], "max_cost_per_account": 0.35}},
+    # `funding_history` has no price, and publishing now refuses a program that
+    # asks for a field nothing can buy or bill. Decision 33.
+    "enrich": {"account": {"require": ["firmographics"], "max_cost_per_account": 0.35}},
     "score": {"model": "pit_r_v3", "weights": {"fit": 0.35, "intent": 0.3,
                                                "timing": 0.25, "reachability": 0.1},
               "floor": 55},
