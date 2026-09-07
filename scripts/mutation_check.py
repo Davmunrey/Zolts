@@ -110,6 +110,20 @@ MUTATIONS = (
         find="        if _quiet_span(window) > _quiet_span(rule.quiet_hours):",
         replace="        if True:",
         tests="tests/test_policy_overrides.py"),
+    Mutation(
+        id="a-tick-without-the-cron-secret-is-refused",
+        claim="the scheduled routes run nothing for a caller without the cron's bearer",
+        path="runtime/serverless.py",
+        find='    if not hmac.compare_digest(presented, f"Bearer {secret}".encode()):',
+        replace="    if False:",
+        tests="tests/test_serverless.py"),
+    Mutation(
+        id="a-dead-worker-is-not-a-draining-deployment",
+        claim="liveness fails when nothing has ticked, however empty the outbox is",
+        path="runtime/liveness.py",
+        find="    if last is None:\n        live.add(\"worker ticking\", False,",
+        replace="    if last is None:\n        live.add(\"worker ticking\", True,",
+        tests="tests/test_hardening.py"),
 )
 
 

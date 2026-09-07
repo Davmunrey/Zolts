@@ -45,7 +45,7 @@
 
 ### The runtime — the part that runs
 
-- `runtime/migrations/` — 32 tables on Postgres 16, row-level security forced on all 29 tenant-scoped ones
+- `runtime/migrations/` — 33 tables on Postgres 16, row-level security forced on all 29 tenant-scoped ones
 - `runtime/db.py`, `runtime/repo/` — data access where the only way to get a cursor is to name a tenant
 - `runtime/engine/` — signal ingest, holdout assignment, step planning, the policy gate, and a leased worker with backoff and dead-letter
 - `runtime/connectors/` — the CRM contract and its suite, HubSpot, Pipedrive and Salesforce as sources, a generic source driven by a tenant-authored mapping for CRMs nobody here has seen, Smartlead for sending
@@ -70,7 +70,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 1004 tests, each backing a specific claim made in `docs/`; 332 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
+- `tests/` — 1038 tests, each backing a specific claim made in `docs/`; 340 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -80,7 +80,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 1004 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 1038 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
@@ -125,13 +125,15 @@ The surface carries no data of its own. `scripts/build_fixture.py` reads the rea
 | Target | Configuration | Status |
 |---|---|---|
 | Cloudflare Pages | `wrangler.toml`, `site/_headers`, `.github/workflows/deploy-pages.yml` | Deploys on push to `main` once `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set; the job skips cleanly until then |
-| Vercel | `vercel.json` | Connect the repository; output directory `site` |
+| Vercel | `vercel.json` | The static demo at `/`; behind it, the runtime as one function and the worker as a cron (below) |
 
 Manual Cloudflare deploy from a checkout:
 
 ```bash
 npx wrangler pages deploy site --project-name=zolts
 ```
+
+The runtime deploys to the same Vercel project (ADR-041): `api/index.py` serves the API and the console as one function, Vercel Cron invokes `/api/tick` once a minute to drain the outbox and `/api/watch` every fifteen to look for signals, and production is released only by `.github/workflows/deploy-vercel.yml`, which migrates and runs preflight first. The container path — `Dockerfile`, `fly.toml`, `render.yaml`, `docker-compose.yml` — is still executed in CI. `docs/20` has the checklist; the secrets it names are the founder's and never pass through a chat, an issue or a file.
 
 ## Conventions
 

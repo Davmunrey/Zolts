@@ -86,6 +86,7 @@ The static demo ships a CSP generated from the hash of the page it serves, not h
 | The caller is taken from the forwarded header behind a proxy | `test_the_caller_is_taken_from_the_forwarded_header_behind_a_proxy` |
 | Inbound webhooks are signature-verified | `test_runtime_webhooks.py` |
 | Liveness answers even when the database is gone | `test_liveness_answers_even_when_the_database_is_gone` |
+| The scheduled routes (`/api/tick`, `/api/watch`) run nothing for a caller without the cron's bearer, and refuse to run at all — 503 — when no bearer is configured. Open, one drains the outbox for anybody and the other bills every tenant's signal checks to whoever calls it | `runtime/serverless.refusal`; `test_serverless.py`; mutation `a-tick-without-the-cron-secret-is-refused` on every push |
 
 ### Deploy-time refusal
 
@@ -98,6 +99,7 @@ The static demo ships a CSP generated from the hash of the page it serves, not h
 | `forced row-level security` | Any tenant-scoped table is not FORCE-protected |
 | `unscoped reads refused` | A query with no tenant returns rows instead of raising |
 | `encryption in transit` | The connection crosses a network unencrypted |
+| Production on Vercel is released only by the job that migrates and runs preflight in production mode first; the platform's own deploys of `main` are off, so a push cannot go around it | `deploy-vercel.yml`; `vercel.json`; `test_production_is_released_only_through_the_workflow_that_migrates` |
 
 ## Findings with a security dimension
 

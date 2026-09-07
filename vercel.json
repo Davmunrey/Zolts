@@ -4,6 +4,36 @@
   "outputDirectory": "site",
   "cleanUrls": true,
   "trailingSlash": false,
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{tests/**,site/**,docs/**,.github/**,**/__pycache__/**}"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
+  "regions": [
+    "fra1"
+  ],
+  "crons": [
+    {
+      "path": "/api/tick",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/watch",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -23,7 +53,21 @@
         {
           "key": "Permissions-Policy",
           "value": "geolocation=(), microphone=(), camera=()"
-        },
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; style-src 'self' 'unsafe-inline' 'sha256-ROXFZWp5vR7nGbxREX7CwlfSYMiLAwqU60XM/o0vGvQ=' 'sha256-yG1nLwhwOgtFhvMuN1y8mAn1Q0+3Ka6ICYL5b3cZlUg=' https://fonts.googleapis.com; style-src-elem 'self' 'sha256-ROXFZWp5vR7nGbxREX7CwlfSYMiLAwqU60XM/o0vGvQ=' 'sha256-yG1nLwhwOgtFhvMuN1y8mAn1Q0+3Ka6ICYL5b3cZlUg=' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'self' 'sha256-ROXFZWp5vR7nGbxREX7CwlfSYMiLAwqU60XM/o0vGvQ=' 'sha256-yG1nLwhwOgtFhvMuN1y8mAn1Q0+3Ka6ICYL5b3cZlUg='; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+        }
+      ]
+    },
+    {
+      "source": "/data/(.*)",
+      "headers": [
         {
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; style-src 'self' 'unsafe-inline' 'sha256-ROXFZWp5vR7nGbxREX7CwlfSYMiLAwqU60XM/o0vGvQ=' 'sha256-yG1nLwhwOgtFhvMuN1y8mAn1Q0+3Ka6ICYL5b3cZlUg=' https://fonts.googleapis.com; style-src-elem 'self' 'sha256-ROXFZWp5vR7nGbxREX7CwlfSYMiLAwqU60XM/o0vGvQ=' 'sha256-yG1nLwhwOgtFhvMuN1y8mAn1Q0+3Ka6ICYL5b3cZlUg=' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'self' 'sha256-ROXFZWp5vR7nGbxREX7CwlfSYMiLAwqU60XM/o0vGvQ=' 'sha256-yG1nLwhwOgtFhvMuN1y8mAn1Q0+3Ka6ICYL5b3cZlUg='; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"

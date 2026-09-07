@@ -1,0 +1,4 @@
+# What the Vercel function installs. Vercel reads this file at the repository
+# root and nowhere else; the runtime's own list is the source of truth and is
+# included rather than copied, so the two cannot disagree (ADR-041).
+-r runtime/requirements.txt

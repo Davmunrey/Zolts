@@ -114,14 +114,83 @@ def test_keys_are_tenant_scoped(db, client, key, other_tenant):
 # -- liveness ------------------------------------------------------------
 
 @requires_db
-def test_liveness_reports_a_draining_deployment(client):
+def test_liveness_reports_a_draining_deployment(db, client):
+    from runtime.engine.worker import Worker
+
+    # A deployment where something has ticked. Without that it is not
+    # draining, however empty the outbox is — see the test below.
+    Worker(db, secret_key="k").heartbeat()
     answer = client.get("/health/liveness")
-    assert answer.status_code == 200
+    assert answer.status_code == 200, answer.text
     body = answer.json()
     assert body["draining"] is True
     assert {s["name"] for s in body["signals"]} == {
         "outbox draining", "actions completing", "connections healthy",
-        "tenants can send", "sending domains"}
+        "tenants can send", "sending domains", "worker ticking"}
+
+
+@requires_db
+def test_a_deployment_where_nothing_has_ticked_is_not_draining(db, client):
+    """The outbox signal cannot fail while nothing is due, so a worker that
+    died on a quiet weekend — or a cron that never fired — was reported
+    healthy until the first action was due, and half an hour more (D-39).
+    An empty outbox and no heartbeat is a deployment nobody is running."""
+    from runtime import liveness
+
+    with db.admin_tx() as cur:
+        cur.execute("delete from worker_heartbeat")
+    ticking = next(s for s in liveness.check(db).signals if s.name == "worker ticking")
+    assert not ticking.ok
+    assert "no worker has ever ticked" in ticking.detail
+    answer = client.get("/health/liveness")
+    assert answer.status_code == 503
+    assert answer.json()["draining"] is False
+
+
+@requires_db
+def test_a_tick_is_a_heartbeat_and_a_stale_one_is_a_dead_worker(db):
+    from runtime import liveness
+    from runtime.engine.worker import Worker
+
+    Worker(db, secret_key="k", dry_run=True, name="worker-a").tick()
+    ticking = next(s for s in liveness.check(db).signals if s.name == "worker ticking")
+    assert ticking.ok, ticking.detail
+    assert ticking.value == 1
+
+    with db.admin_tx() as cur:
+        cur.execute("update worker_heartbeat set ticked_at = now() - interval '%s minutes'"
+                    % (liveness.HEARTBEAT_MINUTES + 5))
+    stale = next(s for s in liveness.check(db).signals if s.name == "worker ticking")
+    assert not stale.ok
+    assert "minutes ago" in stale.detail
+    assert stale.value >= liveness.HEARTBEAT_MINUTES
+
+    # Another tick, under another name, and the deployment is alive again.
+    Worker(db, secret_key="k", dry_run=True, name="worker-b").tick()
+    alive = next(s for s in liveness.check(db).signals if s.name == "worker ticking")
+    assert alive.ok
+    with db.admin_tx() as cur:
+        cur.execute("select name from worker_heartbeat order by name")
+        assert [r["name"] for r in cur.fetchall()] == ["worker-a", "worker-b"]
+
+
+@requires_db
+def test_a_heartbeat_that_cannot_be_written_does_not_stop_the_tick(db, monkeypatch):
+    """Losing the heartbeat makes liveness say nothing is running, which is
+    visible. Losing the outbox because the heartbeat failed would not be."""
+    from runtime.engine.worker import Worker
+
+    worker = Worker(db, secret_key="k", dry_run=True, name="worker-c")
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("heartbeat table is gone")
+
+    monkeypatch.setattr(worker, "active_tenants", lambda: [])
+    monkeypatch.setattr(worker, "claim", lambda: [])
+    # Only the heartbeat reaches the owner pool now, and it is broken.
+    monkeypatch.setattr(worker.db, "admin_tx", broken)
+    tick = worker.tick()
+    assert any("heartbeat" in e for e in tick.errors)
 
 
 @requires_db

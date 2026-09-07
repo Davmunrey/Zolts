@@ -16,28 +16,46 @@ credentials to do it:
 
 An API key is optional. With one it also reads a tenant-scoped endpoint, which
 is the difference between "the process is up" and "the product answers".
+
+On a host where the worker is a cron-invoked function (ADR-041), `/api/tick`
+must be locked to a stranger: 401 without the cron's bearer, never 200. With
+`CRON_SECRET` in the environment — never on the command line — it also
+invokes one tick and requires it to run, which is the release check for the
+worker on that host.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 TIMEOUT = 15
 
 
-def _get(url: str, key: str | None = None) -> tuple[int, dict[str, str], bytes]:
+def _get(url: str, key: str | None = None,
+         bearer: str | None = None) -> tuple[int, dict[str, str], bytes]:
     request = urllib.request.Request(url, headers={"user-agent": "zolts-smoke"})
     if key:
         request.add_header("x-api-key", key)
+    if bearer:
+        request.add_header("authorization", f"Bearer {bearer}")
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return response.status, dict(response.headers), response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, dict(exc.headers), exc.read()
+
+
+def _unconfigured(body: bytes) -> bool:
+    try:
+        return json.loads(body or b"{}").get("status") == "unconfigured"
+    except ValueError:
+        return False
 
 
 def main() -> int:
@@ -49,6 +67,14 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true",
                         help="fail on any liveness signal, not only on a broken "
                              "deployment. For a run after the tenant is configured")
+    parser.add_argument("--expect-migrations", metavar="DIR",
+                        help="fail unless /health reports every migration in this "
+                             "directory as applied. A release whose schema is behind "
+                             "its code answers 200 and then 500s on the new table")
+    parser.add_argument("--allow-unconfigured", action="store_true",
+                        help="accept a runtime that answers 503 'unconfigured' on "
+                             "every path: the surface is released, the database "
+                             "is not yet. For the release before the secrets exist")
     args = parser.parse_args()
 
     base = args.url.rstrip("/")
@@ -64,10 +90,26 @@ def main() -> int:
 
     status, headers, body = _get(f"{base}/health")
     report["health"] = status
+    if status == 503 and args.allow_unconfigured and _unconfigured(body):
+        # The function is there and says what it is missing, which is what
+        # this run was asked to accept. Nothing below can answer yet.
+        report["unconfigured"] = json.loads(body).get("detail")
+        print(json.dumps(report, indent=2))
+        print("::notice::the runtime is released and unconfigured: "
+              f"{report['unconfigured']}", file=sys.stderr)
+        return 0
     if status != 200:
         failures.append(f"/health answered {status}")
     else:
         report["health_body"] = json.loads(body or b"{}")
+        if args.expect_migrations:
+            on_disk = sorted(p.stem for p in Path(args.expect_migrations).glob("*.sql"))
+            applied = set(report["health_body"].get("migrations") or [])
+            pending = [m for m in on_disk if m not in applied]
+            report["pendingMigrations"] = pending
+            if pending:
+                failures.append(f"the running code carries {len(pending)} migrations "
+                                f"the database has not applied: {', '.join(pending)}")
 
     # The endpoint that distinguishes "up" from "doing its job". Its signals
     # are reported and not fatal by default: a freshly deployed instance
@@ -108,6 +150,36 @@ def main() -> int:
     report["csp"] = bool(csp)
     if not csp:
         failures.append("/console served no Content-Security-Policy")
+
+    # The scheduled routes, to a stranger. Either absent — a host that runs
+    # the worker as a process — or locked. 200 is a public URL that drains the
+    # outbox; 503 is a deployment that never set the secret; anything else is
+    # a broken function.
+    status, _, body = _get(f"{base}/api/tick")
+    report["tick"] = status
+    if status == 404:
+        notes.append("no /api/tick: this host runs the worker as a process")
+    elif status == 503:
+        (failures if args.strict else notes).append(
+            "/api/tick answers 503: CRON_SECRET is not set, so the cron runs nothing")
+    elif status != 401:
+        failures.append(f"/api/tick answered {status} to a request with no cron secret")
+
+    # With the secret — from the environment, never an argument, because an
+    # argument is in the shell history — one real tick. This is the check
+    # that the worker runs on this host at all.
+    secret = os.environ.get("CRON_SECRET")
+    if secret and status == 401:
+        status, _, body = _get(f"{base}/api/tick", bearer=secret)
+        report["tickRan"] = status
+        if status != 200:
+            failures.append(f"/api/tick answered {status} to the cron secret")
+        else:
+            ran = json.loads(body or b"{}")
+            report["tickPasses"] = ran.get("passes")
+            report["tickClaimed"] = ran.get("claimed")
+            if not ran.get("ran"):
+                failures.append("/api/tick accepted the secret and ran nothing")
 
     if args.key:
         status, _, body = _get(f"{base}/v1/billing/current", key=args.key)

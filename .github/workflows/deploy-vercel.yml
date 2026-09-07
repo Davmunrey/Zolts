@@ -1,0 +1,137 @@
+name: deploy-vercel
+
+# The release command, on a host that has none.
+#
+# Fly runs `migrate` and then `preflight` before a deploy takes traffic, and
+# a non-zero preflight aborts the release. Vercel deploys whatever is pushed
+# and has no hook to refuse, so production is released from here, in that
+# order, and `vercel.json` turns the platform's own deploys of `main` off: a
+# push cannot go around this job (ADR-041). Preview deployments of other
+# branches still happen on the platform; they carry no secrets, answer 503
+# on every path, and run no cron.
+#
+# Two tiers of secrets, and the job does what the tier allows:
+#
+#   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+#       enough to deploy the surface and an unconfigured runtime
+#   ZOLTS_DATABASE_URL, ZOLTS_APP_DATABASE_URL, ZOLTS_SECRET_KEY
+#       with these, the database is migrated and preflight must pass first
+#
+# All six are the founder's, set as repository secrets and never through
+# chat, an issue or a file. The function reads the last three — plus
+# CRON_SECRET and ZOLTS_ENV=production — from the project's own environment
+# on Vercel, which is a second place to set the same three values.
+#
+# One repository *variable*, ZOLTS_URL, is the production address the smoke
+# opens; until it is set the hourly smoke skips.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'    # the deployed smoke, hourly (VER-3)
+
+jobs:
+  release:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      ZOLTS_URL: ${{ vars.ZOLTS_URL || 'https://zolts.vercel.app' }}
+
+    steps:
+      # The credential check comes first, and it skips rather than fails:
+      # a run that is red because nobody has set a secret yet teaches the
+      # team to ignore red.
+      - name: Check for the secrets
+        id: creds
+        run: |
+          echo "vercel=${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}" >> "$GITHUB_OUTPUT"
+          echo "database=${{ secrets.ZOLTS_DATABASE_URL != '' && secrets.ZOLTS_APP_DATABASE_URL != '' && secrets.ZOLTS_SECRET_KEY != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Explain the skip
+        if: steps.creds.outputs.vercel != 'true'
+        run: |
+          echo "::notice::VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID are not all set, so nothing was released."
+          echo "::notice::Vercel's own deploys of main are off (vercel.json), so production does not change until they are."
+
+      - uses: actions/checkout@v5
+        if: steps.creds.outputs.vercel == 'true'
+      - uses: actions/setup-python@v6
+        if: steps.creds.outputs.vercel == 'true'
+        with:
+          python-version: '3.11'
+      - name: Install the runtime
+        if: steps.creds.outputs.vercel == 'true'
+        run: pip install -r runtime/requirements.txt
+
+      # The same two commands Fly runs as its release command, against the
+      # same database the function will serve. A deploy that fails here
+      # never happens.
+      - name: Migrate the production database
+        if: steps.creds.outputs.vercel == 'true' && steps.creds.outputs.database == 'true'
+        run: python3 -m runtime.cli migrate
+        env:
+          ZOLTS_DATABASE_URL: ${{ secrets.ZOLTS_DATABASE_URL }}
+          ZOLTS_APP_DATABASE_URL: ${{ secrets.ZOLTS_APP_DATABASE_URL }}
+          ZOLTS_SECRET_KEY: ${{ secrets.ZOLTS_SECRET_KEY }}
+          ZOLTS_ENV: production
+
+      - name: Refuse to release a misconfigured runtime
+        if: steps.creds.outputs.vercel == 'true' && steps.creds.outputs.database == 'true'
+        run: python3 -m runtime.cli preflight
+        env:
+          ZOLTS_DATABASE_URL: ${{ secrets.ZOLTS_DATABASE_URL }}
+          ZOLTS_APP_DATABASE_URL: ${{ secrets.ZOLTS_APP_DATABASE_URL }}
+          ZOLTS_SECRET_KEY: ${{ secrets.ZOLTS_SECRET_KEY }}
+          ZOLTS_ENV: production
+
+      - name: Say what is being released
+        if: steps.creds.outputs.vercel == 'true' && steps.creds.outputs.database != 'true'
+        run: |
+          echo "::notice::No database secrets: releasing the surface and a runtime that answers 503 on every path until ZOLTS_DATABASE_URL, ZOLTS_APP_DATABASE_URL and ZOLTS_SECRET_KEY exist."
+
+      - name: Release to production
+        if: steps.creds.outputs.vercel == 'true'
+        run: npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # Open it the way the internet does. Not strict on a release: a
+      # freshly released deployment legitimately has a tenant with no
+      # connector yet. With a database, every migration on disk must be
+      # reported applied by the running function — a release whose schema is
+      # behind its code is the one failure the order above cannot catch.
+      - name: Open the released deployment
+        if: steps.creds.outputs.vercel == 'true'
+        run: |
+          if [ "${{ steps.creds.outputs.database }}" = "true" ]; then
+            python3 scripts/smoke_deployed.py --url "$ZOLTS_URL" --expect-migrations runtime/migrations
+          else
+            python3 scripts/smoke_deployed.py --url "$ZOLTS_URL" --allow-unconfigured
+          fi
+
+  smoke:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for the address
+        id: address
+        run: echo "ready=${{ vars.ZOLTS_URL != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Explain the skip
+        if: steps.address.outputs.ready != 'true'
+        run: echo "::notice::The ZOLTS_URL repository variable is not set, so there is nothing to smoke."
+
+      - uses: actions/checkout@v5
+        if: steps.address.outputs.ready == 'true'
+
+      # Strict: every liveness signal must be ok, including `worker ticking`,
+      # so a cron that stopped firing fails this run within the hour. A
+      # failed scheduled run notifies the repository owner, which is where
+      # the 503 goes until a real monitor is pointed at it (OPS-3).
+      - name: Smoke the deployment
+        if: steps.address.outputs.ready == 'true'
+        run: python3 scripts/smoke_deployed.py --url "${{ vars.ZOLTS_URL }}" --strict --expect-migrations runtime/migrations

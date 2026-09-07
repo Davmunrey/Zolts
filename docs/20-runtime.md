@@ -6,7 +6,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 
 | Piece | Where | State |
 |---|---|---|
-| Schema, 32 tables, RLS forced on 29 | `runtime/migrations/` | Running on Postgres 16 |
+| Schema, 33 tables, RLS forced on 29 | `runtime/migrations/` | Running on Postgres 16 |
 | Tenant-scoped data access | `runtime/db.py`, `runtime/repo/` | Running |
 | Signal ingest to enrollment, with holdout assignment | `runtime/engine/enroll.py` | Running |
 | Step planning and the transactional outbox | `runtime/engine/planner.py`, `runtime/repo/actions.py` | Running |
@@ -17,6 +17,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | Smartlead sending | `runtime/connectors/smartlead.py` | Written, not yet run against a live account |
 | HTTP API with API-key tenancy | `runtime/api/` | Running |
 | CLI: migrate, provision, worker, serve | `runtime/cli.py` | Running |
+| The worker as a cron-invoked function, for a host with no processes | `runtime/serverless.py`, `api/index.py` | Executed in tests; the production release waits on the founder's secrets (ADR-041) |
 | Console served from the API with live tenant data | `runtime/api/console.py`, `runtime/surface.py` | Running |
 | Signed inbound webhooks: replies, bounces, opt-outs, deals | `runtime/api/webhooks.py`, `runtime/engine/inbound.py` | Running |
 | Agent layer: propose-only, provenance-checked, eval-gated | `runtime/agents/`, `runtime/engine/generate.py` | Running |
@@ -313,11 +314,56 @@ It provisions the tenant, publishes and activates the four example programs, ope
 
 | Target | File | What it gives you |
 |---|---|---|
+| **Vercel** — the decided path | `vercel.json`, `api/index.py`, `.github/workflows/deploy-vercel.yml` | The API as one function, the worker as a cron, Neon for Postgres; production released by the workflow that migrates and preflights first (ADR-041) |
 | Anywhere with Docker | `docker-compose.yml` | Database, migrations, API, worker |
 | Render | `render.yaml` | Managed Postgres, web service, background worker, migrations as a pre-deploy step |
 | Fly | `fly.toml` | Two processes from one image, migrations as a release command |
 
-All three run the API and the worker from the same image, because they share the code and differ only in the command.
+The three container targets run the API and the worker from the same image, because they share the code and differ only in the command. Vercel runs the same app as a function and the same worker as a schedule, built by the same `from_settings`, so there is one worker whichever host runs it.
+
+### Vercel plus Neon, end to end
+
+The worker has no process to be. `Worker.tick()` is one bounded pass, so Vercel Cron invokes `/api/tick` once a minute and the function drains until the outbox is empty or fifty seconds are spent; an invocation the platform kills leaves actions leased, and the lease expiring is the recovery. The route refuses any caller without the cron's bearer, and refuses to run at all when no bearer is configured.
+
+```sh
+# 1. The database. Create the Neon project in eu-central-1: the function runs
+#    in Frankfurt (`regions` in vercel.json) and the Atlantic costs 90 ms a
+#    query. Take the DIRECT endpoint, not the one with -pooler in the host.
+
+# 2. The second role, the one that serves requests. Run against the owner URL:
+psql "$OWNER_URL" -c "create role zolts_app login password '…'"
+
+# 3. Secrets, in two places, and never in the repository, a chat or an issue.
+#    GitHub → Settings → Secrets and variables → Actions → Secrets:
+#      VERCEL_TOKEN            from vercel.com/account/tokens
+#      VERCEL_ORG_ID           the team id, team_…
+#      VERCEL_PROJECT_ID       the project id, prj_…
+#      ZOLTS_DATABASE_URL      postgresql://owner:…@ep-x.eu-central-1.aws.neon.tech/zolts?sslmode=require
+#      ZOLTS_APP_DATABASE_URL  postgresql://zolts_app:…@ep-x.eu-central-1.aws.neon.tech/zolts?sslmode=require
+#      ZOLTS_SECRET_KEY        openssl rand -hex 32
+#    …and one Variable:  ZOLTS_URL = https://zolts.vercel.app
+#    Vercel → Project → Settings → Environment Variables, for Production:
+#      the same three ZOLTS_* values, ZOLTS_ENV=production, and
+#      CRON_SECRET             openssl rand -hex 32; the platform sends it as the bearer
+
+# 4. The plan. A cron every minute and a five-minute function are Pro features.
+#    On Hobby the deploy is refused, which is the right failure.
+
+# 5. Release. Push to main, or run the deploy-vercel workflow by hand. It
+#    migrates, runs preflight in production mode, deploys, and opens the URL.
+#    Vercel's own deploys of main are off (vercel.json), so nothing goes
+#    around it. With only the VERCEL_* secrets set it releases the demo and an
+#    unconfigured runtime that answers 503 on every path, and says so.
+
+# 6. Open it the way the internet does, with the cron's secret in the
+#    environment so one tick runs. `worker ticking` is ok within a minute of
+#    the release, or the cron is not firing.
+read -rs CRON_SECRET && export CRON_SECRET     # typed, not pasted into a command line
+python3 scripts/smoke_deployed.py --url https://zolts.vercel.app --strict \
+    --expect-migrations runtime/migrations
+```
+
+From then on the same smoke runs every hour from the workflow, strictly, and a failed run notifies the repository owner. It is the monitor until a real one is pointed at `/health/liveness`.
 
 ### Fly plus a managed Postgres, end to end
 
@@ -356,7 +402,7 @@ It needs no credentials: `/health`, the liveness signals, and that `/console` re
 
 ### Preflight
 
-`python3 -m runtime.cli preflight` answers, against the database actually connected, whether this deployment may take traffic. It is the release command on Fly and the pre-deploy step on Render, so a misconfigured runtime fails the deploy instead of serving.
+`python3 -m runtime.cli preflight` answers, against the database actually connected, whether this deployment may take traffic. It is the release command on Fly, the pre-deploy step on Render, and the second step of the release job on Vercel, so a misconfigured runtime fails the deploy instead of serving.
 
 | Check | Blocking in production when |
 |---|---|
@@ -402,6 +448,8 @@ fly secrets unset ZOLTS_PREVIOUS_SECRET_KEYS
 `preflight` reports the state on every deploy: how many credentials are sealed under the current key, how many are still on a previous one, and — fatally in production — how many are sealed under a key this deployment does not hold at all.
 
 On Fly, do not enable `auto_stop_machines` for the worker: it holds leases, and stopping it mid-flight makes recovery wait for the lease to expire rather than happen at the next tick.
+
+On Vercel the same three steps are `npx vercel env add ZOLTS_PREVIOUS_SECRET_KEYS production` (it prompts for the value), `rotate-key` from anywhere holding the database URLs, and `npx vercel env rm ZOLTS_PREVIOUS_SECRET_KEYS production`, each followed by a release so the function reads the change.
 
 `ZOLTS_SECRET_KEY` seals connector credentials with AES-GCM before they reach the database, so a dump discloses nothing on its own. Losing it means re-entering every credential; it belongs in a secret manager, not in the database it protects.
 
@@ -639,6 +687,8 @@ Register a fleet with `zolts sending-domain --tenant … --name outbound.example
 | Actions completing | 10 or more actions exhausted their attempts in 24 hours | One is a bad address; each retry is logged individually and nothing looks at the pattern |
 | Connections healthy | A connection is in `error` | Every send through it fails, and each failure looks like an ordinary retry |
 | Tenants can send | A tenant has live programs and no working connection | The shape of an onboarding that stopped halfway: programs activated, connector never connected. It enrolls, plans, and sends nothing |
+| Sending domains | A circuit breaker paused a domain | Nothing raises; the campaign simply stops, and the asset takes months to replace |
+| Worker ticking | No tick in five minutes, or never | The outbox signal cannot fail while nothing is due. A worker that died on a quiet weekend — or a cron that never fired — looked healthy until the first action was due, and thirty minutes more (D-39). Every tick writes a heartbeat; a fresh deployment is not draining until something has ticked |
 
 The endpoint is unauthenticated and returns counts only, never a tenant's identifiers: it answers an operator's question, and returning identifiers would answer a different one.
 
@@ -717,7 +767,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1004 tests. 332 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1038 tests. 340 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

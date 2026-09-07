@@ -21,7 +21,7 @@ OK    sending domains: no domain is paused by a cut-off
 DRAINING
 ```
 
-Five signals, and the section below with the same name says what to do about each. `/health` answers whether the process is up; this answers whether it is doing anything. They are different questions and the second is the one a customer notices.
+Six signals, and the section below with the same name says what to do about each. `/health` answers whether the process is up; this answers whether it is doing anything. They are different questions and the second is the one a customer notices.
 
 ---
 
@@ -59,10 +59,17 @@ select kind, channel, attempts, date_trunc('second', now() - run_after) as overd
 **Fix.**
 
 ```bash
+# Fly: the worker is a process.
 fly status --app zolts                    # is the worker machine up?
 fly logs --app zolts --instance <worker>  # what did it say before it stopped?
+# Vercel: the worker is the cron. Is it firing, and what did it answer?
+npx vercel crons ls                       # the schedules the production deployment declares
+npx vercel logs https://zolts.vercel.app  # what /api/tick said on its last invocations
+# Either host, from anywhere holding the database URLs:
 python3 -m runtime.cli worker --once      # drain one tick by hand, and watch it
 ```
+
+`worker ticking` fails first on either host — see the section below — and its detail says whether nothing has ever ticked or something stopped.
 
 One tick prints exactly what it did:
 
@@ -74,6 +81,47 @@ One tick prints exactly what it did:
 `cancelled` with that error is the second case below, not a queue problem.
 
 **Do not** delete the pending rows. Every action carries an idempotency key (product invariant 2); re-running is safe and deleting loses the audit trail of what was owed.
+
+---
+
+## `worker ticking` is failing
+
+```
+FAIL  worker ticking: no worker has ever ticked. Nothing is draining the
+      outbox: the worker process is not running, or the cron that invokes
+      /api/tick has not fired
+```
+
+**What it means.** Nothing is running the outbox, and it does not matter whether there is work in it. Every tick writes a heartbeat; this fails when the last one is older than five minutes or there has never been one. It is the signal that catches a worker that died on a quiet weekend, which `outbox draining` cannot see until the first action is due (D-39).
+
+**Diagnose.**
+
+```sql
+select name, ticked_at, date_trunc('second', now() - ticked_at) as ago, detail
+  from worker_heartbeat order by ticked_at desc limit 5;
+```
+
+| What you see | What it is |
+|---|---|
+| no rows | nothing has ever ticked: the worker was never started, or the cron never fired. On Vercel, a deployment on the Hobby plan has no minute cron |
+| rows, all old | it ran and stopped: a crashed worker process, a cron the platform disabled, or a `CRON_SECRET` that changed so every invocation is refused with 401 |
+| a fresh row every minute with `claimed: 0` | the worker is fine; the outbox is empty. If `outbox draining` fails at the same time, the tick is failing before it claims — read its `errors` in the function logs |
+
+**Fix.**
+
+```bash
+# Fly
+fly status --app zolts
+# Vercel: is the cron declared on the production deployment, and did it answer 200?
+npx vercel crons ls
+npx vercel logs https://zolts.vercel.app
+# One tick by hand, with the cron's secret from the environment — never typed
+# into a command line, which is a shell history and a process list.
+read -rs CRON_SECRET && export CRON_SECRET
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://zolts.vercel.app/api/tick
+```
+
+A 401 from that `curl` is a secret that does not match the one the deployment holds; a 503 is a deployment with no secret at all. Either way the cron has been refused on every minute since, and the fix is the variable, not the code.
 
 ---
 
@@ -192,6 +240,8 @@ fly secrets set ZOLTS_PREVIOUS_SECRET_KEYS="<the old key>"
 python3 -m runtime.cli rotate-key             # resumable; re-run if interrupted
 fly secrets unset ZOLTS_PREVIOUS_SECRET_KEYS  # this step is the rotation
 ```
+
+On Vercel the two `fly secrets` lines are `npx vercel env add ZOLTS_PREVIOUS_SECRET_KEYS production` (it prompts for the value; never put it in the command line) and `npx vercel env rm ZOLTS_PREVIOUS_SECRET_KEYS production`, each followed by a release so the function picks it up.
 
 If the old key is genuinely gone, nothing in the database can recover those credentials. The CLI says so rather than implying a retry would help, and the fix is to re-enter them.
 

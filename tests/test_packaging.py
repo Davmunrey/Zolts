@@ -201,9 +201,10 @@ def test_the_deploy_either_builds_with_its_dependencies_or_does_not_build():
 # -- the schema the documents describe ------------------------------------
 
 # Not tenant-scoped, and each for its own reason: `tenant` is the table the
-# isolation is keyed on, `invitation` exists before its tenant does, and
-# `schema_migration` is the migrator's own bookkeeping.
-UNSCOPED = {"tenant", "invitation", "schema_migration"}
+# isolation is keyed on, `invitation` exists before its tenant does,
+# `schema_migration` is the migrator's own bookkeeping, and `worker_heartbeat`
+# is written by a tick that spans every tenant and read by an operator.
+UNSCOPED = {"tenant", "invitation", "schema_migration", "worker_heartbeat"}
 
 
 @requires_db
@@ -293,3 +294,144 @@ def test_adr_003_does_not_claim_a_warehouse_the_runtime_does_not_read():
             "ADR-003 claims zero-copy over a warehouse in the present tense and "
             "nothing in runtime/ reads one. The document is corrected, never "
             "the measurement")
+
+
+# -- the second host ships what the first one does --------------------------
+
+def _brace_expand(pattern: str) -> list[str]:
+    """`{a/**,b/*}` into its alternatives. One level, which is what Vercel's
+    own example uses."""
+    if not (pattern.startswith("{") and pattern.endswith("}")):
+        return [pattern]
+    return [p.strip() for p in pattern[1:-1].split(",")]
+
+
+def _glob_matches(pattern: str, relative: str) -> bool:
+    import re
+
+    out = ""
+    i = 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out += "(?:.*/)?"
+            i += 3
+        elif pattern.startswith("**", i):
+            out += ".*"
+            i += 2
+        elif pattern[i] == "*":
+            out += "[^/]*"
+            i += 1
+        else:
+            out += re.escape(pattern[i])
+            i += 1
+    return re.fullmatch(out, relative) is not None
+
+
+def _vercel() -> dict:
+    import json
+
+    return json.loads((ROOT / "vercel.json").read_text())
+
+
+@pytest.mark.parametrize("what", sorted(_runtime_data_paths()))
+def test_the_vercel_function_ships_every_path_the_runtime_reads(what):
+    """The Dockerfile test, for the second host. `excludeFiles` trims the
+    bundle, and a pattern that catches `blueprints/` ships a function that
+    starts, reports healthy and seeds a tenant with nothing (ADR-041)."""
+    path = _runtime_data_paths()[what]
+    relative = path.relative_to(ROOT).as_posix()
+    excluded = _vercel()["functions"]["api/index.py"].get("excludeFiles", "")
+    for pattern in _brace_expand(excluded):
+        assert not _glob_matches(pattern, relative) and not _glob_matches(
+            pattern, relative + "/x"), (
+            f"vercel.json excludes '{pattern}' from the function, which drops {what} "
+            f"({relative}). The function would start and behave as though the "
+            f"data did not exist")
+
+
+def test_the_root_requirements_are_the_runtimes():
+    """Vercel installs the root `requirements.txt` and nothing else. Two lists
+    would drift, and the one that drifts is the one that ships."""
+    root = (ROOT / "requirements.txt").read_text()
+    assert "-r runtime/requirements.txt" in root, (
+        "the root requirements.txt does not include runtime/requirements.txt; "
+        "the function would build without the runtime's dependencies")
+
+
+def test_every_cron_points_at_a_route_the_function_mounts():
+    """A cron whose path 404s is a worker that never runs, reported by nothing
+    but the outbox thirty minutes after the first action is due."""
+    from fastapi import FastAPI
+
+    from runtime import serverless
+    from runtime.config import Settings
+
+    app = FastAPI()
+    serverless.mount(app, db=object(), settings=Settings(
+        database_url="postgresql://x", app_database_url="postgresql://y",
+        secret_key="k", environment="test", lease_seconds=60, worker_batch=25,
+        dry_run=True, agents_enabled=False))
+    mounted = {getattr(route, "path", None) for route in app.routes}
+    for cron in _vercel()["crons"]:
+        assert cron["path"] in mounted, (
+            f"vercel.json schedules {cron['path']} and the function mounts no such "
+            f"route; the cron would 404 every minute")
+    assert {"/api/tick", "/api/watch"} <= {c["path"] for c in _vercel()["crons"]}, (
+        "the worker or the watcher is not scheduled; on this host nothing else runs it")
+
+
+def test_every_path_the_runtime_answers_reaches_the_function():
+    """Static files first, then everything else to the function. Without the
+    rewrite `/health` is a 404 from the CDN and the console is unreachable."""
+    rewrites = _vercel().get("rewrites") or []
+    assert any(r["source"] == "/(.*)" and r["destination"] == "/api/index"
+               for r in rewrites), (
+        "vercel.json does not rewrite the paths the static site cannot answer "
+        "to api/index; /console, /health and /v1/* would 404")
+
+
+def test_the_static_policy_does_not_reach_the_served_console():
+    """The static build closes `connect-src`; the served console fetches.
+    A header rule for `/(.*)` that carries the static policy breaks the
+    product to protect the brochure."""
+    for rule in _vercel()["headers"]:
+        names = {h["key"] for h in rule["headers"]}
+        if "Content-Security-Policy" in names:
+            assert rule["source"] in {"/", "/data/(.*)"}, (
+                f"the static Content-Security-Policy is applied to {rule['source']}, "
+                f"which the served console also matches")
+
+
+def test_production_is_released_only_through_the_workflow_that_migrates():
+    """The release command, on a host that has none (ADR-041).
+
+    Two facts make one design: the platform's own deploys of `main` are off,
+    and the workflow that replaces them migrates and runs preflight before it
+    deploys. Either without the other is a push that goes around the checks
+    a Fly release cannot skip.
+    """
+    import yaml
+
+    enabled = _vercel().get("git", {}).get("deploymentEnabled")
+    assert isinstance(enabled, dict) and enabled.get("main") is False, (
+        "vercel.json lets the platform deploy main on push, around the migration "
+        "and the preflight")
+
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "deploy-vercel.yml").read_text())
+    steps = workflow["jobs"]["release"]["steps"]
+    runs = [step.get("run", "") for step in steps]
+
+    def position(fragment: str) -> int:
+        matches = [i for i, run in enumerate(runs) if fragment in run]
+        assert matches, f"no step in the release job runs {fragment!r}"
+        return matches[0]
+
+    migrate = position("runtime.cli migrate")
+    preflight = position("runtime.cli preflight")
+    deploy = position("vercel@latest deploy --prod")
+    smoke = position("smoke_deployed.py")
+    assert migrate < preflight < deploy < smoke, (
+        "the release job must migrate, then preflight, then deploy, then open the "
+        f"URL; it runs them in the order {sorted([migrate, preflight, deploy, smoke])}")
+    assert "ZOLTS_ENV: production" in (ROOT / ".github" / "workflows" / "deploy-vercel.yml").read_text(), (
+        "preflight runs outside production mode, so a published key would pass")
