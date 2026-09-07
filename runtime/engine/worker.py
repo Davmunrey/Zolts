@@ -14,6 +14,7 @@ overlap. At-least-once delivery at the runtime, exactly-once at the provider.
 
 from __future__ import annotations
 
+import json
 import logging
 import socket
 import time
@@ -392,7 +393,38 @@ class Worker:
         t.claimed = len(claimed)
         for action_id, tenant_id in claimed:
             self.execute_one(action_id, tenant_id, t)
+        self.heartbeat(t)
         return t
+
+    def heartbeat(self, tick: Tick | None = None) -> None:
+        """Say this worker is alive, whether or not there was work.
+
+        Written at the end of every tick rather than only when something was
+        done: an idle worker and a dead one leave the same outbox, and the
+        heartbeat is how liveness tells them apart (D-39). On a host where
+        the worker is a cron-invoked function, it is the only evidence the
+        cron fires at all.
+
+        A failure here is recorded on the tick and does not stop it. Losing
+        the heartbeat makes liveness say no worker is running, which is
+        visible; losing the outbox because the heartbeat table was missing
+        would not be.
+        """
+        detail = {k: v for k, v in (tick.__dict__ if tick else {}).items() if k != "errors"}
+        try:
+            with self.db.admin_tx() as cur:
+                cur.execute(
+                    "insert into worker_heartbeat (name, ticked_at, detail)"
+                    " values (%s, now(), %s)"
+                    " on conflict (name) do update set"
+                    "   ticked_at = excluded.ticked_at, detail = excluded.detail",
+                    (self.name, json.dumps(detail, default=str)))
+                # A serverless instance is a new name on every cold start.
+                cur.execute("delete from worker_heartbeat"
+                            " where ticked_at < now() - interval '7 days'")
+        except Exception as exc:  # noqa: BLE001 - recorded, never fatal
+            if tick is not None:
+                tick.errors.append(f"heartbeat: {type(exc).__name__}: {exc}")
 
     def active_tenants(self) -> list[str]:
         with self.db.admin_tx() as cur:
@@ -409,3 +441,38 @@ class Worker:
             if not t.did_work:
                 time.sleep(interval)
             ticks += 1
+
+
+def from_settings(db: Database, settings: Any) -> tuple[Worker, list[str]]:
+    """The worker a deployment runs, built from its settings, once.
+
+    The CLI's `worker` command and the cron-invoked `/api/tick` both call
+    this, so a deployment cannot run one worker on Fly and a differently
+    configured one on Vercel. The agent layer is optional and both halves
+    are required together: a model with no spend guard would generate
+    against no ceiling, and a guard with no model has nothing to price.
+
+    Returns the worker and the warnings a caller should surface — a spend
+    guard that is not on PATH refuses every generation, and the operator who
+    set `ZOLTS_AGENTS=true` needs to hear that from somewhere.
+    """
+    from runtime.connectors import install_default_connectors
+
+    install_default_connectors()
+    warnings: list[str] = []
+    model_client = spend_guard = None
+    if settings.agents_enabled:
+        from runtime.agents.client import ModelClient
+        from runtime.agents.spend import SpendGuard
+
+        model_client = ModelClient()
+        spend_guard = SpendGuard()
+        if not spend_guard.available:
+            warnings.append(
+                f"the spend guard '{spend_guard._command}' is not on PATH, so every "
+                "generation will be refused. Install it with 'npm i -g @trazum/mcp' "
+                "or unset ZOLTS_AGENTS")
+    worker = Worker(db, secret_key=settings.keyring, lease_seconds=settings.lease_seconds,
+                    batch=settings.worker_batch, dry_run=settings.dry_run,
+                    model_client=model_client, spend_guard=spend_guard)
+    return worker, warnings

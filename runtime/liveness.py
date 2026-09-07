@@ -17,6 +17,9 @@ request 500s, and the first person to notice is the customer:
 * A tenant has programs running and no live connection to run them through.
 * A circuit breaker paused a sending domain. The campaign stops, nothing
   raises, and the asset that stopped takes months to replace.
+* No worker has ticked. The outbox signal only fires once work is due and
+  stale, so a worker that died on a quiet weekend — or a cron that never
+  fired — was healthy until the first action was due, and half an hour more.
 
 Each is expressed as a threshold with a number beside it, because "the outbox
 is deep" is not actionable and "412 actions have been pending for over 30
@@ -36,6 +39,9 @@ from runtime.db import Database
 STALE_MINUTES = 30
 # One dead action is a bad address. A wall of them is a broken integration.
 DEAD_THRESHOLD = 10
+# A worker loop ticks every two seconds and the cron every minute. Five
+# minutes without a heartbeat is not a slow tick; it is nothing running.
+HEARTBEAT_MINUTES = 5
 
 
 @dataclass
@@ -72,7 +78,41 @@ def check(db: Database) -> Liveness:
         _connections(cur, live)
         _programs_without_a_channel(cur, live)
         _burned_domains(cur, live)
+        _worker_ticking(cur, live)
     return live
+
+
+def _worker_ticking(cur, live: Liveness) -> None:
+    """Whether anything is running the outbox at all, work or no work.
+
+    `outbox draining` can only fail once work is due, so on its own it
+    reports a dead worker healthy for as long as the queue stays empty. The
+    heartbeat is written at the end of every tick (D-39); its absence is the
+    failure, and a fresh deployment whose cron has never fired is reported
+    as exactly that rather than as draining.
+    """
+    cur.execute(
+        "select max(ticked_at) as last,"
+        " coalesce(extract(epoch from now() - max(ticked_at)) / 60, 0)::int as ago,"
+        " count(*) as workers from worker_heartbeat"
+        " where ticked_at > now() - interval '7 days'")
+    row = cur.fetchone()
+    last, ago, workers = row["last"], row["ago"], row["workers"]
+    if last is None:
+        live.add("worker ticking", False,
+                 "no worker has ever ticked. Nothing is draining the outbox: the "
+                 "worker process is not running, or the cron that invokes "
+                 "/api/tick has not fired", value=0)
+    elif ago >= HEARTBEAT_MINUTES:
+        live.add("worker ticking", False,
+                 f"the last tick was {ago} minutes ago. A worker loop ticks every "
+                 "few seconds and the cron every minute, so nothing is running",
+                 value=ago)
+    else:
+        live.add("worker ticking", True,
+                 f"{workers} worker{'s' if workers != 1 else ''} ticked in the last "
+                 f"{HEARTBEAT_MINUTES} minutes, the latest {ago} minutes ago",
+                 value=workers)
 
 
 def _burned_domains(cur, live: Liveness) -> None:

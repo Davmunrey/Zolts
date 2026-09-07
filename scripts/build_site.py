@@ -71,22 +71,57 @@ def build() -> None:
         "outputDirectory": "site",
         "cleanUrls": True,
         "trailingSlash": False,
-        "headers": [{
-            "source": "/(.*)",
-            "headers": [
-                {"key": "X-Frame-Options", "value": "SAMEORIGIN"},
-                {"key": "X-Content-Type-Options", "value": "nosniff"},
-                {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
-                {"key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()"},
-                {"key": "Content-Security-Policy", "value": policy},
-            ],
-        }],
+        # The runtime, as one function (ADR-041). `api/index.py` imports the
+        # same FastAPI app the CLI serves. Rewrites run after the filesystem,
+        # so `/` stays the static demo and every path it does not answer —
+        # `/console`, `/health`, `/v1/*`, the cron's `/api/tick` — reaches the
+        # API. `maxDuration` leaves a tick room to finish the pass it is in
+        # when its own budget runs out; the budget itself is under a minute.
+        "functions": {"api/index.py": {
+            "maxDuration": 300,
+            "excludeFiles": "{tests/**,site/**,docs/**,.github/**,**/__pycache__/**}",
+        }},
+        "rewrites": [{"source": "/(.*)", "destination": "/api/index"}],
+        # Frankfurt, beside a database in eu-central-1. A function in
+        # Washington talking to a database in Frankfurt pays the Atlantic on
+        # every query, and a tick makes dozens.
+        "regions": ["fra1"],
+        # The worker, as a schedule. The tick drains the outbox once a minute
+        # and the watcher looks for signals every fifteen; both refuse a call
+        # without the cron's bearer. Every minute needs the Pro plan.
+        "crons": [
+            {"path": "/api/tick", "schedule": "* * * * *"},
+            {"path": "/api/watch", "schedule": "*/15 * * * *"},
+        ],
+        # Production is released by the workflow that migrates and runs
+        # preflight first. A push to `main` must not deploy around it, which
+        # is what the platform's own git integration would do.
+        "git": {"deploymentEnabled": {"main": False}},
+        "headers": [
+            {
+                "source": "/(.*)",
+                "headers": [
+                    {"key": "X-Frame-Options", "value": "SAMEORIGIN"},
+                    {"key": "X-Content-Type-Options", "value": "nosniff"},
+                    {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
+                    {"key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()"},
+                ],
+            },
+            # The static build's policy, on the static paths only. It closes
+            # `connect-src` because the demo fetches nothing; the served
+            # console sets its own policy and does fetch. Applied to every
+            # path, this would break the product to protect the brochure.
+            {"source": "/", "headers": [{"key": "Content-Security-Policy", "value": policy}]},
+            {"source": "/data/(.*)",
+             "headers": [{"key": "Content-Security-Policy", "value": policy}]},
+        ],
     }
     (ROOT / "vercel.json").write_text(json.dumps(vercel, indent=2) + "\n", encoding="utf-8")
 
     print(f"site/index.html   {len(rendered):,} bytes, fixture inlined")
     print(f"site/_headers     CSP with {policy.count(chr(39) + 'sha256-')} hash references")
-    print("vercel.json       regenerated with the same policy")
+    print("vercel.json       regenerated: the same policy on the static paths, "
+          "the runtime as a function, the worker as a cron")
 
 
 if __name__ == "__main__":

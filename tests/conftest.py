@@ -106,3 +106,6 @@ def _clean_database(request):
     db = request.getfixturevalue("db")
     with db.admin_tx() as cur:
         cur.execute("truncate tenant cascade")
+        # Not under `tenant`: a heartbeat is a worker's, not a tenant's, and
+        # one test's tick must not make the next test's deployment look alive.
+        cur.execute("delete from worker_heartbeat")

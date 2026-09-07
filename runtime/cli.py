@@ -22,7 +22,6 @@ from runtime.connectors.dataprovider import iter_fields as _iter_fields
 from runtime.connectors.dataprovider import providers as providers_registered
 from runtime.crypto import Keyring
 from runtime.db import Database, one
-from runtime.engine.worker import Worker
 from runtime.provision import (create_tenant, create_webhook_endpoint, issue_api_key,
                                store_connection)
 from runtime.repo import programs
@@ -840,25 +839,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "worker":
-        install_default_connectors()
-        # The agent layer is optional and both halves are required together: a
-        # model with no spend guard would generate against no ceiling, and a
-        # guard with no model has nothing to price.
-        model_client = spend_guard = None
-        if settings.agents_enabled:
-            from runtime.agents.client import ModelClient
-            from runtime.agents.spend import SpendGuard
+        # Built the same way the cron-invoked tick builds it, so a deployment
+        # runs one worker whichever host runs it.
+        from runtime.engine.worker import from_settings
 
-            model_client = ModelClient()
-            spend_guard = SpendGuard()
-            if not spend_guard.available:
-                print(f"warning: the spend guard '{spend_guard._command}' is not on PATH,"
-                      " so every generation will be refused. Install it with"
-                      " 'npm i -g @trazum/mcp' or unset ZOLTS_AGENTS.", file=sys.stderr)
-        runner = Worker(db, secret_key=settings.keyring,
-                        lease_seconds=settings.lease_seconds, batch=settings.worker_batch,
-                        dry_run=settings.dry_run, model_client=model_client,
-                        spend_guard=spend_guard)
+        runner, warnings = from_settings(db, settings)
+        for warning in warnings:
+            print(f"warning: {warning}.", file=sys.stderr)
         if args.once:
             print(json.dumps(runner.tick().__dict__, default=str))
             return 0
