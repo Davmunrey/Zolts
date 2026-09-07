@@ -1207,15 +1207,27 @@ function renderAudit(){
     return;
   }
 
+  // A dot the same colour on every row says nothing. An auditor scans for
+  // what was taken away, so revoking, pausing and rejecting are marked and
+  // rotation is marked differently: it is a key that stopped working.
+  function weight(action){
+    if (/revoked|rejected|paused|deleted/.test(action)) return "deny";
+    if (/rotated|overridden|waived/.test(action)) return "warn";
+    return "live";
+  }
   list.innerHTML = entries.map(function(e){
-    return rowOf([dot("live"), cell(e.action, "k m"), cell(e.actor, "m"),
+    return rowOf([dot(weight(e.action)), cell(e.action, "k m"), cell(e.actor, "m"),
                   cell(e.subject, "m"),
                   cell(String(e.at).slice(0, 16).replace("T", " "), "n")]);
   }).join("");
 
+  var per = {};
+  entries.forEach(function(e){ per[e.actor] = (per[e.actor] || 0) + 1; });
   detail.innerHTML = block("By action", (A.byAction || []).slice(0, 8).map(function(b){
     return [b.action, nf(b.count)];
-  })) + block("Actors", (A.actors || []).map(function(a){ return [a, "key"]; }));
+  })) + block("Actors", (A.actors || []).map(function(a){
+    return [a, nf(per[a] || 0) + " here"];
+  }));
   foot([[nf(entries.length), "entries"], [nf((A.actors || []).length), "actors"],
         [nf((A.byAction || []).length), "kinds"]]);
 }
