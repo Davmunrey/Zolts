@@ -182,3 +182,57 @@ def test_a_meter_cannot_overflow_its_track():
     builder = builder[:builder.index("\n}")]
     assert "Math.max(0, Math.min(1," in builder, (
         "the meter's share reaches the width without being clamped")
+
+
+# -- prose columns --------------------------------------------------------
+
+def test_a_prose_column_declares_itself_and_has_a_rule():
+    """A rationale is a sentence, and no column width fits one on a line.
+
+    `whatsapp requires consent, contact has none on record` was 245px wider
+    than its column at 1280px — widening the column could never have fixed it.
+    The column that carries prose says so with `w:` in the same head spec that
+    names it, and wraps. If the marker existed without a rule, the cell would
+    silently keep clipping while the spec claimed otherwise.
+    """
+    prose = {name: [h for h in spec["head"] if h.startswith("w:")]
+             for name, spec in _views().items()}
+    declared = {name: cols for name, cols in prose.items() if cols}
+    assert declared, "no view declares a prose column; policy carries sentences"
+    assert re.search(r"\.cell\.w\s*\{", STYLE), (
+        "views declare prose columns but `.cell.w` has no rule, so they clip")
+    assert "white-space:normal" in STYLE[STYLE.index(".cell.w{"):
+                                        STYLE.index(".cell.w{") + 220], (
+        "`.cell.w` does not release nowrap, so a declared prose column clips")
+
+
+def test_the_prefix_never_reaches_the_screen():
+    """`r:` and `w:` are instructions to the renderer, not text. A header that
+    printed `w:Rationale`, or a phone row labelled `w:Reason`, would be the
+    marker leaking into the product."""
+    assert re.search(r"function label\(h\)\s*\{[^}]*replace\(/\^\[rw\]:/", SCRIPT), (
+        "no single place strips the head prefixes; two readers will diverge")
+    chrome = SCRIPT[SCRIPT.index("function chrome(view)"):]
+    chrome = chrome[:chrome.index("\n}")]
+    assert "label(h)" in chrome, "the header renders the raw head entry"
+    labelled = SCRIPT[SCRIPT.index("function labelled(cells)"):]
+    labelled = labelled[:labelled.index("\n}")]
+    assert "label(head[i])" in labelled, "the phone label renders the raw entry"
+
+
+def test_no_column_holding_variable_length_text_is_a_fixed_width():
+    """A 1920px screen has ~500px of width the console used to give to gutter
+    while `local-services-multisite` ellipsised in a hard-coded 152px column.
+    Fixed widths belong to columns whose content has a known size — a dot, a
+    percentage, a count — not to names, keys or identifiers."""
+    for name, spec in _views().items():
+        tracks = spec["cols"].split()
+        for i, track in enumerate(tracks):
+            label = re.sub(r"^[rw]:", "", spec["head"][i]) if i < len(spec["head"]) else ""
+            if label in ("", "Enrolled", "Lift", "Holdout", "p95", "Score", "Capacity",
+                         "Credits", "Events", "Cost", "Strength", "Detected in",
+                         "When", "Observed", "Health", "State", "Channel"):
+                continue
+            assert not re.fullmatch(r"[\d.]+px", track), (
+                f"{name}: the {label!r} column is fixed at {track}; on a wide "
+                "screen the spare width goes to gutter and the text still clips")

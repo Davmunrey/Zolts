@@ -90,7 +90,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
    property, so a view cannot label a column the rows do not fill — which is
    exactly what happened when five views were added against the Programs
    header and every one of them showed PROGRAM · BLUEPRINT · ENROLLED. */
-.centre{--cols:22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px}
+.centre{--cols:22px minmax(140px,1.35fr) minmax(120px,.95fr) 70px 78px 58px 56px 26px}
 .head{display:grid;grid-template-columns:var(--cols);
       gap:12px;align-items:center;height:28px;padding:0 14px;border-bottom:1px solid var(--hairline);
       font-size:11px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);flex:none}
@@ -119,6 +119,13 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .cell.r{text-align:right;font-variant-numeric:tabular-nums}
 .cell.n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-muted)}
 .cell.good{color:var(--lift)} .cell.bad{color:var(--deny)} .cell.warnt{color:var(--review)}
+/* A rationale is a sentence. No column width fits "whatsapp requires consent,
+   contact has none on record" on one line, so the column that carries prose
+   declares itself with "w:" in the head spec and wraps to at most two lines;
+   the row grows once, by a known amount, and the guard knows which views. */
+.cell.w{white-space:normal;line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;
+        -webkit-line-clamp:2;overflow:hidden;text-overflow:clip}
+.row:has(.cell.w){height:auto;min-height:36px;padding-top:6px;padding-bottom:6px}
 .row.sub{background:var(--canvas)}
 .row.planned{cursor:default;opacity:.62}
 .row.planned:hover{background:var(--canvas)}
@@ -1031,18 +1038,18 @@ renderChrome();
 var VIEWS = {
   programs: {
     title: "Programs", filters: true,
-    cols: "22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px",
+    cols: "22px minmax(140px,1.35fr) minmax(120px,.95fr) 70px 78px 58px 56px 26px",
     head: ["", "Program", "Blueprint", "r:Enrolled", "r:Lift", "r:Holdout", "r:p95", ""]
   },
   review: {
     title: "Review queue",
     cols: "22px minmax(160px,1.4fr) 110px 90px 1fr",
-    head: ["", "Draft", "Channel", "r:Score", "Waiting on"]
+    head: ["", "Draft", "Channel", "r:Score", "w:Waiting on"]
   },
   sending: {
     title: "Sending",
     cols: "22px minmax(180px,1.3fr) 110px 96px 1fr",
-    head: ["", "Domain and mailbox", "r:Capacity", "Health", "Reason"]
+    head: ["", "Domain and mailbox", "r:Capacity", "Health", "w:Reason"]
   },
   prospects: {
     title: "Prospects",
@@ -1051,7 +1058,7 @@ var VIEWS = {
   },
   signals: {
     title: "Signals",
-    cols: "22px minmax(130px,1fr) minmax(140px,1.1fr) 110px 96px 100px",
+    cols: "22px minmax(150px,1.3fr) minmax(140px,1fr) 96px 96px 96px",
     head: ["", "Signal", "Subject", "r:Strength", "r:Detected in", "Observed"]
   },
   spend: {
@@ -1062,11 +1069,11 @@ var VIEWS = {
   policy: {
     title: "Policy",
     cols: "22px minmax(140px,1fr) 90px minmax(180px,1.2fr) 1fr",
-    head: ["", "Subject", "Channel", "Rule", "Rationale"]
+    head: ["", "Subject", "Channel", "Rule", "w:Rationale"]
   },
   audit: {
     title: "Audit log",
-    cols: "22px minmax(160px,1fr) 150px 110px 130px",
+    cols: "22px minmax(160px,1fr) minmax(120px,.9fr) 110px 130px",
     head: ["", "Action", "Actor", "Subject", "r:When"]
   }
 };
@@ -1080,7 +1087,7 @@ function chrome(view){
   headEl.innerHTML = spec.head.map(function(h){
     var right = h.indexOf("r:") === 0;
     return '<span' + (right ? ' class="r"' : "") + '>'
-      + esc(right ? h.slice(2) : h) + '</span>';
+      + esc(label(h)) + '</span>';
   }).join("");
   document.querySelectorAll(".only-programs").forEach(function(el){
     el.hidden = !spec.filters;
@@ -1112,12 +1119,18 @@ function dot(kind){ return '<span class="st ' + (kind || "") + '"></span>'; }
 // its rows by hand to carry a click target and skipped the labelling entirely:
 // on a phone it printed "email · 0.81 · needs_human" with nothing saying which
 // was which.
+/* "r:" means the column is right-aligned; "w:" means it carries prose. */
+function label(h){ return String(h || "").replace(/^[rw]:/, ""); }
+
 function labelled(cells){
   var head = (VIEWS[state.view] || {}).head || [];
   return cells.map(function(c, i){
-    var label = String(head[i] || "").replace(/^r:/, "");
-    return label ? c.replace('<span class="cell',
-                             '<span data-l="' + esc(label) + '" class="cell') : c;
+    var name = label(head[i]);
+    if (!name) return c;
+    var prose = String(head[i]).indexOf("w:") === 0;
+    return c.replace('<span class="cell',
+                     '<span data-l="' + esc(name) + '" class="cell'
+                     + (prose ? " w" : ""));
   }).join("");
 }
 

@@ -191,9 +191,15 @@ def main() -> int:
                 view = entry.get_attribute("data-view")
                 entry.click()
                 page.wait_for_selector("#list .row, #list .empty", timeout=15_000)
+                # A row is one line unless the view's own head spec declares a
+                # prose column with "w:", in which case it may reach two. The
+                # allowance is read from the same declaration that renders the
+                # column, so a view cannot start wrapping quietly.
                 tall = page.evaluate(
-                    "() => [...document.querySelectorAll('.row')]"
-                    ".filter(r => r.getBoundingClientRect().height > 40).length")
+                    "() => { const prose = !!document.querySelector('.row .cell.w');"
+                    " const limit = prose ? 60 : 40;"
+                    " return [...document.querySelectorAll('.row')]"
+                    "   .filter(r => r.getBoundingClientRect().height > limit).length; }")
                 if tall:
                     wrapped.append({"view": view, "rows": tall})
                 # `.cell` ellipsises on purpose; the detail panel and the stat
@@ -212,6 +218,36 @@ def main() -> int:
                     "() => [...document.querySelectorAll('#kpis .k')]"
                     ".map(e => e.textContent)")
                 report[f"{view}_view"] = page.locator("#list").inner_text()[:120]
+            # A wide screen. Columns used to be fixed pixel widths, so a
+            # 1920px display gave its extra 500px to empty gutter while
+            # `local-services-multisite` still ellipsised in a 152px column.
+            # Where there is width to spare, the text gets it: at 1920 no cell
+            # may be cut off. Prose columns are exempt — they are declared, and
+            # they wrap rather than clip.
+            page.set_viewport_size({"width": 1920, "height": 1080})
+            page.wait_for_timeout(250)
+            cut, stiff = [], []
+            for entry in page.locator("nav a[data-view]").all():
+                view = entry.get_attribute("data-view")
+                entry.click()
+                page.wait_for_timeout(150)
+                over = page.evaluate(
+                    "() => [...document.querySelectorAll('.row > *')]"
+                    ".filter(e => !e.classList.contains('w')"
+                    "          && e.scrollWidth > e.clientWidth + 1)"
+                    ".map(e => e.textContent.slice(0, 40))")
+                if over:
+                    cut.append({"view": view, "cells": over})
+                # The exemption above is earned, not assumed.
+                rigid = page.evaluate(
+                    "() => [...document.querySelectorAll('.row .cell.w')]"
+                    ".filter(e => getComputedStyle(e).whiteSpace === 'nowrap')"
+                    ".map(e => e.textContent.slice(0, 40))")
+                if rigid:
+                    stiff.append({"view": view, "cells": rigid})
+            report["cut_off_on_a_wide_screen"] = cut
+            report["prose_that_does_not_wrap"] = stiff
+
             # A phone. Below 820px the rail is a strip of destinations and the
             # rows stack into label/value pairs — it used to be `display:none`
             # and four columns clipped off the right edge, so the console was
@@ -273,6 +309,14 @@ def main() -> int:
             return 1
         if report["views_sharing_tiles"]:
             print("two views showed the same stat tiles", file=sys.stderr)
+            return 1
+        if report["cut_off_on_a_wide_screen"]:
+            print("a 1920px screen still cuts text off:",
+                  json.dumps(report["cut_off_on_a_wide_screen"])[:400], file=sys.stderr)
+            return 1
+        if report["prose_that_does_not_wrap"]:
+            print("a column declared as prose still clips:",
+                  json.dumps(report["prose_that_does_not_wrap"])[:400], file=sys.stderr)
             return 1
         if report["rows_that_wrapped"] or report["clipped_in_panel"]:
             print("a row grew past its height, or a value ran outside its box",
