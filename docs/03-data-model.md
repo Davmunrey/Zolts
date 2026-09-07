@@ -16,6 +16,7 @@
 | `experiment` | Holdout/variant with deterministic assignment | stable hash |
 | `policy_decision` | Record of a policy evaluation (allow/deny plus reason) | append-only, 24-month retention |
 | `cost_event` | Attributed cost (credit, token, send, provider) | basis of the per-play P&L |
+| `tenant_baseline` | What the tenant's GTM cost and produced in the ninety days before Zolts: four spend fields, the funnel, the derived cost per meeting and per opportunity, and a digest the pilot letter quotes. Written once (ADR-042) | one per tenant |
 
 ## Identity graph
 

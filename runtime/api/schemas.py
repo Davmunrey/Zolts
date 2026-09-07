@@ -118,6 +118,28 @@ class SignupIn(BaseModel):
     blueprint_id: str | None = Field(default=None, max_length=80)
 
 
+class BaselineIn(BaseModel):
+    """Ninety days before Zolts, to be frozen once.
+
+    Spend is EUR per month in micros, four fields (`docs/17`). The funnel is
+    the window's: contacts made, replies, meetings, opportunities. `signed_by`
+    names the person on the partner's side who signs the letter that quotes
+    the digest.
+    """
+    window_start: str = Field(min_length=10, max_length=10)
+    window_end: str = Field(min_length=10, max_length=10)
+    spend_tools_micros: int = Field(ge=0)
+    spend_data_micros: int = Field(ge=0)
+    spend_sending_micros: int = Field(ge=0)
+    spend_people_micros: int = Field(ge=0)
+    contacted: int = Field(ge=0)
+    replied: int = Field(ge=0)
+    meetings: int = Field(ge=0)
+    opportunities: int = Field(ge=0)
+    source: str = Field(default="declared", pattern="^(declared|crm)$")
+    signed_by: str = Field(min_length=1, max_length=200)
+
+
 class KeyIn(BaseModel):
     """A new API key. Scopes narrow it; an empty list is full tenant access."""
     name: str = Field(min_length=1, max_length=120)
