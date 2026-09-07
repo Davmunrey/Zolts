@@ -256,8 +256,81 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   .btn-s:hover{background:var(--surface-3)}
 }
 
-@media (max-width:1180px){ .app{grid-template-columns:200px minmax(0,1fr)} .detail{display:none} }
-@media (max-width:820px){ .app{grid-template-columns:1fr} .rail{display:none} }
+/* ── narrow ────────────────────────────────────────────────────────────
+   Below 1180px the panel stacks under the list rather than disappearing: on
+   Review it is the whole point of the screen, and hiding it made the view
+   useless on the device most likely to be reading it at 8am.
+
+   Below 820px the rail used to be `display:none` outright, so a phone landed
+   on Programs with no way to reach the other seven views. The console was one
+   screen. It is a horizontal strip now — same links, same counts. */
+@media (max-width:1180px){
+  .app{grid-template-columns:220px minmax(0,1fr); grid-template-rows:1fr auto;
+       height:auto; min-height:100vh; overflow:visible}
+  .rail{grid-row:1 / span 2; position:sticky; top:0; height:100vh}
+  .centre{min-height:100vh}
+  .detail{grid-column:2; border-top:1px solid var(--hairline-strong)}
+  .list{overflow:visible}
+}
+@media (max-width:820px){
+  .app{grid-template-columns:1fr; grid-template-rows:auto 1fr auto}
+  .rail{grid-row:auto; position:static; height:auto; flex-direction:column;
+        border-right:0; border-bottom:1px solid var(--hairline);
+        padding:8px 0 0; gap:8px}
+  .rail > div:first-child{padding:0 12px}
+  .rail .sec{display:none}
+  /* One scrolling row of destinations. Labels and counts stay: a row of bare
+     icons is a quiz. */
+  nav{flex-direction:row; gap:4px; overflow-x:auto; padding:0 12px 8px;
+      scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav a{height:30px; padding:0 10px; flex:none; border-radius:999px;
+        background:var(--surface-1); white-space:nowrap}
+  nav .c{margin-left:4px}
+  .rail-foot{display:none}
+  .centre{min-height:0}
+  .bar{padding:0 12px}
+  /* The Programs filters are a desktop refinement; the title and the count
+     are what a phone has room for. */
+  .bar .chipbtn{display:none}
+  .kpis{grid-template-columns:1fr 1fr}
+  .kpi{padding:10px 12px 11px}
+  .kpi .v{font-size:19px}
+  .head{display:none}
+  /* Each row becomes its own block of label/value pairs. */
+  .row{grid-template-columns:1fr; height:auto; gap:0; padding:11px 12px 12px;
+       align-items:start}
+  .row.sub .cell.k{padding-left:0}
+  .row .st{position:absolute; left:12px; top:15px}
+  .cell{white-space:normal; overflow:visible; text-overflow:clip;
+        display:flex; gap:8px; padding-left:16px; min-height:19px}
+  .cell.k{font-size:14px; font-weight:500; margin-bottom:3px}
+  .cell::before{content:attr(data-l); flex:none; width:96px; font-size:11px;
+                color:var(--ink-tertiary); text-transform:lowercase}
+  .cell.k::before{display:none}
+  .cell.r,.cell.n{text-align:left}
+  .cell:empty{display:none}
+  /* The Programs row is the one that builds its own markup. It stacks the
+     same way rather than printing four unlabelled numbers down the right. */
+  .row .pname{padding-left:16px; margin-bottom:3px}
+  .row .bp,.row .n,.row .lift{display:flex; gap:8px; padding-left:16px;
+       text-align:left; font-size:12px}
+  .row .bp::before,.row .n::before,.row .lift::before{content:attr(data-l);
+       flex:none; width:96px; color:var(--ink-tertiary); font-size:11px;
+       font-family:var(--sans)}
+  /* The icon alone is a symbol nobody has been taught. On a phone it says
+     what it means, in the same words the panel uses. */
+  .row .sig{justify-self:start; display:flex; align-items:center; gap:8px;
+       width:auto; height:auto; margin:5px 0 0 16px; font-size:11px}
+  .row .sig::after{content:attr(data-l); color:var(--ink-tertiary);
+       font-family:var(--sans)}
+  .row .sig svg{width:13px; height:13px; flex:none}
+  .row .owner{justify-self:start; margin-left:16px}
+  .sect{padding:0 12px}
+  .foot{height:auto; padding:10px 12px; flex-wrap:wrap; gap:10px 14px}
+  .detail{grid-column:1}
+  .source{display:none}
+}
 @media (prefers-reduced-motion:reduce){
   /* Fewer and gentler, not zero: colour and opacity aid comprehension and
      stay; movement is what causes sickness, so only that is removed. */
@@ -430,12 +503,14 @@ function renderList(){
     b.innerHTML =
       '<span class="st ' + p.status + '" title="' + p.status + '"></span>'
     + '<span class="pname"><b>' + p.name + '</b><span>' + p.key + ' · v' + p.version + '</span></span>'
-    + '<span class="bp">' + (p.blueprint || "—") + '</span>'
-    + '<span class="n">' + (p.enrolled ? nf(p.enrolled) : "—") + '</span>'
-    + '<span class="lift ' + cls + '">' + (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2) + " pp") + '</span>'
-    + '<span class="n">' + p.holdout + '%</span>'
-    + '<span class="n">' + (p.p95 == null ? "—" : p.p95 + " m") + '</span>'
-    + '<span class="sig" style="color:' + (d == null ? "var(--ink-tertiary)" : sig(p) ? "var(--lift)" : "var(--review)") + '">'
+    + '<span class="bp" data-l="blueprint">' + (p.blueprint || "—") + '</span>'
+    + '<span class="n" data-l="enrolled">' + (p.enrolled ? nf(p.enrolled) : "—") + '</span>'
+    + '<span class="lift ' + cls + '" data-l="lift">' + (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2) + " pp") + '</span>'
+    + '<span class="n" data-l="holdout">' + p.holdout + '%</span>'
+    + '<span class="n" data-l="p95">' + (p.p95 == null ? "—" : p.p95 + " m") + '</span>'
+    + '<span class="sig" data-l="' + (d == null ? "no effect resolvable"
+        : sig(p) ? "significant" : "not significant yet") + '" style="color:'
+      + (d == null ? "var(--ink-tertiary)" : sig(p) ? "var(--lift)" : "var(--review)") + '">'
       + (d == null ? "" : sig(p) ? ICON_SIG : ICON_UND) + '</span>';
     b.addEventListener("click", function(){ state.sel = p.key; renderList(); renderDetail(); });
     list.appendChild(b);
@@ -539,11 +614,11 @@ function renderReviewList(){
   list.innerHTML = R.map(function(r){
     return '<div class="row' + (r.id === state.rsel ? " on" : "") + '" data-r="'
       + esc(r.id) + '" role="row" tabindex="0">'
-      + dot(r.spendVerdict === "no" ? "deny" : "warn")
-      + cell(r.agent + " · " + (r.step || r.channel || ""), "k")
-      + cell(r.channel || "", "m")
-      + cell(r.evalScore == null ? "—" : r.evalScore.toFixed(2), "n")
-      + cell(r.state, "m warnt")
+      + labelled([dot(r.spendVerdict === "no" ? "deny" : "warn"),
+                  cell(r.agent + " · " + (r.step || r.channel || ""), "k"),
+                  cell(r.channel || "", "m"),
+                  cell(r.evalScore == null ? "—" : r.evalScore.toFixed(2), "n"),
+                  cell(r.state, "m warnt")])
       + '</div>';
   }).join("");
   var refused = R.filter(function(r){ return r.spendVerdict === "no"; }).length;
@@ -1015,8 +1090,27 @@ function cell(text, cls){
   return '<span class="cell ' + (cls || "") + '" title="' + esc(v) + '">' + esc(v) + '</span>';
 }
 function dot(kind){ return '<span class="st ' + (kind || "") + '"></span>'; }
+// Each cell carries its column's name. On a phone the eight-column grid
+// becomes eight stacked label/value pairs, because a table that clips four of
+// its columns off the right edge is a table nobody can read — and it clipped
+// them without even offering a horizontal scroll.
+//
+// Its own function, not a step inside `rowOf`, because the review queue builds
+// its rows by hand to carry a click target and skipped the labelling entirely:
+// on a phone it printed "email · 0.81 · needs_human" with nothing saying which
+// was which.
+function labelled(cells){
+  var head = (VIEWS[state.view] || {}).head || [];
+  return cells.map(function(c, i){
+    var label = String(head[i] || "").replace(/^r:/, "");
+    return label ? c.replace('<span class="cell',
+                             '<span data-l="' + esc(label) + '" class="cell') : c;
+  }).join("");
+}
+
 function rowOf(cells, cls){
-  return '<div class="row' + (cls ? " " + cls : "") + '" role="row">' + cells.join("") + '</div>';
+  return '<div class="row' + (cls ? " " + cls : "") + '" role="row">'
+       + labelled(cells) + '</div>';
 }
 /* A stat tile: label, value, an optional unit and an optional ratio against a
    limit. `tone` is a status, so it is never the only carrier — the label and

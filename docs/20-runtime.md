@@ -478,6 +478,14 @@ At 1920 the console showed four mailboxes across three separate voids: a table s
 | **The table stops at a readable width** | The surplus goes to the panel, which is where the density is: `clamp(340px, 25vw, 470px)` |
 | **The rail says what the console is reading** | Demo, or the tenant and its region. The first question when a number looks wrong is whether it came from anywhere, and the page never said |
 
+### On a phone
+
+Below 820px the rail was `display:none`. A phone landed on Programs with no way to reach the other seven views, and the eight-column grid clipped four of them off the right edge without offering a horizontal scroll: **the console was one screen with half a table on it.**
+
+The rail is a scrolling strip of the same destinations, with their labels and counts — a row of bare icons is a quiz. Each row becomes stacked label/value pairs, from the same header spec the desktop columns are named by, so a column cannot be labelled one thing across and another down. The page scrolls naturally instead of being pinned to `100vh`, which also puts the detail panel back: below 1180px it stacks under the list rather than disappearing, and on the review queue that panel *is* the screen.
+
+`browser_console.py` drives the same run at 390px and fails on an unreachable rail, a clipped cell, or any horizontal overflow. Both were verified by reintroducing the defect and watching the run exit non-zero.
+
 The stat row folds to two columns below 1560px and one below 900px — before four tiles can clip, because a truncated unit changes what a number means. `scripts/browser_console.py` measures that: it fails on any element wider than its box, and on two views showing the same tiles, which is what a view that forgets to set its own would do.
 
 ## Proving it: policy and the audit log

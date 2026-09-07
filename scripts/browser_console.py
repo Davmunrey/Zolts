@@ -186,7 +186,7 @@ def main() -> int:
             # A row taller than its declared height means a cell wrapped. A
             # panel element wider than its box means a value is clipped or
             # overlapping. Neither is a matter of taste.
-            wrapped, clipped, tiles = [], [], {}
+            wrapped, clipped, tiles, narrow = [], [], {}, []
             for entry in page.locator("nav a[data-view]").all():
                 view = entry.get_attribute("data-view")
                 entry.click()
@@ -196,10 +196,11 @@ def main() -> int:
                     ".filter(r => r.getBoundingClientRect().height > 40).length")
                 if tall:
                     wrapped.append({"view": view, "rows": tall})
-                # `.cell` ellipsises on purpose; the detail panel never should.
+                # `.cell` ellipsises on purpose; the detail panel and the stat
+                # tiles never should.
                 over = page.evaluate(
                     "() => [...document.querySelectorAll('.detail dt, .detail dd,"
-                    " .detail .pnote, .detail .blabel')]"
+                    " .detail .pnote, .detail .blabel, #kpis .k, #kpis .v, #kpis .u')]"
                     ".filter(e => e.scrollWidth > e.clientWidth + 1)"
                     ".map(e => e.textContent.slice(0, 40))")
                 if over:
@@ -211,8 +212,33 @@ def main() -> int:
                     "() => [...document.querySelectorAll('#kpis .k')]"
                     ".map(e => e.textContent)")
                 report[f"{view}_view"] = page.locator("#list").inner_text()[:120]
+            # A phone. Below 820px the rail is a strip of destinations and the
+            # rows stack into label/value pairs — it used to be `display:none`
+            # and four columns clipped off the right edge, so the console was
+            # one screen with half a table on it.
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.wait_for_timeout(250)
+            narrow.append({"nav_reachable": page.evaluate(
+                "() => { const r = document.querySelector('.rail');"
+                " return !!r && getComputedStyle(r).display !== 'none'"
+                "   && document.querySelectorAll('nav a[data-view]').length > 1; }")})
+            for entry in page.locator("nav a[data-view]").all():
+                view = entry.get_attribute("data-view")
+                entry.click()
+                page.wait_for_timeout(150)
+                over = page.evaluate(
+                    "() => [...document.querySelectorAll('.cell, .bp, .n, .lift,"
+                    " #kpis .k, #kpis .v, #kpis .u')]"
+                    ".filter(e => e.scrollWidth > e.clientWidth + 1).length")
+                if over:
+                    narrow.append({"view": view, "clipped": over})
+            narrow.append({"horizontal_overflow": page.evaluate(
+                "() => document.documentElement.scrollWidth - window.innerWidth")})
+            page.set_viewport_size({"width": 1440, "height": 900})
+
             report["rows_that_wrapped"] = wrapped
             report["clipped_in_panel"] = clipped
+            report["on_a_phone"] = narrow
             report["stat_tiles"] = tiles
             # Two views may share a label; they must not share the whole set.
             seen, repeated = {}, []
@@ -240,6 +266,11 @@ def main() -> int:
         db.close()
 
         print(json.dumps(report, indent=2))
+        phone = report["on_a_phone"]
+        if not phone[0].get("nav_reachable") or any("clipped" in e for e in phone) \
+                or phone[-1].get("horizontal_overflow"):
+            print("the console is not usable at 390px", file=sys.stderr)
+            return 1
         if report["views_sharing_tiles"]:
             print("two views showed the same stat tiles", file=sys.stderr)
             return 1
