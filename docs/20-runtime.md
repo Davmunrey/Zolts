@@ -346,8 +346,9 @@ psql "$OWNER_URL" -c "create role zolts_app login password '…'"
 #      the same three ZOLTS_* values, ZOLTS_ENV=production, and
 #      CRON_SECRET             openssl rand -hex 32; the platform sends it as the bearer
 
-# 4. The plan. A cron every minute and a five-minute function are Pro features.
-#    On Hobby the deploy is refused, which is the right failure.
+# 4. The plan. A cron every minute is a Pro feature. On Hobby every deploy of
+#    this configuration is refused with `cron_jobs_limits_reached`, which is
+#    the right failure and was watched to happen (ADR-041).
 
 # 5. Release. Push to main, or run the deploy-vercel workflow by hand. It
 #    migrates, runs preflight in production mode, deploys, and opens the URL.

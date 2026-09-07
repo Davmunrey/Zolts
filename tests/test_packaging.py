@@ -349,13 +349,28 @@ def test_the_vercel_function_ships_every_path_the_runtime_reads(what):
             f"data did not exist")
 
 
+def _requirements(path: Path) -> list[str]:
+    """The requirement lines, without comments, blanks or include directives."""
+    return [line.strip() for line in path.read_text().splitlines()
+            if line.strip() and not line.strip().startswith(("#", "-"))]
+
+
 def test_the_root_requirements_are_the_runtimes():
-    """Vercel installs the root `requirements.txt` and nothing else. Two lists
-    would drift, and the one that drifts is the one that ships."""
-    root = (ROOT / "requirements.txt").read_text()
-    assert "-r runtime/requirements.txt" in root, (
-        "the root requirements.txt does not include runtime/requirements.txt; "
-        "the function would build without the runtime's dependencies")
+    """Vercel installs the root `requirements.txt` and nothing else, and its
+    parser refuses an include line: a root file that said
+    `-r runtime/requirements.txt` failed the build with
+    PYTHON_REQUIREMENTS_PARSE_ERROR — after this test had passed, because it
+    asserted the include was there rather than that the lists were the same
+    (D-40). Two lists drift, and the one that drifts is the one that ships;
+    so the root file is a copy, and this fails the moment it is not."""
+    root = ROOT / "requirements.txt"
+    text = root.read_text()
+    assert not any(line.strip().startswith("-r") for line in text.splitlines()), (
+        "the root requirements.txt includes another file; Vercel's parser refuses "
+        "that and the function does not build")
+    assert _requirements(root) == _requirements(ROOT / "runtime" / "requirements.txt"), (
+        "the root requirements.txt and runtime/requirements.txt list different "
+        "dependencies; the function would build with the wrong ones")
 
 
 def test_every_cron_points_at_a_route_the_function_mounts():

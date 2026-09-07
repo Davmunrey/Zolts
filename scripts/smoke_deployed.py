@@ -151,6 +151,17 @@ def main() -> int:
     if not csp:
         failures.append("/console served no Content-Security-Policy")
 
+    # The front door. On Vercel `/` is the static demo, served before the
+    # rewrite that sends everything else to the function; a host with no
+    # static site answers 404 from the API. Anything else is a router that
+    # sends the demo's path to the function, or the function's paths nowhere.
+    status, _, body = _get(f"{base}/")
+    report["root"] = status
+    if status not in (200, 404):
+        failures.append(f"/ answered {status}")
+    elif status == 200 and b"<title>" not in body:
+        failures.append("/ answered 200 with something that is not a page")
+
     # The scheduled routes, to a stranger. Either absent — a host that runs
     # the worker as a process — or locked. 200 is a public URL that drains the
     # outbox; 503 is a deployment that never set the secret; anything else is
