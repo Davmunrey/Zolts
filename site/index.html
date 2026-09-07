@@ -81,15 +81,43 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .chipbtn[aria-pressed="true"]{background:var(--surface-2);color:var(--ink);border-color:var(--hairline)}
 .chipbtn svg{width:11px;height:11px}
 
-.head{display:grid;grid-template-columns:22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px;
+/* One grid, declared per view. The header and the rows read the same custom
+   property, so a view cannot label a column the rows do not fill — which is
+   exactly what happened when five views were added against the Programs
+   header and every one of them showed PROGRAM · BLUEPRINT · ENROLLED. */
+.centre{--cols:22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px}
+.head{display:grid;grid-template-columns:var(--cols);
       gap:12px;align-items:center;height:28px;padding:0 14px;border-bottom:1px solid var(--hairline);
       font-size:11px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);flex:none}
 .head .r{text-align:right}
 .list{overflow-y:auto;flex:1}
-.row{display:grid;cursor:pointer;grid-template-columns:22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px;
+.row{display:grid;cursor:pointer;grid-template-columns:var(--cols);
      gap:12px;align-items:center;height:36px;padding:0 14px;width:100%;text-align:left;
      border-bottom:1px solid var(--hairline);position:relative;
      transition:background 90ms var(--ease)}
+
+/* Every cell is one line. A wrapped cell grew its row into the next one and
+   the list became unreadable the moment a value was longer than the column
+   built for a different view; the full value is on the title attribute. */
+.cell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      font-size:12px;color:var(--ink-muted)}
+.cell.k{font-size:13px;color:var(--ink)}
+.cell.m{font-family:var(--mono);font-size:11.5px;color:var(--ink-subtle)}
+.cell.r{text-align:right;font-variant-numeric:tabular-nums}
+.cell.n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-muted)}
+.cell.good{color:var(--lift)} .cell.bad{color:var(--deny)} .cell.warnt{color:var(--review)}
+.row.sub{background:transparent}
+.row.planned{cursor:default;opacity:.62}
+.row.planned:hover{background:transparent}
+/* Two different tables in one list need a line between them. Detections and
+   watched signals, contacts and accounts, rules and decisions: without this
+   the reader cannot tell where one ends. */
+.sect{display:flex;align-items:center;gap:10px;height:26px;padding:0 14px;
+      border-bottom:1px solid var(--hairline);background:var(--surface-1);
+      font-size:10.5px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;
+      color:var(--ink-tertiary)}
+.sect b{font-family:var(--mono);font-weight:450;color:var(--ink-subtle);letter-spacing:0}
+.row.sub .cell.k{color:var(--ink-secondary);padding-left:14px}
 
 .row[aria-selected="true"]{background:var(--surface-2)}
 .row[aria-selected="true"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
@@ -97,6 +125,11 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .st.live{background:var(--lift)}
 .st.paused{background:var(--ink-tertiary)}
 .st.draft{background:transparent;border:1.5px dashed var(--ink-tertiary)}
+/* Amber and red never existed. Every warning dot in Sending, Review, Policy
+   and Prospects has rendered as nothing since those views shipped — including
+   the mailbox in `complaint.alarm`, which is the row that view is for. */
+.st.warn{background:var(--review)}
+.st.deny{background:var(--deny)}
 .pname{display:flex;flex-direction:column;gap:1px;min-width:0}
 .pname b{font-weight:450;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pname span{font-family:var(--mono);font-size:10.5px;color:var(--ink-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -126,11 +159,27 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .btn-s{background:var(--surface-2);color:var(--ink);border:1px solid var(--hairline)}
 
 .block{padding:12px 16px;border-bottom:1px solid var(--hairline)}
+/* The jurisdiction switcher. It had no style at all, so six buttons rendered
+   as one run of letters — CADEESFRGBUS — in the middle of a section label. */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:6px;background:var(--surface-2);
+     border:1px solid var(--hairline)}
+.seg button{padding:2px 6px;border-radius:4px;font-family:var(--mono);font-size:10px;
+            letter-spacing:.3px;color:var(--ink-tertiary);background:transparent;border:0;
+            cursor:pointer;transition:background 90ms var(--ease),color 90ms var(--ease)}
+.seg button[aria-pressed="true"]{background:var(--surface-3);color:var(--ink)}
 .blabel{font-size:11px;font-weight:550;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-tertiary);margin-bottom:9px}
 .props{display:grid;grid-template-columns:1fr auto;gap:7px 12px;font-size:12px;align-items:baseline}
 .props dt{color:var(--ink-subtle);min-width:0}
 .props dd{margin:0;font-family:var(--mono);color:var(--ink-muted);text-align:right;white-space:nowrap}
 .props dd.hi{color:var(--ink)}
+/* A sentence is not a value. Prose in the `dd` column, which is nowrap, ran
+   over its own label — "Authentication" and "an unverified domain sends
+   nothing" printed on top of each other. */
+.empty{margin:0;padding:28px 24px;max-width:46ch;font-size:12.5px;line-height:1.6;
+       color:var(--ink-tertiary)}
+.pnote{margin:0 0 7px;font-size:12px;line-height:1.5;color:var(--ink-subtle)}
+.pnote:last-child{margin-bottom:0}
+.pnote b{font-weight:500;color:var(--ink-muted)}
 .arm{display:grid;grid-template-columns:64px 1fr 54px;gap:9px;align-items:center;font-size:12px;margin-bottom:7px}
 .arm em{font-style:normal;color:var(--ink-subtle)}
 .track{height:4px;border-radius:9999px;background:var(--surface-3);overflow:hidden}
@@ -225,21 +274,17 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       <h1>Programs</h1>
       <span class="count" id="shown">7</span>
       <span class="grow"></span>
-      <button class="chipbtn" id="f-live" aria-pressed="false">
+      <button class="chipbtn only-programs" id="f-live" aria-pressed="false">
         <span class="st live" style="width:7px;height:7px"></span>Live only
       </button>
-      <button class="chipbtn" id="f-sig" aria-pressed="false">
+      <button class="chipbtn only-programs" id="f-sig" aria-pressed="false">
         <svg viewBox="0 0 11 11" fill="none"><path d="M1.5 8.5l2.4-3.2 2.4 2 3.2-4.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Significant
       </button>
       <button class="chipbtn" id="open-pal"><kbd style="border:0;background:none;padding:0;color:var(--ink-tertiary)">⌘K</kbd></button>
     </div>
 
-    <div class="head" role="row">
-      <span></span><span>Program</span><span>Blueprint</span>
-      <span class="r">Enrolled</span><span class="r">Lift</span><span class="r">Holdout</span>
-      <span class="r">p95</span><span></span>
-    </div>
+    <div class="head" id="head" role="row"></div>
     <div class="list" id="list" role="listbox" aria-label="Programs" tabindex="0"
          aria-activedescendant=""></div>
     <div class="foot" id="foot"></div>
@@ -269,7 +314,7 @@ var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
    every figure from the real programs, blueprints and reference core, so the
    minimum detectable effect on screen is computed by the same function the test
    suite covers rather than by a second copy of the formula living here. */
-var D = {"tenant":{"name":"Northbeam","slug":"northbeam","region":"eu","blueprint":"b2b-saas-sales-led"},"queue":{"pending":42,"dead":0,"review":3},"fleet":{"managed":true,"capacity":76,"remaining":38,"domains":[{"name":"outbound.northbeam.io","capacity":76,"health":"ok","rule":"ok","rationale":"all thresholds clear","authenticationIssues":[],"mailboxes":[{"address":"ada@outbound.northbeam.io","provider":"google","warmupDay":61,"capacity":48,"remaining":26,"sentToday":22,"health":"ok","rule":"ok"},{"address":"sam@outbound.northbeam.io","provider":"microsoft","warmupDay":6,"capacity":8,"remaining":3,"sentToday":5,"health":"ok","rule":"sample.insufficient"},{"address":"lee@outbound.northbeam.io","provider":"other","warmupDay":44,"capacity":20,"remaining":9,"sentToday":11,"health":"alarm","rule":"complaint.alarm"}]}],"pausedDomains":[]},"prospects":{"accounts":[{"id":"acct-1","name":"Northwind Traders","domain":"northwind.example","country":"ES","employeeBand":"51-200","industry":"62.01","contacts":2,"missing":[],"dossier":"complete"},{"id":"acct-2","name":"Vireo Labs","domain":"vireo.example","country":"FR","employeeBand":"11-50","industry":"72.19","contacts":1,"missing":[],"dossier":"thin"},{"id":"acct-3","name":"Kestrel Data","domain":"kestrel.example","country":"DE","employeeBand":null,"industry":null,"contacts":1,"missing":["firmographics"],"dossier":null},{"id":"acct-4","name":"Harbour Systems","domain":"harbour.example","country":"GB","employeeBand":"201-500","industry":"61.90","contacts":1,"missing":[],"dossier":null}],"people":[{"id":"person-1","name":"Ada Okonkwo","email":"ada@northwind.example","phone":"+34600111222","account":"Northwind Traders","country":"ES","missing":[],"optedOut":false},{"id":"person-2","name":"Bram de Vries","email":null,"phone":null,"account":"Northwind Traders","country":"ES","missing":["email","phone"],"optedOut":false},{"id":"person-3","name":"Chlo\u00e9 Marchand","email":"chloe@vireo.example","phone":null,"account":"Vireo Labs","country":"ES","missing":["phone"],"optedOut":false},{"id":"person-4","name":"Diego Sastre","email":"diego@kestrel.example","phone":"+34600333444","account":"Kestrel Data","country":"ES","missing":[],"optedOut":true},{"id":"person-5","name":"Eve Lindqvist","email":null,"phone":"+46700555666","account":"Harbour Systems","country":"ES","missing":["email"],"optedOut":false}],"research":{"accounts":4,"withDossier":2,"stale":1,"byState":{"complete":{"count":1,"stale":1},"thin":{"count":1,"stale":0}}},"missingCounts":{"firmographics":1,"email":2,"phone":2}},"signalsView":{"recent":[{"type":"funding.round","source":"press_feed","subject":"Northwind Traders","strength":0.7,"observedAt":"","detectionMinutes":46},{"type":"hiring.role_opened","source":"jobs_feed","subject":"Vireo Labs","strength":0.6,"observedAt":"","detectionMinutes":18},{"type":"product.limit_hit","source":"product_events","subject":"Harbour Systems","strength":0.8,"observedAt":"","detectionMinutes":2}],"watched":[{"signal":"funding.round","checks":412,"detected":3,"staleRefused":0,"lastChecked":""},{"signal":"hiring.role_opened","checks":412,"detected":11,"staleRefused":1,"lastChecked":""},{"signal":"product.limit_hit","checks":2140,"detected":27,"staleRefused":0,"lastChecked":""}],"latency":{"touches":41,"detectionP95Minutes":46,"executionP95Minutes":4,"totalP95Minutes":50}},"spendView":{"plan":"growth","included":60000.0,"consumed":33297.0,"remaining":26703.0,"ceiling":60000.0,"shareUsed":0.555,"alerting":false,"periodEnd":"","byKind":[{"kind":"email.send","credits":18400.0,"events":18400,"costEur":16.56},{"kind":"enrich.email","credits":9600.0,"events":1200,"costEur":33.6},{"kind":"agent.generate","credits":2865.0,"events":955,"costEur":9.55},{"kind":"signal.check","credits":1482.0,"events":2964,"costEur":0.0},{"kind":"enrich.phone","credits":950.0,"events":38,"costEur":5.32}]},"note":"Generated by scripts/build_fixture.py from the repository's own programs, blueprints and reference core. Observed rates are illustrative; every derived figure is computed.","programs":[{"key":"new-site-and-reputation","version":"1.0.0","blueprint":"local-services-multisite","status":"live","holdout":10.0,"metric":"signed_contract_60d","signals":["local.new_location_detected","local.review_velocity_drop","local.ads_activity_started"],"tiers":["t1","t2"],"autoSend":{"t1":false,"t2":true},"budget":6000,"specHash":"b533364a89adc888","name":"New site and reputation","enrolled":412,"nTreat":371,"nControl":41,"conversions":56,"unverifiedConversions":4,"unverifiedShare":0.071,"treat":14.6,"ctrl":5.1,"absLift":9.5,"relLift":2.86,"mde":null,"significant":false,"neededHoldout":null,"unresolvedReason":"fewer than 5 conversions in an arm; the baseline is not established","p95":22,"spend":980.4,"pipeline":null,"mdeCurve":{"5":13.81,"6":12.72,"7":11.87,"8":11.19,"9":10.62,"10":10.14,"11":9.73,"12":9.38,"13":9.0,"14":8.73,"15":8.49,"16":8.28,"17":8.09,"18":7.91,"19":7.75,"20":7.61,"21":7.44,"22":7.32,"23":7.21,"24":7.11,"25":7.01}},{"key":"replenishment-winback","version":"1.2.0","blueprint":"ecommerce-dtc","status":"live","holdout":10.0,"metric":"net_revenue_28d","signals":["commerce.replenishment_due","commerce.cart_abandoned"],"tiers":["t1","t2"],"autoSend":{"t1":true,"t2":true},"budget":8000,"specHash":"3c12de132950a26c","name":"Replenishment winback","enrolled":8930,"nTreat":8037,"nControl":893,"conversions":1888,"unverifiedConversions":1171,"unverifiedShare":0.62,"treat":21.4,"ctrl":18.8,"absLift":2.6,"relLift":1.14,"mde":3.86,"significant":false,"neededHoldout":28,"unresolvedReason":null,"p95":12,"spend":611.4,"pipeline":null,"mdeCurve":{"5":5.32,"6":4.88,"7":4.54,"8":4.27,"9":4.05,"10":3.86,"11":3.7,"12":3.56,"13":3.44,"14":3.34,"15":3.24,"16":3.16,"17":3.08,"18":3.02,"19":2.95,"20":2.9,"21":2.84,"22":2.8,"23":2.75,"24":2.71,"25":2.68}},{"key":"series-a-hiring-surge","version":"2.1.0","blueprint":"b2b-saas-sales-led","status":"live","holdout":10.0,"metric":"opportunity_created_90d","signals":["funding.round","hiring.role_opened"],"tiers":["t1","t2","t3"],"autoSend":{"t1":false,"t2":true,"t3":false},"budget":40000,"specHash":"4f47fce9b47d1d62","name":"Series A hiring surge","enrolled":1284,"nTreat":1156,"nControl":128,"conversions":102,"unverifiedConversions":32,"unverifiedShare":0.314,"treat":8.4,"ctrl":3.6,"absLift":4.8,"relLift":2.33,"mde":4.86,"significant":false,"neededHoldout":11,"unresolvedReason":null,"p95":41,"spend":3426.32,"pipeline":null,"mdeCurve":{"5":6.69,"6":6.13,"7":5.7,"8":5.36,"9":5.08,"10":4.86,"11":4.66,"12":4.48,"13":4.33,"14":4.2,"15":4.08,"16":3.98,"17":3.88,"18":3.79,"19":3.71,"20":3.64,"21":3.57,"22":3.52,"23":3.46,"24":3.41,"25":3.36}},{"key":"workspace-expansion-trigger","version":"1.4.0","blueprint":"b2b-saas-plg","status":"live","holdout":15.0,"metric":"paid_conversion_30d","signals":["product.limit_hit","product.multi_user_signup"],"tiers":["t1","t2"],"autoSend":{"t1":false,"t2":true},"budget":12000,"specHash":"1fa40d773438578e","name":"Workspace expansion trigger","enrolled":2140,"nTreat":1819,"nControl":321,"conversions":237,"unverifiedConversions":0,"unverifiedShare":0.0,"treat":11.9,"ctrl":6.4,"absLift":5.5,"relLift":1.86,"mde":4.15,"significant":true,"neededHoldout":15,"unresolvedReason":null,"p95":9,"spend":842.16,"pipeline":2401080,"mdeCurve":{"5":6.8,"6":6.25,"7":5.81,"8":5.47,"9":5.17,"10":4.94,"11":4.74,"12":4.56,"13":4.41,"14":4.27,"15":4.15,"16":4.05,"17":3.95,"18":3.86,"19":3.78,"20":3.71,"21":3.64,"22":3.58,"23":3.52,"24":3.47,"25":3.42}}],"blueprints":["b2b-enterprise","b2b-saas-plg","b2b-saas-sales-led","ecommerce-dtc","fintech-regulated","healthtech-lifesci","industrial-b2b","local-services-multisite","marketplace-2sided","public-sector","services-agency"],"plannedPrograms":["activation-stall-recovery","champion-job-change","committee-orchestration","competitor-displacement","distributor-coordination","exec-change-entry","first-purchase-nurture","framework-renewal-watch","geo-liquidity-rebalance","in-house-team-build","licence-granted-entry","partner-warm-intro","plant-expansion-entry","proof-of-work-outbound","provider-reactivation","regulatory-deadline-play","renewal-window-expansion","review-recovery","rfp-window","scarce-side-acquisition","tender-response","territory-coverage-sweep","trial-ending-consult","trial-site-activation","vip-retention"],"decisions":{"CA":[{"account":"Vireo Labs","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"voice requires consent, contact holds legitimate_interest"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"DE":[{"account":"Vireo Labs","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.DE.channel_blocked","rationale":"voice is blocked by default in DE"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"ES":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.ES.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"suppression.robinson_list_es","rationale":"contact present on robinson_list_es"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.ES.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"FR":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"GB":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"US":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"voice requires consent, contact holds legitimate_interest"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}]},"policyView":{"recent":[{"decision":"allow","rule":"ok","jurisdiction":"ES","channel":"email","subject":"Vireo Labs","rationale":"all checks passed","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"jurisdiction.ES.basis_required","jurisdiction":"ES","channel":"email","subject":"Kestrel Data","rationale":"email requires legitimate_interest, contact holds none","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"allow","rule":"ok","jurisdiction":"ES","channel":"linkedin","subject":"Harbour Systems","rationale":"all checks passed","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"suppression.unsubscribed","jurisdiction":"ES","channel":"email","subject":"Ternary AG","rationale":"contact opted out of email","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"allow","rule":"ok","jurisdiction":"ES","channel":"email","subject":"Nordwind BV","rationale":"all checks passed","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"suppression.robinson_list_es","jurisdiction":"ES","channel":"voice","subject":"Almacen Sur","rationale":"contact present on robinson_list_es","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"jurisdiction.ES.basis_required","jurisdiction":"ES","channel":"whatsapp","subject":"Pallas Retail","rationale":"whatsapp requires consent, contact holds legitimate_interest","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"frequency.cap_reached","jurisdiction":"ES","channel":"email","subject":"Orbit Freight","rationale":"3 touches already this week (cap 3)","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"quiet_hours","jurisdiction":"ES","channel":"whatsapp","subject":"Cobalt Health","rationale":"local hour 22 falls in quiet hours","decidedAt":"2026-01-01T12:00:00+00:00"}],"byRule":[{"rule":"ok","allow":3,"deny":0},{"rule":"jurisdiction.ES.basis_required","allow":0,"deny":2},{"rule":"suppression.unsubscribed","allow":0,"deny":1},{"rule":"suppression.robinson_list_es","allow":0,"deny":1},{"rule":"frequency.cap_reached","allow":0,"deny":1},{"rule":"quiet_hours","allow":0,"deny":1}],"totals":{"allow":3,"deny":6,"denyRate":0.6667},"jurisdictions":["CA","DE","ES","FR","GB","US"]},"auditView":{"entries":[{"actor":"key:3b9fc918","action":"program.activated","subject":"series-a","detail":{"version":"1.2.0"},"at":"2026-09-04T09:12:00+00:00"},{"actor":"key:3b9fc918","action":"proposal.approved","subject":"9f21ac04","detail":{"tier":"t1"},"at":"2026-09-04T09:08:00+00:00"},{"actor":"key:3b9fc918","action":"program.published","subject":"series-a","detail":{"version":"1.2.0"},"at":"2026-09-03T17:40:00+00:00"},{"actor":"key:0c4471de","action":"api_key.rotated","subject":"0c4471de","detail":{"replaced":"1a77bd90"},"at":"2026-09-02T11:05:00+00:00"},{"actor":"key:0c4471de","action":"api_key.created","subject":"3b9fc918","detail":{"scopes":["read","write"]},"at":"2026-09-01T08:30:00+00:00"}],"byAction":[{"action":"program.published","count":4},{"action":"proposal.approved","count":3},{"action":"program.activated","count":2},{"action":"api_key.created","count":2},{"action":"api_key.rotated","count":1}],"actors":["key:0c4471de","key:3b9fc918"]},"review":[{"id":"prop-demo-1","agent":"copywriter","state":"needs_human","channel":"email","step":"email_1","model":"claude-sonnet-5","promptVersion":"copywriter-v3","body":"Congratulations on the Series A. Teams that raise at your stage usually hit the same wall within two quarters: pipeline coverage stops tracking headcount. Worth twenty minutes?","droppedClaims":["They are hiring 40 engineers this quarter."],"needsHumanReason":"one sentence cited no evidence and was removed","evidence":[{"ref":"e1","source":"filing","text":"Northwind Traders announced a $12m Series A on 14 January."},{"ref":"e2","source":"careers","text":"Northwind Traders lists 9 open engineering roles."}],"evalScore":0.81,"evalFailures":[],"gateReason":"eval 0.81 below the 0.85 auto-send threshold","spendVerdict":"yes","costEur":0.0104},{"id":"prop-demo-2","agent":"copywriter","state":"needs_human","channel":"email","step":"email_2","model":"claude-haiku-4-5-20251001","promptVersion":"copywriter-v3","body":"Following up on the workspace expansion \u2014 happy to share how three similar teams handled the seat sprawl that follows.","droppedClaims":[],"needsHumanReason":null,"evidence":[{"ref":"e1","source":"product","text":"Seat count rose from 40 to 96 in 30 days."}],"evalScore":0.88,"evalFailures":["no_opt_out_line"],"gateReason":"eval passed; a required check failed: no_opt_out_line","spendVerdict":"yes","costEur":0.0021},{"id":"prop-demo-3","agent":"copywriter","state":"draft","channel":"email","step":"email_1","model":"claude-haiku-4-5-20251001","promptVersion":"copywriter-v3","body":"","droppedClaims":[],"needsHumanReason":"the spend guard refused and no cheaper model fitted","evidence":[],"evalScore":null,"evalFailures":[],"gateReason":"spend guard: no (the monthly ceiling is exhausted)","spendVerdict":"no","costEur":0.0}],"jurisdictions":["CA","DE","ES","FR","GB","US"],"assignmentSample":{"entity":"acct-demo-1","bucket":4531,"variant":"treatment"}};
+var D = {"tenant":{"name":"Northbeam","slug":"northbeam","region":"eu","blueprint":"b2b-saas-sales-led"},"queue":{"pending":42,"dead":0,"review":3},"fleet":{"managed":true,"capacity":76,"remaining":38,"domains":[{"name":"outbound.northbeam.io","capacity":76,"health":"ok","rule":"ok","rationale":"all thresholds clear","authenticationIssues":[],"mailboxes":[{"address":"ada@outbound.northbeam.io","provider":"google","warmupDay":61,"capacity":48,"remaining":26,"sentToday":22,"health":"ok","rule":"ok"},{"address":"sam@outbound.northbeam.io","provider":"microsoft","warmupDay":6,"capacity":8,"remaining":3,"sentToday":5,"health":"ok","rule":"sample.insufficient"},{"address":"lee@outbound.northbeam.io","provider":"other","warmupDay":44,"capacity":20,"remaining":9,"sentToday":11,"health":"alarm","rule":"complaint.alarm"}]}],"pausedDomains":[]},"prospects":{"accounts":[{"id":"acct-1","name":"Northwind Traders","domain":"northwind.example","country":"ES","employeeBand":"51-200","industry":"62.01","contacts":2,"missing":[],"dossier":"complete"},{"id":"acct-2","name":"Vireo Labs","domain":"vireo.example","country":"FR","employeeBand":"11-50","industry":"72.19","contacts":2,"missing":[],"dossier":"thin"},{"id":"acct-3","name":"Kestrel Data","domain":"kestrel.example","country":"DE","employeeBand":null,"industry":null,"contacts":1,"missing":["firmographics"],"dossier":null},{"id":"acct-4","name":"Harbour Systems","domain":"harbour.example","country":"GB","employeeBand":"201-500","industry":"61.90","contacts":2,"missing":[],"dossier":"complete"},{"id":"acct-5","name":"Ternary AG","domain":"ternary.example","country":"DE","employeeBand":"501-1000","industry":"62.09","contacts":2,"missing":[],"dossier":null},{"id":"acct-6","name":"Nordwind BV","domain":"nordwind.example","country":"NL","employeeBand":"51-200","industry":"46.90","contacts":1,"missing":[],"dossier":"complete"},{"id":"acct-7","name":"Almacen Sur","domain":"almacensur.example","country":"ES","employeeBand":null,"industry":null,"contacts":1,"missing":["firmographics"],"dossier":null},{"id":"acct-8","name":"Pallas Retail","domain":"pallas.example","country":"ES","employeeBand":"201-500","industry":"47.11","contacts":1,"missing":[],"dossier":"thin"},{"id":"acct-9","name":"Orbit Freight","domain":"orbit.example","country":"ES","employeeBand":"11-50","industry":"52.29","contacts":1,"missing":[],"dossier":null},{"id":"acct-10","name":"Cobalt Health","domain":"cobalt.example","country":"FI","employeeBand":"1001-5000","industry":"86.10","contacts":1,"missing":[],"dossier":"complete"}],"people":[{"id":"person-1","name":"Ada Okonkwo","email":"ada@northwind.example","phone":"+34600111222","account":"Northwind Traders","country":"ES","missing":[],"optedOut":false},{"id":"person-2","name":"Bram de Vries","email":null,"phone":null,"account":"Northwind Traders","country":"ES","missing":["email","phone"],"optedOut":false},{"id":"person-3","name":"Chlo\u00e9 Marchand","email":"chloe@vireo.example","phone":null,"account":"Vireo Labs","country":"ES","missing":["phone"],"optedOut":false},{"id":"person-4","name":"Diego Sastre","email":"diego@kestrel.example","phone":"+34600333444","account":"Kestrel Data","country":"ES","missing":[],"optedOut":true},{"id":"person-5","name":"Eve Lindqvist","email":null,"phone":"+46700555666","account":"Harbour Systems","country":"ES","missing":["email"],"optedOut":false},{"id":"person-6","name":"Farid Haddad","email":"farid@ternary.example","phone":"+4915112233","account":"Ternary AG","country":"ES","missing":[],"optedOut":false},{"id":"person-7","name":"Greta Nowak","email":"greta@nordwind.example","phone":null,"account":"Nordwind BV","country":"ES","missing":["phone"],"optedOut":false},{"id":"person-8","name":"Hugo Beltr\u00e1n","email":null,"phone":null,"account":"Almacen Sur","country":"ES","missing":["email","phone"],"optedOut":false},{"id":"person-9","name":"Iris Lambert","email":"iris@pallas.example","phone":"+34611445566","account":"Pallas Retail","country":"ES","missing":[],"optedOut":false},{"id":"person-10","name":"Jonas Rieger","email":"jonas@orbit.example","phone":null,"account":"Orbit Freight","country":"ES","missing":["phone"],"optedOut":false},{"id":"person-11","name":"Kaia Lindholm","email":null,"phone":"+358401234567","account":"Cobalt Health","country":"ES","missing":["email"],"optedOut":false},{"id":"person-12","name":"Luca Ferrari","email":"luca@vireo.example","phone":"+390212345678","account":"Vireo Labs","country":"ES","missing":[],"optedOut":false},{"id":"person-13","name":"Marta Sousa","email":"marta@harbour.example","phone":null,"account":"Harbour Systems","country":"ES","missing":["phone"],"optedOut":false},{"id":"person-14","name":"Nils Bergqvist","email":"nils@ternary.example","phone":"+46812345678","account":"Ternary AG","country":"ES","missing":[],"optedOut":false}],"research":{"accounts":10,"withDossier":6,"stale":2,"byState":{"complete":{"count":4,"stale":2},"thin":{"count":2,"stale":0}}},"missingCounts":{"firmographics":2,"email":4,"phone":6}},"signalsView":{"recent":[{"type":"funding.round","source":"press_feed","subject":"Northwind Traders","strength":0.7,"observedAt":"2026-09-06","detectionMinutes":46},{"type":"hiring.role_opened","source":"jobs_feed","subject":"Vireo Labs","strength":0.6,"observedAt":"2026-09-06","detectionMinutes":18},{"type":"product.limit_hit","source":"product_events","subject":"Harbour Systems","strength":0.8,"observedAt":"2026-09-06","detectionMinutes":2},{"type":"product.multi_user_signup","source":"product_events","subject":"Ternary AG","strength":0.5,"observedAt":"2026-09-06","detectionMinutes":3},{"type":"commerce.cart_abandoned","source":"commerce_events","subject":"Iris Lambert","strength":0.4,"observedAt":"2026-09-06","detectionMinutes":1},{"type":"hiring.role_opened","source":"jobs_feed","subject":"Cobalt Health","strength":0.6,"observedAt":"2026-09-06","detectionMinutes":92},{"type":"local.ads_activity_started","source":"ads_intel","subject":"Almacen Sur","strength":0.5,"observedAt":"2026-09-05","detectionMinutes":141},{"type":"commerce.replenishment_due","source":"commerce_events","subject":"Jonas Rieger","strength":0.6,"observedAt":"2026-09-05","detectionMinutes":4},{"type":"local.new_location_detected","source":"places_feed","subject":"Pallas Retail","strength":0.7,"observedAt":"2026-09-05","detectionMinutes":220},{"type":"funding.round","source":"press_feed","subject":"Nordwind BV","strength":0.9,"observedAt":"2026-09-05","detectionMinutes":31},{"type":"product.limit_hit","source":"product_events","subject":"Orbit Freight","strength":0.8,"observedAt":"2026-09-04","detectionMinutes":2},{"type":"local.review_velocity_drop","source":"places_feed","subject":"Kestrel Data","strength":0.5,"observedAt":"2026-09-04","detectionMinutes":74}],"watched":[{"signal":"funding.round","checks":412,"detected":3,"staleRefused":0,"lastChecked":"2026-09-06"},{"signal":"hiring.role_opened","checks":412,"detected":11,"staleRefused":1,"lastChecked":"2026-09-06"},{"signal":"product.limit_hit","checks":2140,"detected":27,"staleRefused":0,"lastChecked":"2026-09-06"},{"signal":"product.multi_user_signup","checks":2140,"detected":34,"staleRefused":0,"lastChecked":"2026-09-06"},{"signal":"local.new_location_detected","checks":168,"detected":6,"staleRefused":2,"lastChecked":"2026-09-05"},{"signal":"local.review_velocity_drop","checks":168,"detected":4,"staleRefused":0,"lastChecked":"2026-09-06"},{"signal":"local.ads_activity_started","checks":168,"detected":9,"staleRefused":1,"lastChecked":"2026-09-05"},{"signal":"commerce.cart_abandoned","checks":8930,"detected":214,"staleRefused":0,"lastChecked":"2026-09-06"},{"signal":"commerce.replenishment_due","checks":8930,"detected":96,"staleRefused":3,"lastChecked":"2026-09-06"}],"latency":{"touches":388,"detectionP95Minutes":141,"executionP95Minutes":4,"totalP95Minutes":145}},"spendView":{"plan":"growth","included":60000.0,"consumed":33297.0,"remaining":26703.0,"ceiling":60000.0,"shareUsed":0.555,"alerting":false,"periodEnd":"","byKind":[{"kind":"email.send","credits":18400.0,"events":18400,"costEur":16.56},{"kind":"enrich.email","credits":9600.0,"events":1200,"costEur":33.6},{"kind":"agent.generate","credits":2865.0,"events":955,"costEur":9.55},{"kind":"signal.check","credits":1482.0,"events":2964,"costEur":0.0},{"kind":"enrich.phone","credits":950.0,"events":38,"costEur":5.32}]},"note":"Generated by scripts/build_fixture.py from the repository's own programs, blueprints and reference core. Observed rates are illustrative; every derived figure is computed.","programs":[{"key":"new-site-and-reputation","version":"1.0.0","blueprint":"local-services-multisite","status":"live","holdout":10.0,"metric":"signed_contract_60d","signals":["local.new_location_detected","local.review_velocity_drop","local.ads_activity_started"],"tiers":["t1","t2"],"autoSend":{"t1":false,"t2":true},"budget":6000,"specHash":"b533364a89adc888","name":"New site and reputation","enrolled":412,"nTreat":371,"nControl":41,"conversions":56,"unverifiedConversions":4,"unverifiedShare":0.071,"treat":14.6,"ctrl":5.1,"absLift":9.5,"relLift":2.86,"mde":null,"significant":false,"neededHoldout":null,"unresolvedReason":"fewer than 5 conversions in an arm; the baseline is not established","p95":22,"spend":980.4,"pipeline":null,"mdeCurve":{"5":13.81,"6":12.72,"7":11.87,"8":11.19,"9":10.62,"10":10.14,"11":9.73,"12":9.38,"13":9.0,"14":8.73,"15":8.49,"16":8.28,"17":8.09,"18":7.91,"19":7.75,"20":7.61,"21":7.44,"22":7.32,"23":7.21,"24":7.11,"25":7.01}},{"key":"replenishment-winback","version":"1.2.0","blueprint":"ecommerce-dtc","status":"live","holdout":10.0,"metric":"net_revenue_28d","signals":["commerce.replenishment_due","commerce.cart_abandoned"],"tiers":["t1","t2"],"autoSend":{"t1":true,"t2":true},"budget":8000,"specHash":"3c12de132950a26c","name":"Replenishment winback","enrolled":8930,"nTreat":8037,"nControl":893,"conversions":1888,"unverifiedConversions":1171,"unverifiedShare":0.62,"treat":21.4,"ctrl":18.8,"absLift":2.6,"relLift":1.14,"mde":3.86,"significant":false,"neededHoldout":28,"unresolvedReason":null,"p95":12,"spend":611.4,"pipeline":null,"mdeCurve":{"5":5.32,"6":4.88,"7":4.54,"8":4.27,"9":4.05,"10":3.86,"11":3.7,"12":3.56,"13":3.44,"14":3.34,"15":3.24,"16":3.16,"17":3.08,"18":3.02,"19":2.95,"20":2.9,"21":2.84,"22":2.8,"23":2.75,"24":2.71,"25":2.68}},{"key":"series-a-hiring-surge","version":"2.1.0","blueprint":"b2b-saas-sales-led","status":"live","holdout":10.0,"metric":"opportunity_created_90d","signals":["funding.round","hiring.role_opened"],"tiers":["t1","t2","t3"],"autoSend":{"t1":false,"t2":true,"t3":false},"budget":40000,"specHash":"4f47fce9b47d1d62","name":"Series A hiring surge","enrolled":1284,"nTreat":1156,"nControl":128,"conversions":102,"unverifiedConversions":32,"unverifiedShare":0.314,"treat":8.4,"ctrl":3.6,"absLift":4.8,"relLift":2.33,"mde":4.86,"significant":false,"neededHoldout":11,"unresolvedReason":null,"p95":41,"spend":3426.32,"pipeline":null,"mdeCurve":{"5":6.69,"6":6.13,"7":5.7,"8":5.36,"9":5.08,"10":4.86,"11":4.66,"12":4.48,"13":4.33,"14":4.2,"15":4.08,"16":3.98,"17":3.88,"18":3.79,"19":3.71,"20":3.64,"21":3.57,"22":3.52,"23":3.46,"24":3.41,"25":3.36}},{"key":"workspace-expansion-trigger","version":"1.4.0","blueprint":"b2b-saas-plg","status":"live","holdout":15.0,"metric":"paid_conversion_30d","signals":["product.limit_hit","product.multi_user_signup"],"tiers":["t1","t2"],"autoSend":{"t1":false,"t2":true},"budget":12000,"specHash":"1fa40d773438578e","name":"Workspace expansion trigger","enrolled":2140,"nTreat":1819,"nControl":321,"conversions":237,"unverifiedConversions":0,"unverifiedShare":0.0,"treat":11.9,"ctrl":6.4,"absLift":5.5,"relLift":1.86,"mde":4.15,"significant":true,"neededHoldout":15,"unresolvedReason":null,"p95":9,"spend":842.16,"pipeline":2401080,"mdeCurve":{"5":6.8,"6":6.25,"7":5.81,"8":5.47,"9":5.17,"10":4.94,"11":4.74,"12":4.56,"13":4.41,"14":4.27,"15":4.15,"16":4.05,"17":3.95,"18":3.86,"19":3.78,"20":3.71,"21":3.64,"22":3.58,"23":3.52,"24":3.47,"25":3.42}}],"blueprints":["b2b-enterprise","b2b-saas-plg","b2b-saas-sales-led","ecommerce-dtc","fintech-regulated","healthtech-lifesci","industrial-b2b","local-services-multisite","marketplace-2sided","public-sector","services-agency"],"plannedPrograms":["activation-stall-recovery","champion-job-change","committee-orchestration","competitor-displacement","distributor-coordination","exec-change-entry","first-purchase-nurture","framework-renewal-watch","geo-liquidity-rebalance","in-house-team-build","licence-granted-entry","partner-warm-intro","plant-expansion-entry","proof-of-work-outbound","provider-reactivation","regulatory-deadline-play","renewal-window-expansion","review-recovery","rfp-window","scarce-side-acquisition","tender-response","territory-coverage-sweep","trial-ending-consult","trial-site-activation","vip-retention"],"catalogueGaps":[{"key":"activation-stall-recovery","blueprint":"b2b-saas-plg"},{"key":"champion-job-change","blueprint":"b2b-saas-sales-led"},{"key":"committee-orchestration","blueprint":"b2b-enterprise"},{"key":"competitor-displacement","blueprint":"b2b-saas-sales-led"},{"key":"distributor-coordination","blueprint":"industrial-b2b"},{"key":"exec-change-entry","blueprint":"b2b-enterprise"},{"key":"first-purchase-nurture","blueprint":"ecommerce-dtc"},{"key":"framework-renewal-watch","blueprint":"public-sector"},{"key":"geo-liquidity-rebalance","blueprint":"marketplace-2sided"},{"key":"in-house-team-build","blueprint":"services-agency"},{"key":"licence-granted-entry","blueprint":"fintech-regulated"},{"key":"partner-warm-intro","blueprint":"b2b-enterprise"},{"key":"plant-expansion-entry","blueprint":"industrial-b2b"},{"key":"proof-of-work-outbound","blueprint":"services-agency"},{"key":"provider-reactivation","blueprint":"marketplace-2sided"},{"key":"regulatory-deadline-play","blueprint":"fintech-regulated"},{"key":"renewal-window-expansion","blueprint":"b2b-saas-sales-led"},{"key":"review-recovery","blueprint":"local-services-multisite"},{"key":"rfp-window","blueprint":"services-agency"},{"key":"scarce-side-acquisition","blueprint":"marketplace-2sided"},{"key":"tender-response","blueprint":"healthtech-lifesci"},{"key":"territory-coverage-sweep","blueprint":"local-services-multisite"},{"key":"trial-ending-consult","blueprint":"b2b-saas-plg"},{"key":"trial-site-activation","blueprint":"healthtech-lifesci"},{"key":"vip-retention","blueprint":"ecommerce-dtc"}],"decisions":{"CA":[{"account":"Vireo Labs","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"voice requires consent, contact holds legitimate_interest"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"jurisdiction.CA.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"DE":[{"account":"Vireo Labs","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.DE.channel_blocked","rationale":"voice is blocked by default in DE"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"jurisdiction.DE.basis_required","rationale":"email requires consent, contact holds legitimate_interest"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"ES":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.ES.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"suppression.robinson_list_es","rationale":"contact present on robinson_list_es"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.ES.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"FR":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.FR.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"GB":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.GB.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}],"US":[{"account":"Vireo Labs","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Kestrel Data","channel":"email","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"email requires legitimate_interest, contact holds none"},{"account":"Harbour Systems","channel":"linkedin","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"linkedin requires consent, contact holds legitimate_interest"},{"account":"Ternary AG","channel":"email","decision":"deny","rule":"suppression.unsubscribed","rationale":"contact opted out of email"},{"account":"Nordwind BV","channel":"email","decision":"allow","rule":"ok","rationale":"all checks passed"},{"account":"Almacen Sur","channel":"voice","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"voice requires consent, contact holds legitimate_interest"},{"account":"Pallas Retail","channel":"whatsapp","decision":"deny","rule":"jurisdiction.US.basis_required","rationale":"whatsapp requires consent, contact holds legitimate_interest"},{"account":"Orbit Freight","channel":"email","decision":"deny","rule":"frequency.cap_reached","rationale":"3 touches already this week (cap 3)"},{"account":"Cobalt Health","channel":"whatsapp","decision":"deny","rule":"quiet_hours","rationale":"local hour 22 falls in quiet hours"}]},"policyView":{"recent":[{"decision":"allow","rule":"ok","jurisdiction":"ES","channel":"email","subject":"Vireo Labs","rationale":"all checks passed","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"jurisdiction.ES.basis_required","jurisdiction":"ES","channel":"email","subject":"Kestrel Data","rationale":"email requires legitimate_interest, contact holds none","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"allow","rule":"ok","jurisdiction":"ES","channel":"linkedin","subject":"Harbour Systems","rationale":"all checks passed","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"suppression.unsubscribed","jurisdiction":"ES","channel":"email","subject":"Ternary AG","rationale":"contact opted out of email","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"allow","rule":"ok","jurisdiction":"ES","channel":"email","subject":"Nordwind BV","rationale":"all checks passed","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"suppression.robinson_list_es","jurisdiction":"ES","channel":"voice","subject":"Almacen Sur","rationale":"contact present on robinson_list_es","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"jurisdiction.ES.basis_required","jurisdiction":"ES","channel":"whatsapp","subject":"Pallas Retail","rationale":"whatsapp requires consent, contact holds legitimate_interest","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"frequency.cap_reached","jurisdiction":"ES","channel":"email","subject":"Orbit Freight","rationale":"3 touches already this week (cap 3)","decidedAt":"2026-01-01T12:00:00+00:00"},{"decision":"deny","rule":"quiet_hours","jurisdiction":"ES","channel":"whatsapp","subject":"Cobalt Health","rationale":"local hour 22 falls in quiet hours","decidedAt":"2026-01-01T12:00:00+00:00"}],"byRule":[{"rule":"ok","allow":3,"deny":0},{"rule":"jurisdiction.ES.basis_required","allow":0,"deny":2},{"rule":"suppression.unsubscribed","allow":0,"deny":1},{"rule":"suppression.robinson_list_es","allow":0,"deny":1},{"rule":"frequency.cap_reached","allow":0,"deny":1},{"rule":"quiet_hours","allow":0,"deny":1}],"totals":{"allow":3,"deny":6,"denyRate":0.6667},"jurisdictions":["CA","DE","ES","FR","GB","US"]},"auditView":{"entries":[{"actor":"key:3b9fc918","action":"proposal.approved","subject":"c41d7e02","detail":{},"at":"2026-09-06T18:22:00+00:00"},{"actor":"key:3b9fc918","action":"program.activated","subject":"series-a","detail":{},"at":"2026-09-06T18:10:00+00:00"},{"actor":"key:3b9fc918","action":"program.published","subject":"series-a","detail":{},"at":"2026-09-06T18:04:00+00:00"},{"actor":"key:0c4471de","action":"sending_domain.verified","subject":"outbound","detail":{},"at":"2026-09-06T11:47:00+00:00"},{"actor":"key:0c4471de","action":"connection.stored","subject":"smartlead","detail":{},"at":"2026-09-06T11:40:00+00:00"},{"actor":"key:3b9fc918","action":"proposal.rejected","subject":"77ba1c39","detail":{},"at":"2026-09-05T16:31:00+00:00"},{"actor":"key:3b9fc918","action":"proposal.approved","subject":"1e9042aa","detail":{},"at":"2026-09-05T16:28:00+00:00"},{"actor":"key:3b9fc918","action":"program.paused","subject":"winback","detail":{},"at":"2026-09-05T09:15:00+00:00"},{"actor":"key:0c4471de","action":"api_key.rotated","subject":"0c4471de","detail":{},"at":"2026-09-04T11:05:00+00:00"},{"actor":"key:3b9fc918","action":"program.published","subject":"winback","detail":{},"at":"2026-09-03T17:40:00+00:00"},{"actor":"key:0c4471de","action":"connection.stored","subject":"hubspot","detail":{},"at":"2026-09-03T10:02:00+00:00"},{"actor":"key:0c4471de","action":"api_key.created","subject":"3b9fc918","detail":{},"at":"2026-09-01T08:30:00+00:00"},{"actor":"key:0c4471de","action":"tenant.created","subject":"northbeam","detail":{},"at":"2026-09-01T08:12:00+00:00"}],"byAction":[{"action":"proposal.approved","count":14},{"action":"program.published","count":6},{"action":"connection.stored","count":4},{"action":"program.activated","count":4},{"action":"proposal.rejected","count":3},{"action":"api_key.created","count":2},{"action":"program.paused","count":2},{"action":"api_key.rotated","count":1}],"actors":["key:0c4471de","key:3b9fc918"]},"review":[{"id":"prop-demo-1","agent":"copywriter","state":"needs_human","channel":"email","step":"email_1","model":"claude-sonnet-5","promptVersion":"copywriter-v3","body":"Congratulations on the Series A. Teams that raise at your stage usually hit the same wall within two quarters: pipeline coverage stops tracking headcount. Worth twenty minutes?","droppedClaims":["They are hiring 40 engineers this quarter."],"needsHumanReason":"one sentence cited no evidence and was removed","evidence":[{"ref":"e1","source":"filing","text":"Northwind Traders announced a $12m Series A on 14 January."},{"ref":"e2","source":"careers","text":"Northwind Traders lists 9 open engineering roles."}],"evalScore":0.81,"evalFailures":[],"gateReason":"eval 0.81 below the 0.85 auto-send threshold","spendVerdict":"yes","costEur":0.0104},{"id":"prop-demo-2","agent":"copywriter","state":"needs_human","channel":"email","step":"email_2","model":"claude-haiku-4-5-20251001","promptVersion":"copywriter-v3","body":"Following up on the workspace expansion \u2014 happy to share how three similar teams handled the seat sprawl that follows.","droppedClaims":[],"needsHumanReason":null,"evidence":[{"ref":"e1","source":"product","text":"Seat count rose from 40 to 96 in 30 days."}],"evalScore":0.88,"evalFailures":["no_opt_out_line"],"gateReason":"eval passed; a required check failed: no_opt_out_line","spendVerdict":"yes","costEur":0.0021},{"id":"prop-demo-3","agent":"copywriter","state":"draft","channel":"email","step":"email_1","model":"claude-haiku-4-5-20251001","promptVersion":"copywriter-v3","body":"","droppedClaims":[],"needsHumanReason":"the spend guard refused and no cheaper model fitted","evidence":[],"evalScore":null,"evalFailures":[],"gateReason":"spend guard: no (the monthly ceiling is exhausted)","spendVerdict":"no","costEur":0.0}],"jurisdictions":["CA","DE","ES","FR","GB","US"],"assignmentSample":{"entity":"acct-demo-1","bucket":4531,"variant":"treatment"}};
 
 /* ── acting ────────────────────────────────────────────────────────────
    The static build inlines a fixture and keeps connect-src at 'none', so
@@ -351,6 +396,22 @@ function renderList(){
     b.addEventListener("click", function(){ state.sel = p.key; renderList(); renderDetail(); });
     list.appendChild(b);
   });
+  // What the blueprints promise and nothing implements yet. Shown because a
+  // list of four programs in a column built for hundreds reads as a product
+  // with four programs, and the catalogue is the answer to what else this
+  // tenant could turn on. Not clickable: there is nothing behind them.
+  var gaps = D.catalogueGaps || [];
+  if (gaps.length && !state.live && !state.onlySig){
+    list.insertAdjacentHTML("beforeend",
+      sect("Planned by the blueprint", nf(gaps.length) + " · not implemented")
+      + gaps.map(function(g){
+          // Blank, not a dash: a row of five em-dashes reads as data that
+          // failed to load rather than a program nobody has written yet.
+          var blank = '<span class="cell"></span>';
+          return rowOf([dot("draft"), cell(g.key, "k m"), cell(g.blueprint, "m"),
+                        blank, blank, blank, blank, blank], "planned");
+        }).join(""));
+  }
   // The listbox owns focus and names its active option, so a screen reader
   // announces the selection without every row being a tab stop.
   list.setAttribute("aria-activedescendant", rows.length ? "row-" + state.sel : "");
@@ -411,25 +472,27 @@ function esc(v){
 }
 
 function renderReviewList(){
-  document.querySelector(".bar h1").textContent = "Review queue";
   document.getElementById("shown").textContent = R.length;
 
   if (!R.length){
-    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-      + 'Nothing is waiting for a person. Drafts arrive here when a gate '
-      + 'declines to send them unattended.</p>';
+    list.innerHTML = empty("Nothing is waiting for a person. Drafts arrive here when a "
+      + "gate declines to send them unattended.");
+    foot([]);
     return;
   }
   list.innerHTML = R.map(function(r){
     return '<div class="row' + (r.id === state.rsel ? " on" : "") + '" data-r="'
       + esc(r.id) + '" role="row" tabindex="0">'
-      + '<span class="st ' + (r.spendVerdict === "no" ? "deny" : "warn") + '"></span>'
-      + '<span class="nm">' + esc(r.agent) + ' · ' + esc(r.step || r.channel || "") + '</span>'
-      + '<span class="mono">' + (r.evalScore == null ? "—" : r.evalScore.toFixed(2)) + '</span>'
-      + '<span class="mono">€' + (r.costEur || 0).toFixed(4) + '</span>'
-      + '<span class="mono">' + esc(r.state) + '</span>'
+      + dot(r.spendVerdict === "no" ? "deny" : "warn")
+      + cell(r.agent + " · " + (r.step || r.channel || ""), "k")
+      + cell(r.program || r.channel || "", "m")
+      + cell(r.evalScore == null ? "—" : r.evalScore.toFixed(2), "n")
+      + cell(r.state, "m warnt")
       + '</div>';
   }).join("");
+  foot([[nf(R.length), "waiting for a person"],
+        [nf(R.filter(function(r){ return r.spendVerdict === "no"; }).length),
+         "refused by the spend guard"]]);
 
   list.querySelectorAll("[data-r]").forEach(function(el){
     el.addEventListener("click", function(){
@@ -791,6 +854,76 @@ document.addEventListener("keydown", function(e){
 
 renderChrome();
 
+/* ── the view chrome ───────────────────────────────────────────────────
+   Every view declares its own columns, its own header labels and its own
+   footer. It used to declare none of them: five views were added against the
+   Programs header, so Spend, Prospects, Signals, Policy and Audit all showed
+   PROGRAM · BLUEPRINT · ENROLLED · LIFT · HOLDOUT · P95 over their own data,
+   in columns sized for a different table. Values wrapped, rows grew into each
+   other, and an email ran into a phone number.
+
+   The right column is a summary rather than a void. Those aggregates used to
+   be crammed into the first row of the list, where they were neither a row
+   nor a heading and collided with both. */
+var VIEWS = {
+  programs: {
+    title: "Programs", filters: true,
+    cols: "22px minmax(140px,1.35fr) 152px 70px 78px 58px 56px 26px",
+    head: ["", "Program", "Blueprint", "r:Enrolled", "r:Lift", "r:Holdout", "r:p95", ""]
+  },
+  review: {
+    title: "Review queue",
+    cols: "22px minmax(160px,1.4fr) 110px 90px 1fr",
+    head: ["", "Draft", "Program", "r:Score", "Waiting on"]
+  },
+  sending: {
+    title: "Sending",
+    cols: "22px minmax(180px,1.3fr) 110px 96px 1fr",
+    head: ["", "Domain and mailbox", "r:Capacity", "Health", "Reason"]
+  },
+  prospects: {
+    title: "Prospects",
+    cols: "22px minmax(150px,1.1fr) minmax(150px,1.2fr) 130px 150px",
+    head: ["", "Name", "Email or domain", "Phone or size", "State"]
+  },
+  signals: {
+    title: "Signals",
+    cols: "22px minmax(130px,1fr) minmax(140px,1.1fr) 110px 96px 100px",
+    head: ["", "Signal", "Subject", "r:Strength", "r:Detected in", "Observed"]
+  },
+  spend: {
+    title: "Spend",
+    cols: "22px minmax(150px,1fr) 120px 110px 110px",
+    head: ["", "Action", "r:Credits", "r:Events", "r:Cost"]
+  },
+  policy: {
+    title: "Policy",
+    cols: "22px minmax(140px,1fr) 90px minmax(180px,1.2fr) 1fr",
+    head: ["", "Subject", "Channel", "Rule", "Rationale"]
+  },
+  audit: {
+    title: "Audit log",
+    cols: "22px minmax(160px,1fr) 150px 110px 130px",
+    head: ["", "Action", "Actor", "Subject", "r:When"]
+  }
+};
+
+var headEl = document.getElementById("head");
+
+function chrome(view){
+  var spec = VIEWS[view] || VIEWS.programs;
+  document.querySelector(".centre").style.setProperty("--cols", spec.cols);
+  document.querySelector(".bar h1").textContent = spec.title;
+  headEl.innerHTML = spec.head.map(function(h){
+    var right = h.indexOf("r:") === 0;
+    return '<span' + (right ? ' class="r"' : "") + '>'
+      + esc(right ? h.slice(2) : h) + '</span>';
+  }).join("");
+  document.querySelectorAll(".only-programs").forEach(function(el){
+    el.hidden = !spec.filters;
+  });
+}
+
 function show(view){
   state.view = view;
   document.querySelectorAll("nav a[data-view]").forEach(function(a){
@@ -800,58 +933,92 @@ function show(view){
   render();
 }
 
+/* ── small builders ───────────────────────────────────────────────────── */
+
+function cell(text, cls){
+  var v = text === null || text === undefined || text === "" ? "—" : String(text);
+  return '<span class="cell ' + (cls || "") + '" title="' + esc(v) + '">' + esc(v) + '</span>';
+}
+function dot(kind){ return '<span class="st ' + (kind || "") + '"></span>'; }
+function rowOf(cells, cls){
+  return '<div class="row' + (cls ? " " + cls : "") + '" role="row">' + cells.join("") + '</div>';
+}
+function sect(label, note){
+  return '<div class="sect">' + esc(label)
+    + (note ? '<b>' + esc(note) + '</b>' : "") + '</div>';
+}
+function empty(text){
+  return '<p class="empty">' + esc(text) + '</p>';
+}
+function block(label, pairs){
+  var body = pairs.map(function(kv){
+    return '<dt>' + esc(kv[0]) + '</dt><dd' + (kv[2] ? ' class="' + kv[2] + '"' : "")
+      + '>' + esc(kv[1]) + '</dd>';
+  }).join("");
+  return '<div class="block"><div class="blabel">' + esc(label) + '</div>'
+       + '<dl class="props">' + body + '</dl></div>';
+}
+function note(label, lines){
+  return '<div class="block"><div class="blabel">' + esc(label) + '</div>'
+    + lines.map(function(l){
+        return '<p class="pnote"><b>' + esc(l[0]) + '</b> ' + esc(l[1]) + '</p>';
+      }).join("") + '</div>';
+}
+function foot(bits){
+  document.getElementById("foot").innerHTML = bits.map(function(b){
+    return '<span><b>' + esc(b[0]) + '</b> ' + esc(b[1]) + '</span>';
+  }).join("");
+}
+
 /* ── sending fleet ─────────────────────────────────────────────────────
    These errors do not surface as a failing test. A miscalculated capacity or
    a threshold checked one comparison too late shows up weeks later as a
    burned domain, which is why the state has to be visible before then. */
 function renderSending(){
-  document.querySelector(".bar h1").textContent = "Sending";
   var F = D.fleet || {managed: false, domains: [], note: "No fleet data."};
   document.getElementById("shown").textContent = (F.domains || []).length;
-  detail.innerHTML = "";
 
   if (!F.managed){
-    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-      + esc(F.note || "Sending capacity is not managed here.") + '</p>';
+    list.innerHTML = empty(F.note || "Sending capacity is not managed here.");
+    detail.innerHTML = block("Sending", [["Managed here", "no"]]);
+    foot([]);
     return;
   }
 
-  var paused = (F.pausedDomains || []).map(function(d){
-    return '<div class="row" role="row"><span class="st deny"></span>'
-      + '<span class="nm">' + esc(d.name) + '</span>'
-      + '<span class="mono" style="grid-column:span 3">'
-      + esc(d.pausedReason || "paused") + '</span></div>';
+  function health(h){ return h === "paused" ? "deny" : h === "alarm" ? "warn" : "live"; }
+
+  var rows = (F.pausedDomains || []).map(function(d){
+    return rowOf([dot("deny"), cell(d.name, "k"), cell("0", "n"),
+                  cell("paused", "m bad"), cell(d.pausedReason || "paused", "m")]);
   }).join("");
 
-  var rows = (F.domains || []).map(function(d){
+  rows += (F.domains || []).map(function(d){
     var issues = (d.authenticationIssues || []).join(", ");
-    var head = '<div class="row" role="row">'
-      + '<span class="st ' + (d.health === "paused" ? "deny"
-          : d.health === "alarm" ? "warn" : "live") + '"></span>'
-      + '<span class="nm">' + esc(d.name) + '</span>'
-      + '<span class="mono">' + nf(d.capacity) + '/day</span>'
-      + '<span class="mono">' + esc(d.health) + '</span>'
-      + '<span class="mono">' + esc(issues || d.rule || "") + '</span>'
-      + '</div>';
+    var head = rowOf([dot(health(d.health)), cell(d.name, "k"),
+                      cell(nf(d.capacity) + "/day", "n"),
+                      cell(d.health, "m" + (d.health === "ok" ? "" : " warnt")),
+                      cell(issues || d.rule || "", "m")]);
     var boxes = (d.mailboxes || []).map(function(m){
-      return '<div class="row" role="row" style="padding-left:22px">'
-        + '<span class="st ' + (m.health === "paused" ? "deny"
-            : m.health === "alarm" ? "warn" : "live") + '"></span>'
-        + '<span class="nm" style="color:var(--ink-secondary)">' + esc(m.address) + '</span>'
-        + '<span class="mono">' + nf(m.remaining) + ' left</span>'
-        + '<span class="mono">day ' + nf(m.warmupDay) + '</span>'
-        // The rule when there is one to report, the provider otherwise. A row
-        // with an amber dot and no reason on it makes the reader ask, and the
-        // answer is already computed.
-        + '<span class="mono">' + esc(m.health === "ok" ? m.provider : m.rule) + '</span>'
-        + '</div>';
+      return rowOf([dot(health(m.health)), cell(m.address, "k"),
+                    cell(nf(m.remaining) + " left", "n"),
+                    cell("day " + nf(m.warmupDay), "m"),
+                    cell(m.health === "ok" ? m.provider : m.rule, "m")], "sub");
     }).join("");
     return head + boxes;
   }).join("");
 
-  list.innerHTML = paused + rows
-    || '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-       + 'No sending domain is registered yet.</p>';
+  list.innerHTML = rows || empty("No sending domain is registered yet.");
+  detail.innerHTML = block("Capacity today", [
+    ["Sends remaining", nf(F.remaining || 0), "hi"],
+    ["Domains", nf((F.domains || []).length)],
+    ["Paused", nf((F.pausedDomains || []).length)]
+  ]) + note("Why capacity moves", [
+    ["Warm-up.", "A new mailbox earns its cap over the ramp."],
+    ["Reputation.", "Engagement raises it; complaints halve it."],
+    ["Authentication.", "An unverified domain sends nothing at all."]
+  ]);
+  foot([[nf(F.remaining || 0), "sends left today"],
+        [nf((F.domains || []).length), "domains"]]);
 }
 
 /* ── prospects ─────────────────────────────────────────────────────────
@@ -861,65 +1028,46 @@ function renderSending(){
    the enrichment path uses to decide whether to spend money — a screen with
    its own idea of what is missing offers to buy fields the engine declines. */
 function renderProspects(){
-  document.querySelector(".bar h1").textContent = "Prospects";
   var P2 = D.prospects || {accounts: [], people: [], missingCounts: {}};
   var people = P2.people || [], accounts = P2.accounts || [];
+  var m = P2.missingCounts || {}, R2 = P2.research || {};
   document.getElementById("shown").textContent = people.length + accounts.length;
-  detail.innerHTML = "";
 
   if (!people.length && !accounts.length){
-    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-      + 'No accounts or contacts yet. They arrive from a CRM sync, or from '
-      + 'POST /v1/accounts.</p>';
+    list.innerHTML = empty("No accounts or contacts yet. They arrive from a CRM sync, "
+      + "or from POST /v1/accounts.");
+    detail.innerHTML = block("Prospects", [["Accounts", "0"], ["Contacts", "0"]]);
+    foot([]);
     return;
   }
 
-  var m = P2.missingCounts || {};
-  var R = P2.research || {accounts: 0, withDossier: 0, stale: 0};
-  var head = '<div class="row" role="row"><span></span>'
-    + '<span class="nm">' + nf(accounts.length) + ' accounts, ' + nf(people.length)
-    + ' contacts</span>'
-    + '<span class="mono">' + nf(m.email || 0) + ' need email</span>'
-    + '<span class="mono">' + nf(m.phone || 0) + ' need phone</span>'
-    + '<span class="mono">' + nf(m.firmographics || 0) + ' need firmographics</span>'
-    + '</div>'
-    // Coverage and staleness on one line, because coverage alone lies: a
-    // dossier on every account, all written before this quarter's news, is
-    // full coverage and no knowledge.
-    + '<div class="row" role="row"><span></span>'
-    + '<span class="nm" style="color:var(--ink-secondary)">research</span>'
-    + '<span class="mono">' + nf(R.withDossier || 0) + ' of ' + nf(R.accounts || 0)
-    + ' researched</span>'
-    + '<span class="mono">' + nf(R.stale || 0) + ' stale</span>'
-    + '<span class="mono">20 credits each</span>'
-    + '</div>';
-
-  var rows = people.map(function(c){
-    // An opted-out contact is shown as denied rather than hidden: an operator
-    // who cannot see them wonders why the count does not add up.
-    var st = c.optedOut ? "deny" : (c.missing.length ? "warn" : "live");
-    return '<div class="row" role="row" data-p="' + esc(c.id) + '">'
-      + '<span class="st ' + st + '"></span>'
-      + '<span class="nm">' + esc(c.name || "(no name)") + '</span>'
-      + '<span class="mono">' + esc(c.email || "—") + '</span>'
-      + '<span class="mono">' + esc(c.phone || "—") + '</span>'
-      + '<span class="mono">' + esc(c.optedOut ? "opted out"
-          : (c.missing.join(", ") || "complete")) + '</span>'
-      + '</div>';
+  var rows = sect("Contacts", nf(people.length)) + people.map(function(c){
+    var state = c.optedOut ? "opted out" : (c.missing.length ? "needs " + c.missing.join(", ")
+                                                             : "complete");
+    return rowOf([dot(c.optedOut ? "deny" : c.missing.length ? "warn" : "live"),
+                  cell(c.name || "(no name)", "k"), cell(c.email, "m"), cell(c.phone, "m"),
+                  cell(state, "m" + (c.optedOut ? " bad" : c.missing.length ? " warnt" : ""))]);
   }).join("");
 
-  var accountRows = accounts.map(function(a){
-    return '<div class="row" role="row" style="padding-left:22px">'
-      + '<span class="st ' + (a.missing.length ? "warn" : "live") + '"></span>'
-      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(a.name) + '</span>'
-      + '<span class="mono">' + esc(a.domain || "—") + '</span>'
-      + '<span class="mono">' + nf(a.contacts) + ' contacts</span>'
-      + '<span class="mono">' + esc(a.dossier ? ("dossier " + a.dossier) : "no dossier")
-      + (a.missing.length ? " · " + esc(a.missing.join(", ")) : "") + '</span>'
-      + '</div>';
+  rows += sect("Accounts", nf(accounts.length)) + accounts.map(function(a){
+    var state = a.dossier ? "dossier " + a.dossier : "no dossier";
+    return rowOf([dot(a.missing.length ? "warn" : "live"), cell(a.name, "k"),
+                  cell(a.domain, "m"), cell(nf(a.contacts) + (a.contacts === 1 ? " contact" : " contacts"), "m"),
+                  cell(state, "m" + (a.dossier ? "" : " warnt"))], "sub");
   }).join("");
 
-  list.innerHTML = head + rows + accountRows;
+  list.innerHTML = rows;
+  detail.innerHTML = block("Missing fields", [
+    ["Need an email", nf(m.email || 0), m.email ? "hi" : ""],
+    ["Need a phone", nf(m.phone || 0), m.phone ? "hi" : ""],
+    ["Need firmographics", nf(m.firmographics || 0), m.firmographics ? "hi" : ""]
+  ]) + block("Research", [
+    ["Accounts researched", nf(R2.withDossier || 0) + " of " + nf(R2.accounts || 0)],
+    ["Stale", nf(R2.stale || 0), R2.stale ? "hi" : ""],
+    ["Cost per dossier", "20 credits"]
+  ]);
+  foot([[nf(accounts.length), "accounts"], [nf(people.length), "contacts"],
+        [nf((m.email || 0) + (m.phone || 0) + (m.firmographics || 0)), "fields missing"]]);
 }
 
 /* ── signals ───────────────────────────────────────────────────────────
@@ -927,84 +1075,83 @@ function renderProspects(){
    the system, so the split between how long the source took and how long we
    took is the headline rather than a detail: they need opposite fixes. */
 function renderSignals(){
-  document.querySelector(".bar h1").textContent = "Signals";
   var S = D.signalsView || {recent: [], watched: [], latency: {}};
-  document.getElementById("shown").textContent = (S.recent || []).length;
-  detail.innerHTML = "";
+  var recent = S.recent || [], watched = S.watched || [], L = S.latency || {};
+  document.getElementById("shown").textContent = recent.length;
 
-  var L = S.latency || {};
-  var lat = L.touches
-    ? '<div class="row" role="row"><span></span>'
-      + '<span class="nm">time to touch, p95</span>'
-      + '<span class="mono">' + nf(L.detectionP95Minutes) + 'm to notice</span>'
-      + '<span class="mono">' + nf(L.executionP95Minutes) + 'm to act</span>'
-      + '<span class="mono">' + nf(L.totalP95Minutes) + 'm total</span></div>'
-    : '<div class="row" role="row"><span></span><span class="nm">time to touch</span>'
-      + '<span class="mono" style="grid-column:span 3">nothing sent from a signal yet</span></div>';
+  if (!recent.length && !watched.length){
+    list.innerHTML = empty("Nothing detected yet. A live program's trigger is what puts a "
+      + "signal on the watch list.");
+    detail.innerHTML = block("Time to touch", [["Touches from a signal", "0"]]);
+    foot([]);
+    return;
+  }
 
-  var watched = (S.watched || []).map(function(w){
-    return '<div class="row" role="row">'
-      + '<span class="st ' + (w.staleRefused ? "warn" : "live") + '"></span>'
-      + '<span class="nm">' + esc(w.signal) + '</span>'
-      + '<span class="mono">' + nf(w.checks) + ' checked</span>'
-      + '<span class="mono">' + nf(w.detected) + ' found</span>'
-      + '<span class="mono">' + (w.staleRefused ? nf(w.staleRefused) + ' too late' : '')
-      + '</span></div>';
+  var rows = sect("Detected", nf(recent.length)) + recent.map(function(s){
+    var slow = s.detectionMinutes > 60;
+    return rowOf([dot("live"), cell(s.type, "k"), cell(s.subject, "m"),
+                  cell(s.strength.toFixed(2), "n"),
+                  cell(nf(s.detectionMinutes) + " m", "n" + (slow ? " warnt" : "")),
+                  cell(String(s.observedAt).slice(0, 10), "m")]);
   }).join("");
 
-  var recent = (S.recent || []).map(function(r){
-    return '<div class="row" role="row" style="padding-left:22px">'
-      + '<span class="st live"></span>'
-      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(r.type) + '</span>'
-      + '<span class="mono">' + esc(r.subject || "—") + '</span>'
-      + '<span class="mono">' + r.strength + '</span>'
-      + '<span class="mono">' + nf(r.detectionMinutes) + 'm to notice</span>'
-      + '</div>';
+  rows += sect("Watched", nf(watched.length))
+    + watched.map(function(w){
+    return rowOf([dot(w.staleRefused ? "warn" : ""), cell(w.signal, "k"),
+                  cell(nf(w.checks) + " checks", "m"), cell(nf(w.detected), "n"),
+                  cell(nf(w.staleRefused) + " stale", "n" + (w.staleRefused ? " warnt" : "")),
+                  cell(String(w.lastChecked).slice(0, 10), "m")], "sub");
   }).join("");
 
-  list.innerHTML = lat + watched + recent
-    || '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-       + 'Nothing has fired yet.</p>';
+  list.innerHTML = rows;
+  var mins = function(v){ return v === null || v === undefined ? "—" : nf(v) + " min"; };
+  detail.innerHTML = block("Time to touch, p95", [
+    ["The source noticing", mins(L.detectionP95Minutes)],
+    ["This runtime acting", mins(L.executionP95Minutes)],
+    ["Signal to touch", mins(L.totalP95Minutes), "hi"],
+    ["Measured over", nf(L.touches || 0) + " touches"]
+  ]) + note("Why it is split", [
+    ["A slow source.", "Change the source — the wait is before us."],
+    ["A slow runtime.", "Add workers — the wait is ours."]
+  ]);
+  foot([[nf(recent.length), "detected"], [nf(watched.length), "signals watched"],
+        [mins(L.totalP95Minutes), "signal to touch, p95"]]);
 }
 
 /* ── spend ─────────────────────────────────────────────────────────────
-   GET /v1/billing/current has answered this since billing existed and no
-   screen asked it, so the number a customer is charged on was visible only
-   to whoever ran curl. */
+   The number the customer is charged on. GET /v1/billing/current answered it
+   from the day billing existed and no screen asked. */
 function renderSpend(){
-  document.querySelector(".bar h1").textContent = "Spend";
   var S = D.spendView;
-  detail.innerHTML = "";
   if (!S){
     document.getElementById("shown").textContent = "0";
-    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-      + 'No billing period is open.</p>';
+    list.innerHTML = empty("No billing period is open.");
+    detail.innerHTML = "";
+    foot([]);
     return;
   }
   document.getElementById("shown").textContent = nf(S.consumed);
-
   var pct = Math.round((S.shareUsed || 0) * 100);
-  var head = '<div class="row" role="row">'
-    + '<span class="st ' + (S.alerting ? "warn" : "live") + '"></span>'
-    + '<span class="nm">' + esc(S.plan) + '</span>'
-    + '<span class="mono">' + nf(S.consumed) + ' of ' + nf(S.included) + '</span>'
-    + '<span class="mono">' + nf(S.remaining) + ' left</span>'
-    + '<span class="mono">' + pct + '% of the ceiling</span></div>';
 
-  var kinds = (S.byKind || []).map(function(k){
-    return '<div class="row" role="row" style="padding-left:22px">'
-      + '<span class="st live"></span>'
-      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(k.kind) + '</span>'
-      + '<span class="mono">' + nf(k.credits) + ' cr</span>'
-      + '<span class="mono">' + nf(k.events) + ' events</span>'
-      + '<span class="mono">€' + k.costEur.toFixed(4) + ' cost</span>'
-      + '</div>';
+  var rows = (S.byKind || []).map(function(k){
+    return rowOf([dot(""), cell(k.kind, "k m"), cell(nf(k.credits) + " cr", "n"),
+                  cell(nf(k.events), "n"), cell("€" + k.costEur.toFixed(4), "n")]);
   }).join("");
 
-  list.innerHTML = head + (kinds
-    || '<div class="row" role="row" style="padding-left:22px"><span></span>'
-       + '<span class="nm" style="color:var(--ink-tertiary)">nothing billed yet'
-       + '</span></div>');
+  list.innerHTML = rows || empty("Nothing billed yet this period.");
+  detail.innerHTML = block("This period", [
+    ["Plan", S.plan],
+    ["Included", nf(S.included)],
+    ["Consumed", nf(S.consumed), "hi"],
+    ["Remaining", nf(S.remaining)],
+    ["Of the ceiling", pct + "%", S.alerting ? "hi" : ""]
+  ]) + note("The ceiling", [
+    ["Alerts at 80%.", "Finding out at the ceiling is finding out too late."],
+    ["Above the plan.", "Overage is graduated over the overage alone."],
+    ["Raising it is deliberate.", "Nobody overspends by accident."]
+  ]);
+  foot([[nf(S.consumed), "credits consumed"], [nf(S.remaining), "left"],
+        [pct + "%", "of the ceiling"]]);
 }
 
 /* ── policy ────────────────────────────────────────────────────────────
@@ -1012,88 +1159,79 @@ function renderSpend(){
    correct denial; one rule denying four fifths of a program is a program to
    fix, and only the second grouping shows it. */
 function renderPolicy(){
-  document.querySelector(".bar h1").textContent = "Policy";
   var P3 = D.policyView || {recent: [], byRule: [], totals: {}};
-  var recent = P3.recent || [], rules = P3.byRule || [];
+  var recent = P3.recent || [], rules = P3.byRule || [], tt = P3.totals || {};
   document.getElementById("shown").textContent = recent.length;
-  detail.innerHTML = "";
 
   if (!recent.length){
-    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-      + 'No policy decision recorded yet. Every send records one, allow or deny, '
-      + 'with the rule that produced it.</p>';
+    list.innerHTML = empty("No policy decision recorded yet. Every send records one, "
+      + "allow or deny, with the rule that produced it.");
+    detail.innerHTML = block("Decisions", [["Allowed", "0"], ["Denied", "0"]]);
+    foot([]);
     return;
   }
 
-  var tt = P3.totals || {};
-  var head = '<div class="row" role="row">'
-    + '<span class="st ' + (tt.deny ? "warn" : "live") + '"></span>'
-    + '<span class="nm">' + nf(tt.allow || 0) + ' allowed, ' + nf(tt.deny || 0)
-    + ' denied</span>'
-    + '<span class="mono">' + (tt.denyRate === null || tt.denyRate === undefined
-        ? "—" : Math.round(tt.denyRate * 100) + "% denied") + '</span>'
-    + '<span class="mono">' + (P3.jurisdictions || []).join(", ") + '</span>'
-    + '<span class="mono">' + nf(rules.length) + ' rules</span></div>';
-
-  var ruleRows = rules.map(function(r){
-    return '<div class="row" role="row" style="padding-left:22px">'
-      + '<span class="st ' + (r.deny ? "deny" : "live") + '"></span>'
-      + '<span class="nm" style="color:var(--ink-secondary)">' + esc(r.rule) + '</span>'
-      + '<span class="mono">' + nf(r.allow) + ' allow</span>'
-      + '<span class="mono">' + nf(r.deny) + ' deny</span>'
-      + '<span class="mono"></span></div>';
+  var rows = sect("By rule", nf(rules.length)) + rules.map(function(r){
+    return rowOf([dot(r.deny ? "deny" : "live"), cell(r.rule, "k m"),
+                  cell(nf(r.allow + r.deny) + " total", "m"),
+                  cell(nf(r.deny) + " denied", "m" + (r.deny ? " bad" : "")),
+                  cell(r.deny && !r.allow ? "always denies" : "", "m")]);
   }).join("");
 
-  var rows = recent.slice(0, 40).map(function(d){
-    return '<div class="row" role="row">'
-      + '<span class="st ' + (d.decision === "allow" ? "live" : "deny") + '"></span>'
-      + '<span class="nm">' + esc(d.subject) + '</span>'
-      + '<span class="mono">' + esc(d.channel) + '</span>'
-      + '<span class="mono">' + esc(d.rule) + '</span>'
-      + '<span class="mono">' + esc(d.rationale || d.jurisdiction) + '</span>'
-      + '</div>';
+  rows += sect("Recent decisions", nf(recent.length)) + recent.map(function(d){
+    return rowOf([dot(d.decision === "allow" ? "live" : "deny"), cell(d.subject, "k"),
+                  cell(d.channel, "m"), cell(d.rule, "m"),
+                  cell(d.rationale || d.jurisdiction, "m")], "sub");
   }).join("");
 
-  list.innerHTML = head + ruleRows + rows;
+  list.innerHTML = rows;
+  detail.innerHTML = block("Decisions", [
+    ["Allowed", nf(tt.allow || 0)],
+    ["Denied", nf(tt.deny || 0), tt.deny ? "hi" : ""],
+    ["Share denied", tt.denyRate === null || tt.denyRate === undefined
+        ? "—" : Math.round(tt.denyRate * 100) + "%"],
+    ["Distinct rules", nf(rules.length)]
+  ]) + block("Jurisdictions", (P3.jurisdictions || []).map(function(j){
+    return [j, "pack v1"];
+  }));
+  foot([[nf(tt.allow || 0), "allowed"], [nf(tt.deny || 0), "denied"],
+        [nf(rules.length), "rules fired"]]);
 }
 
 /* ── audit log ─────────────────────────────────────────────────────────
    Not what the system did — which human authorised it. That is the question
    an audit asks, and the answer was only reachable from a SQL prompt. */
 function renderAudit(){
-  document.querySelector(".bar h1").textContent = "Audit log";
   var A = D.auditView || {entries: [], byAction: [], actors: []};
   var entries = A.entries || [];
   document.getElementById("shown").textContent = entries.length;
-  detail.innerHTML = "";
 
   if (!entries.length){
-    list.innerHTML = '<p class="empty" style="padding:24px;color:var(--ink-tertiary)">'
-      + 'Nothing recorded yet. Issuing a key, publishing a program or approving '
-      + 'a draft each writes a line here.</p>';
+    list.innerHTML = empty("Nothing recorded yet. Issuing a key, publishing a program or "
+      + "approving a draft each writes a line here.");
+    detail.innerHTML = block("Audit", [["Entries", "0"]]);
+    foot([]);
     return;
   }
 
-  var head = '<div class="row" role="row"><span></span>'
-    + '<span class="nm">' + nf(entries.length) + ' entries</span>'
-    + '<span class="mono">' + nf((A.actors || []).length) + ' actors</span>'
-    + '<span class="mono">' + nf((A.byAction || []).length) + ' kinds</span>'
-    + '<span class="mono"></span></div>';
-
-  var rows = entries.slice(0, 60).map(function(e){
-    return '<div class="row" role="row">'
-      + '<span class="st live"></span>'
-      + '<span class="nm">' + esc(e.action) + '</span>'
-      + '<span class="mono">' + esc(e.actor) + '</span>'
-      + '<span class="mono">' + esc(e.subject) + '</span>'
-      + '<span class="mono">' + esc(String(e.at).slice(0, 16).replace("T", " "))
-      + '</span></div>';
+  list.innerHTML = entries.map(function(e){
+    return rowOf([dot("live"), cell(e.action, "k m"), cell(e.actor, "m"),
+                  cell(e.subject, "m"),
+                  cell(String(e.at).slice(0, 16).replace("T", " "), "n")]);
   }).join("");
 
-  list.innerHTML = head + rows;
+  detail.innerHTML = block("By action", (A.byAction || []).slice(0, 8).map(function(b){
+    return [b.action, nf(b.count)];
+  })) + block("Actors", (A.actors || []).map(function(a){ return [a, "key"]; }));
+  foot([[nf(entries.length), "entries"], [nf((A.actors || []).length), "actors"],
+        [nf((A.byAction || []).length), "kinds"]]);
 }
 
 function render(){
+  // The chrome first, always: the columns a view's rows are about to fill are
+  // the columns its header has to name. Doing it inside each renderer is how
+  // five of them came to share the Programs header.
+  chrome(state.view);
   if (state.view === "prospects"){ renderProspects(); return; }
   if (state.view === "signals"){ renderSignals(); return; }
   if (state.view === "spend"){ renderSpend(); return; }
@@ -1101,7 +1239,6 @@ function render(){
   if (state.view === "audit"){ renderAudit(); return; }
   if (state.view === "sending"){ renderSending(); return; }
   if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
-  document.querySelector(".bar h1").textContent = "Programs";
   renderList();
   renderDetail();
 }

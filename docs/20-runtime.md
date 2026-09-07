@@ -444,6 +444,24 @@ Anything else — `linkedin`, `ads`, `sms`, `voice` — is a step for a person. 
 
 Three defects came out of writing this down rather than assuming it. Every dispatch was priced at `email.send`, so a HubSpot task was billed as an email the customer never sent. Every dispatch allocated a mailbox seat, so that task was held once the mailboxes were full. And `linkedin` was dispatchable with nothing behind it, so the flagship program's LinkedIn steps queued, failed permanently and were cancelled one at a time while the sequence carried on (ADR-027).
 
+## The view chrome
+
+Every view declares its own columns, header labels, footer and summary panel. It used to declare none of them: five views were added against the Programs header, so Spend, Prospects, Signals, Policy and Audit each labelled their own data **PROGRAM · BLUEPRINT · ENROLLED · LIFT · HOLDOUT · P95**, in a grid sized for a different table. Values wrapped, rows grew into each other, and on the prospect list an email ran into a phone number.
+
+The header and the rows now read one custom property, so a view cannot label a column its rows do not fill. Every cell is one line with the full value on its `title`. The aggregates that used to be crammed into the list's first row — where they were neither a row nor a heading and collided with both — are the right-hand summary, which also stops that column being a void on every view except Programs.
+
+Three defects came out of opening it in a browser rather than reading it:
+
+| | |
+|---|---|
+| `.st.warn` and `.st.deny` were never written | Every amber and red status dot rendered as **nothing**, since the day those views shipped — including the mailbox in `complaint.alarm`, the one row the Sending view exists to show |
+| `.seg` was never written | Six jurisdiction buttons rendered as one run of letters, `CADEESFRGBUS`, in the middle of a heading |
+| Prose sat in the `dd` column | `.props dd` is `nowrap`, so a sentence printed straight over its own label |
+
+They share a shape: a name used in one place and defined in another, with nothing holding the two together. `tests/test_console_surface.py` holds them together now — it reads the view registry out of the script and asserts each view labels exactly the columns it has, and that every class the markup uses has a rule of its own. Each assertion was verified by breaking the thing it guards and watching it fail.
+
+The Programs list also shows what the blueprints promise and no program file implements — 25 plays across 11 blueprints, computed by `Catalog.gaps()` and read by the served console and the demo alike, so a list of four programs in a column built for hundreds no longer reads as a product with four programs.
+
 ## Proving it: policy and the audit log
 
 Two screens for the two questions a regulated buyer asks first, and neither answer was reachable without a terminal.
@@ -628,7 +646,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-802 tests. 277 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+807 tests. 277 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

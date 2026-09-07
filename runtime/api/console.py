@@ -17,6 +17,7 @@ from typing import Any
 
 from runtime import fleet
 from runtime.repo import enrollments, programs
+from zolts.catalog import load_catalog
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, is_resolvable, lift, minimum_detectable_effect
 
 # Outcomes that count as the primary conversion. A program declares its own
@@ -556,6 +557,10 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "plannedPrograms": [{"key": p["key"], "version": p["version"],
                              "status": p["status"]}
                             for p in other if p not in drafts],
+        # The blueprint catalogue's own gaps: plays a blueprint promises
+        # and no program file implements. Read from `zolts.catalog` so the
+        # demo and a tenant render one section from one rule.
+        "catalogueGaps": load_catalog().gaps(),
         "review": review_items,
         "decisions": decisions,
         "jurisdictions": sorted(decisions.keys()),
