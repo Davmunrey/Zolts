@@ -105,9 +105,14 @@ def test_the_documents_do_not_overstate_the_test_suite():
         cwd=root, capture_output=True, text=True, env={**os.environ, "PYTHONPATH": "."})
     against_postgres = int(re.search(r"(\d+)/\d+ tests collected", needing_db.stdout).group(1))
 
-    for document in (root / "README.md", root / "docs" / "20-runtime.md"):
+    # `docs/24` quotes both figures in its status table and drifted twice
+    # before it was checked here: the packaging test covered the two documents
+    # a contributor reads and not the one an investor does.
+    for document in (root / "README.md", root / "docs" / "20-runtime.md",
+                     root / "docs" / "24-backlog.md"):
         text = document.read_text()
         quoted = {int(n) for n in re.findall(r"(\d{3,4}) tests", text)}
+        quoted |= {int(n) for n in re.findall(r"\| Tests \| (\d{3,4}) \|", text)}
         assert quoted, f"{document.name} no longer quotes a test count"
         assert quoted == {total}, (
             f"{document.name} says {sorted(quoted)} tests and there are {total}. "

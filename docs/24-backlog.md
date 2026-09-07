@@ -8,8 +8,8 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | | Count | Evidence |
 |---|---|---|
-| Epics delivered | 37 | `docs/22`, ADR-001 … ADR-039 |
-| Tests | 975 | 327 against a real Postgres; CI fails a run that skipped them |
+| Epics delivered | 39 | `docs/22`, ADR-001 … ADR-040 |
+| Tests | 1004 | 332 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |

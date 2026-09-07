@@ -27,7 +27,21 @@ class Match:
     reason: str
 
 
-def _event_matches(event: dict[str, Any], signal: dict[str, Any]) -> bool:
+@dataclass(frozen=True)
+class Unanswerable:
+    """A predicate the payload could not answer, and why.
+
+    Not an error and not a match. The caller reports it — to the sender in the
+    ingest response, and to the operator in the audit log — because a source
+    quietly sending the wrong type looks exactly like a source sending nothing
+    that matches, and the two need opposite responses.
+    """
+    clause: str
+    detail: str
+
+
+def _event_matches(event: dict[str, Any], signal: dict[str, Any],
+                   notes: "list[Unanswerable] | None" = None) -> bool:
     if event.get("signal") != signal["type"]:
         return False
     where = event.get("where")
@@ -36,15 +50,32 @@ def _event_matches(event: dict[str, Any], signal: dict[str, Any]) -> bool:
     # A `where` clause that references an absent field evaluates to False rather
     # than raising: signal payloads are external data and a partial one is a
     # non-match, not an outage.
-    return expr.evaluate(where, {"payload": signal.get("payload") or {}})
+    #
+    # The same is true of a field that is present and unusable — a number sent
+    # as a string, a null where a figure goes — and it was not. Comparing them
+    # raises `TypeError`, which came out of `POST /v1/signals` as a 500: the
+    # outage this comment says cannot happen, from the one input the runtime
+    # does not control. Quoting numbers is what a great many JSON producers do
+    # and what every form-encoded webhook does. D-37.
+    try:
+        return expr.evaluate(where, {"payload": signal.get("payload") or {}})
+    except TypeError as exc:
+        if notes is not None:
+            notes.append(Unanswerable(clause=str(where), detail=str(exc)))
+        return False
 
 
 def matches(spec: dict[str, Any], signal: dict[str, Any],
-            history: list[dict[str, Any]]) -> str | None:
+            history: list[dict[str, Any]],
+            *, notes: "list[Unanswerable] | None" = None) -> str | None:
     """Return the matching reason, or None.
 
     `history` is the entity's signals inside the trigger window, most recent
     first, and must already include the signal under test.
+
+    `notes` collects the predicates the payload could not answer. Pass a list
+    to hear about them; the enrolment path does, and turns each into a warning
+    on the response and a row in the audit log.
     """
     trigger = spec.get("trigger") or {}
     events = trigger.get("events") or []
@@ -52,8 +83,8 @@ def matches(spec: dict[str, Any], signal: dict[str, Any],
         return None
     combine = trigger.get("combine", "any_within")
 
-    fired = [e for e in events if any(_event_matches(e, s) for s in history)]
-    if not any(_event_matches(e, signal) for e in events):
+    fired = [e for e in events if any(_event_matches(e, s, notes) for s in history)]
+    if not any(_event_matches(e, signal, notes) for e in events):
         # The incoming signal itself must participate. Otherwise a program with
         # a satisfied history would re-fire on every unrelated signal that
         # happened to arrive inside the window.

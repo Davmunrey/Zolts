@@ -215,6 +215,24 @@ The console's **Audit log** view answers the same question without SQL.
 
 ---
 
+## A source's signals stopped matching
+
+**What it means.** The signals arrive, the programs are live, and nothing enrols. The most common cause after a customer changes anything upstream: a payload field that is now the wrong type. The runtime treats that as a non-match rather than an error (`ADR-040`), so nothing is failing anywhere.
+
+**Diagnose.**
+
+```sql
+select detail->>'program' as program, detail->>'signal' as signal,
+       detail->'clauses'->0->>'where' as clause,
+       detail->'clauses'->0->>'error' as error, count(*)
+  from audit_log where action = 'signal.unanswerable'
+   and at > now() - interval '24 hours' group by 1, 2, 3, 4 order by 5 desc;
+```
+
+**Fix.** It is the sender's to fix, and they were already told: the same text is returned in `POST /v1/signals` under `warnings`. Send them the clause and the error. If their field genuinely changed shape, the program's `where` is what changes here, not the runtime.
+
+---
+
 ## Restoring from a backup
 
 `scripts/restore.sh`, executed end to end in CI against a real dump (`ADR-033`). Read it before running it: step 1 creates the application role, and a restore into a cluster where that role already exists behaves differently from one where it does not — which is the failure the test reproduces (D-26).

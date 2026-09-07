@@ -582,6 +582,10 @@ def create_app(db: Database, *, install_connectors: bool = True,
                 result = enroll.ingest(cur, principal.tenant_id, **body.model_dump())
             except enroll.HoldoutMissing as exc:
                 raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        # A predicate the payload could not answer is a non-match, not a 500 —
+        # and the sender is the only party who can fix it, so they are told in
+        # the answer rather than in a log they cannot read. D-37.
+        warnings.extend(result.warnings)
         return IngestOut(
             accepted=True, deduplicated=result.deduplicated, warnings=warnings,
             enrollments=[EnrollmentOut(enrollment_id=r.enrollment_id, program_key=r.program_key,

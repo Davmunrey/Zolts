@@ -97,6 +97,13 @@ MUTATIONS = (
         replace='BUYABLE = ("email", "phone", "firmographics", "tech_stack")',
         tests="tests/test_enrich_step.py"),
     Mutation(
+        id="an-unreadable-payload-is-not-an-outage",
+        claim="a payload that cannot answer the trigger is a non-match, not a 500",
+        path="runtime/engine/triggers.py",
+        find="    except TypeError as exc:",
+        replace="    except NotImplementedError as exc:",
+        tests="tests/test_signal_payloads.py"),
+    Mutation(
         id="the-stricter-quiet-window-wins",
         claim="a policy override never buys a program more sending hours than the pack",
         path="zolts/policy.py",
