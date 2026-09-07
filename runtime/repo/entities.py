@@ -124,3 +124,48 @@ def suppressed_keys(cur, email: str | None, domain: str | None) -> set[str]:
         (email, domain),
     )
     return {r["scope"] for r in cur.fetchall()}
+
+
+def _when(value: Any) -> Any:
+    """A CRM's empty string is not a timestamp.
+
+    Every provider formats dates differently and Postgres parses all of them;
+    what it will not parse is `""`, which is what a CRM sends for a deal with
+    no close date. Coerced here rather than in three connectors.
+    """
+    return None if value in (None, "") else value
+
+
+def upsert_opportunity(cur, tenant_id: str, *, provider: str, crm_id: str,
+                       account_id: str | None = None, **fields: Any) -> dict[str, Any]:
+    """Store one deal. Keyed on (tenant, provider, crm id), so a re-sync moves
+    a deal from open to won rather than writing a second one.
+
+    `account_id` is nullable and stays nullable: a deal whose account this sync
+    has not seen is still a deal, and dropping it would quietly reopen the hole
+    the table exists to close.
+    """
+    cur.execute(
+        "insert into opportunity (tenant_id, provider, crm_id, account_id, name, stage,"
+        " status, amount_micros, currency, owner, opened_at, closed_at, attributes)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        " on conflict (tenant_id, provider, crm_id) do update set"
+        "   account_id = coalesce(excluded.account_id, opportunity.account_id),"
+        "   name = coalesce(excluded.name, opportunity.name),"
+        "   stage = excluded.stage,"
+        "   status = excluded.status,"
+        "   amount_micros = coalesce(excluded.amount_micros, opportunity.amount_micros),"
+        "   currency = coalesce(excluded.currency, opportunity.currency),"
+        "   owner = coalesce(excluded.owner, opportunity.owner),"
+        "   opened_at = coalesce(excluded.opened_at, opportunity.opened_at),"
+        "   closed_at = excluded.closed_at,"
+        "   attributes = opportunity.attributes || excluded.attributes,"
+        "   updated_at = now()"
+        " returning *",
+        (tenant_id, provider, crm_id, account_id, fields.get("name"), fields.get("stage"),
+         fields.get("status", "open"), fields.get("amount_micros"), fields.get("currency"),
+         fields.get("owner"), _when(fields.get("opened_at")), _when(fields.get("closed_at")),
+         json.dumps(fields.get("attributes") or {})),
+    )
+    return one(cur)
+

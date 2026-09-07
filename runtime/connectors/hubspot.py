@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from runtime.connectors.base import PermanentError, Request, Result
-from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
+from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContact,
+                                    CrmOpportunity, DealStatus)
 from runtime.connectors.http import body, request
 
 
@@ -102,7 +103,7 @@ class HubSpotConnector:
 
     capabilities = Capabilities(
         provider="hubspot", reads_accounts=True, reads_contacts=True,
-        reads_opt_out=True, writes_tasks=True, page_size=100,
+        reads_opt_out=True, reads_opportunities=True, writes_tasks=True, page_size=100,
         caveats=("employee count is a raw number, not a band; it is stored as an "
                  "attribute rather than mapped to one",))
 
@@ -139,11 +140,39 @@ class HubSpotConnector:
                 consent=(Consent.OPTED_OUT if _truthy(props.get("hs_email_optout"))
                          else Consent.ALLOWED))
 
+    def opportunities(self, credential: str) -> Iterator[CrmOpportunity]:
+        """Deals, with the company they belong to.
+
+        The association is requested explicitly: a deal's company is not a
+        property, it is an association, and a connector that asked only for
+        properties would return every deal with no account and exclude nobody.
+        """
+        for deal in self._paged(credential, "deals",
+                                ["dealname", "dealstage", "amount", "closedate",
+                                 "createdate", "hs_is_closed", "hs_is_closed_won",
+                                 "hubspot_owner_id"],
+                                self.capabilities.page_size, associations="companies"):
+            props = deal.get("properties") or {}
+            companies = (((deal.get("associations") or {}).get("companies") or {})
+                         .get("results") or [])
+            yield CrmOpportunity(
+                external_id=str(deal.get("id")),
+                account_external_id=str(companies[0]["id"]) if companies else None,
+                name=props.get("dealname"),
+                stage=props.get("dealstage"),
+                status=_deal_status(props),
+                amount_micros=_micros(props.get("amount")),
+                owner=props.get("hubspot_owner_id"),
+                opened_at=props.get("createdate"),
+                closed_at=props.get("closedate"))
+
     def _paged(self, token: str, object_type: str, properties: list[str],
-               limit: int) -> Iterator[dict[str, Any]]:
+               limit: int, associations: str | None = None) -> Iterator[dict[str, Any]]:
         after: str | None = None
         while True:
             params: dict[str, Any] = {"limit": limit, "properties": ",".join(properties)}
+            if associations:
+                params["associations"] = associations
             if after:
                 params["after"] = after
             payload = body(request("GET", f"{self.base}/crm/v3/objects/{object_type}",
@@ -152,3 +181,26 @@ class HubSpotConnector:
             after = ((payload.get("paging") or {}).get("next") or {}).get("after")
             if not after:
                 return
+
+
+def _deal_status(props: dict[str, Any]) -> DealStatus:
+    """HubSpot answers with two booleans and a stage name we do not own.
+
+    Won is checked first: a won deal is also closed, and reading `hs_is_closed`
+    on its own would file every win as a loss. A deal HubSpot cannot classify
+    stays open, which is the direction that leaves the account alone.
+    """
+    if _truthy(props.get("hs_is_closed_won")):
+        return DealStatus.WON
+    if _truthy(props.get("hs_is_closed")):
+        return DealStatus.LOST
+    return DealStatus.OPEN
+
+
+def _micros(amount: Any) -> int | None:
+    if amount in (None, ""):
+        return None
+    try:
+        return int(round(float(amount) * 1_000_000))
+    except (TypeError, ValueError):
+        return None

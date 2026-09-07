@@ -48,7 +48,8 @@
                   "required": ["kind"]
                 },
                 "accounts": {"$ref": "#/$defs/endpoint"},
-                "contacts": {"$ref": "#/$defs/endpoint"}
+                "contacts": {"$ref": "#/$defs/endpoint"},
+                "opportunities": {"$ref": "#/$defs/endpoint", "description": "Where this system's deals live. Omitting it is a statement: the source cannot say which accounts are already in a deal, and a program whose audience excludes them refuses to enrol rather than contacting them."}
               }
             },
             {
@@ -100,6 +101,38 @@
                   "description": "The CRM's own vocabulary, translated. A state nobody maps resolves to the default, which is unknown unless the tenant declares otherwise."
                 },
                 "default": {"enum": ["allowed", "opted_out", "unknown"], "default": "unknown"}
+              }
+            }
+          }
+        },
+        "opportunities": {
+          "type": "object",
+          "required": ["external_id"],
+          "additionalProperties": false,
+          "description": "Deals: the object that keeps outbound out of a live sales conversation. Optional, and its absence is honoured rather than assumed away — a source that cannot answer makes a program whose audience excludes open deals refuse to enrol.",
+          "properties": {
+            "external_id": {"$ref": "#/$defs/path"},
+            "account_external_id": {"$ref": "#/$defs/path"},
+            "name": {"$ref": "#/$defs/path"},
+            "stage": {"$ref": "#/$defs/path"},
+            "currency": {"$ref": "#/$defs/path"},
+            "owner": {"$ref": "#/$defs/path"},
+            "status": {
+              "type": "object",
+              "required": ["field"],
+              "additionalProperties": false,
+              "description": "The CRM's own deal states, translated to open/won/lost.",
+              "properties": {
+                "field": {"$ref": "#/$defs/path"},
+                "values": {
+                  "type": "object",
+                  "additionalProperties": {"enum": ["open", "won", "lost"]}
+                },
+                "default": {
+                  "enum": ["open", "won", "lost"],
+                  "default": "open",
+                  "description": "A state nobody maps resolves to this. It defaults to `open`, which is the direction that leaves the account alone — the opposite of the consent default, for the same reason."
+                }
               }
             }
           }

@@ -21,9 +21,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
-from runtime.connectors.crm import Capabilities, Consent, CrmAccount, CrmContact
+from runtime.connectors.crm import (Capabilities, Consent, CrmAccount, CrmContact,
+                                    CrmOpportunity, DealStatus)
 from runtime.connectors.http import body, request
-from zolts.mapping import ConsentRule, MappingError, build, records_at
+from zolts.mapping import MappingError, TranslationRule, build, records_at
 
 MAX_PAGES = 10_000  # a mapping that never terminates is a bug, not a big portal
 
@@ -37,10 +38,21 @@ class GenericSource:
         self.transport = self.spec["transport"]
         self._credential = credential
         consent = (self.spec["contacts"].get("consent") or None)
-        self._consent = (ConsentRule(field=consent["field"],
-                                     values=consent.get("values") or {},
-                                     default=consent.get("default", "unknown"))
+        self._consent = (TranslationRule(field=consent["field"],
+                                         values=consent.get("values") or {},
+                                         default=consent.get("default", "unknown"))
                          if consent else None)
+        status = ((self.spec.get("opportunities") or {}).get("status") or None)
+        self._deal_status = (TranslationRule(field=status["field"],
+                                             values=status.get("values") or {},
+                                             default=status.get("default", "open"))
+                             if status else None)
+        # A mapping reads deals when it says where they are and how to read
+        # them. Both halves are needed: an endpoint with no field map returns
+        # records nothing can build, and a field map with no endpoint has
+        # nothing to build from.
+        self._reads_deals = bool(self.spec.get("opportunities")) and (
+            self.transport["kind"] == "push" or bool(self.transport.get("opportunities")))
         provider = mapping["metadata"]["provider"]
         self.capabilities = Capabilities(
             provider=provider,
@@ -50,6 +62,7 @@ class GenericSource:
             # somebody sets. A mapping cannot claim to read opt-out state
             # without saying which field carries it.
             reads_opt_out=self._consent is not None,
+            reads_opportunities=self._reads_deals,
             writes_tasks=False,
             page_size=int(((self.transport.get("contacts") or {}).get("pagination") or {})
                           .get("size", 100)),
@@ -61,6 +74,11 @@ class GenericSource:
         if self._consent is None:
             caveats.append("the mapping declares no consent field, so every contact "
                            "is stored with consent unknown")
+        if not self._reads_deals:
+            caveats.append("the mapping declares no opportunities, so this source "
+                           "cannot say which accounts are already in a deal; a "
+                           "program whose audience excludes them will refuse to "
+                           "enrol rather than contact them")
         if self.transport["kind"] == "push":
             caveats.append("records arrive by push; this runtime cannot pull them")
         return tuple(caveats)
@@ -91,6 +109,37 @@ class GenericSource:
                 country=_text(built.get("country")),
                 account_external_id=_text(built.get("account_external_id")),
                 consent=self._read_consent(record))
+
+    def opportunities(self, credential: str) -> Iterator[CrmOpportunity]:
+        if not self._reads_deals:
+            return
+        fields = {k: v for k, v in self.spec["opportunities"].items() if k != "status"}
+        for record in self._records("opportunities", credential):
+            built = build(record, fields)
+            if not built.get("external_id"):
+                continue
+            yield CrmOpportunity(
+                external_id=str(built["external_id"]),
+                account_external_id=_text(built.get("account_external_id")),
+                name=_text(built.get("name")),
+                stage=_text(built.get("stage")),
+                status=self._read_status(record),
+                currency=_text(built.get("currency")),
+                owner=_text(built.get("owner")))
+
+    def _read_status(self, record: Any) -> DealStatus:
+        """A state nobody mapped is open.
+
+        The opposite of the consent default, and for the same reason: open
+        means "leave this account alone", so an unrecognised state costs a
+        sequence nobody sent rather than a sequence into a live deal.
+        """
+        if self._deal_status is None:
+            return DealStatus.OPEN
+        try:
+            return DealStatus(self._deal_status.read(record))
+        except ValueError:  # pragma: no cover - the schema constrains the values
+            return DealStatus.OPEN
 
     def _read_consent(self, record: Any) -> Consent:
         if self._consent is None:

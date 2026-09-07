@@ -35,6 +35,13 @@ PUSH_MAPPING = {
                                             "opted_out": "opted_out",
                                             "never_asked": "unknown"},
                                  "default": "unknown"}},
+        "opportunities": {"external_id": "id | str", "name": "label",
+                          "account_external_id": "company.id | str",
+                          "stage": "phase",
+                          "status": {"field": "phase",
+                                     "values": {"negotiating": "open",
+                                                "signed": "won"},
+                                     "default": "open"}},
     },
 }
 
@@ -56,6 +63,11 @@ BATCH = {
         {"id": 902, "company": {"id": 42}, "mail_pref": "never_asked",
          "name_parts": ["Alan", "Turing"],
          "emails": [{"address": "alan@contoso.example", "primary": True}]},
+    ],
+    "opportunities": [
+        {"id": 700, "company": {"id": 41}, "label": "Northwind renewal",
+         "phase": "negotiating"},
+        {"id": 701, "company": {"id": 42}, "label": "Contoso pilot", "phase": "signed"},
     ],
 }
 
@@ -222,6 +234,28 @@ def test_a_push_reports_the_mapping_caveat(client, key):
 
 
 @requires_db
+@requires_db
+def test_a_pushed_batch_delivers_the_deals_the_mapping_declares(db, client, key, tenant):
+    """The mapping declares deals, so the batch must be able to carry them.
+
+    The endpoint staged accounts and contacts and nothing else, which left a
+    push mapping claiming to read deals and never receiving one — the same
+    hole as a CRM that cannot read them, except silent, because the mapping
+    says it can.
+    """
+    client.post("/v1/crm/mappings", json=PUSH_MAPPING, headers=_auth(key))
+    report = client.post("/v1/crm/acme-push/records", json=BATCH, headers=_auth(key)).json()
+    assert report["opportunities"] == 2 and report["open_deals"] == 1
+    with db.tenant_tx(tenant["id"]) as cur:
+        cur.execute("select o.status, a.name from opportunity o"
+                    " join account a on a.id = o.account_id order by a.name")
+        assert [(r["status"], r["name"]) for r in cur.fetchall()] == [
+            ("won", "Contoso GmbH"), ("open", "Northwind Traders SL")]
+        cur.execute("select count(*) as n from crm_sync_state"
+                    " where opportunities_synced_at is not null")
+        assert cur.fetchone()["n"] == 1
+
+
 def test_pushing_the_same_batch_twice_is_not_three_more_people(db, client, key, tenant):
     client.post("/v1/crm/mappings", json=PUSH_MAPPING, headers=_auth(key))
     client.post("/v1/crm/acme-push/records", json=BATCH, headers=_auth(key))

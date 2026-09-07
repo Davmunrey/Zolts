@@ -6,7 +6,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 
 | Piece | Where | State |
 |---|---|---|
-| Schema, 30 tables, RLS forced on 27 | `runtime/migrations/` | Running on Postgres 16 |
+| Schema, 32 tables, RLS forced on 29 | `runtime/migrations/` | Running on Postgres 16 |
 | Tenant-scoped data access | `runtime/db.py`, `runtime/repo/` | Running |
 | Signal ingest to enrollment, with holdout assignment | `runtime/engine/enroll.py` | Running |
 | Step planning and the transactional outbox | `runtime/engine/planner.py`, `runtime/repo/actions.py` | Running |
@@ -52,9 +52,11 @@ Two defects came out of wiring it to real data. The provenance rule first measur
 
 ## Adding a CRM
 
-`runtime/connectors/crm.py` is the whole surface. A new source maps the provider's objects onto `CrmAccount` and `CrmContact`, declares a `Capabilities`, and passes `tests/test_crm_contract.py` — which is parametrised over every registered source, so a connector cannot ship without answering its questions.
+`runtime/connectors/crm.py` is the whole surface. A new source maps the provider's objects onto `CrmAccount`, `CrmContact` and `CrmOpportunity`, declares a `Capabilities`, and passes `tests/test_crm_contract.py` — which is parametrised over every registered source, so a connector cannot ship without answering its questions.
 
 Pipedrive exists to prove the seam is not HubSpot-shaped: organizations rather than companies, an array of addresses per person rather than a field, a nested `org_id` object, offset pagination, and the credential in the query string. Nothing about it matches, and the sync did not change to accommodate it.
+
+**Two capability flags are load-bearing, and both work the same way.** `reads_opt_out` decides whether a CRM's silence about a contact becomes permission. `reads_opportunities` decides whether its silence about deals becomes *"this account is not in a live sales conversation"* — the exclusion that keeps outbound out of a deal the sales team is already running. Both are declared rather than discovered, both are verified by the suite (a source claiming one and returning nothing fails), and in both cases an honest gap is handled while a false claim is trusted. A source that cannot read deals leaves `crm_sync_state.opportunities_synced_at` unwritten, and a program whose audience excludes open deals then refuses to enrol rather than contacting everybody. ADR-038.
 
 The contract's sharpest rule is about consent. `Capabilities.reads_opt_out` is a claim the suite verifies: a source that claims it and never reports an opted-out contact fails. A source that does **not** claim it has every contact stored with consent `unknown`, the policy gate denies on `unknown`, and the sync report says which CRM could not answer. A CRM's silence is never read as permission — which is also the reason a unified CRM API cannot be the only integration, since that is precisely the field they normalise worst.
 
@@ -697,7 +699,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-912 tests. 303 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+956 tests. 314 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

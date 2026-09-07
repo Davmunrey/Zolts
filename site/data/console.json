@@ -1041,7 +1041,7 @@
         "t3": false
       },
       "budget": 40000,
-      "specHash": "be856c9b3f85ce7b",
+      "specHash": "c73d211f2164c27e",
       "name": "Series A hiring surge",
       "spec": {
         "trigger": {
@@ -1063,7 +1063,7 @@
           }
         },
         "audience": {
-          "sql": "select a.id as account_id\nfrom account a\nwhere a.employee_band in ('51-200','201-500')\n  and a.industry_code = 'software'\n  and a.country in ('ES','FR','DE','NL','GB','US')\n  and not exists (\n        select 1 from suppression s\n         where s.scope = 'account' and s.value = a.id::text)\n"
+          "sql": "select a.id as account_id\nfrom account a\nwhere a.employee_band in ('51-200','201-500')\n  and a.industry_code = 'software'\n  and a.country in ('ES','FR','DE','NL','GB','US')\n  and not exists (\n        select 1 from suppression s\n         where s.scope = 'account' and s.value = a.id::text)\n  and not exists (\n        select 1 from opportunity o\n         where o.account_id = a.id and o.status = 'open')\n"
         },
         "enrich": {
           "account": {

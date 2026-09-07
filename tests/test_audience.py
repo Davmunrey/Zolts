@@ -249,6 +249,15 @@ def test_every_shipped_programs_audience_runs_against_the_real_schema(db, tenant
 
     broken = []
     with db.tenant_tx(tenant["id"]) as cur:
+        # An audience that excludes accounts with an open deal refuses to run
+        # until a CRM has actually delivered deals, because an empty table
+        # otherwise reads as "nobody is in a deal" (ADR-038). That refusal is
+        # the subject of `test_opportunity.py`; what this test asks is whether
+        # the SQL executes against the real schema, so the tenant is given the
+        # answered-question state first.
+        cur.execute("insert into crm_sync_state (tenant_id, provider,"
+                    " opportunities_synced_at) values"
+                    " (zolts_internal.current_tenant(), 'test-crm', now())")
         for path in programs:
             program = dsl.load(path)
             try:
