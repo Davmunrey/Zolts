@@ -102,6 +102,36 @@ def _chromium(pw):
     return pw.chromium.launch(executable_path=CHROME) if CHROME else pw.chromium.launch()
 
 
+# Where the *text* starts, not where the box does. A cell with left padding
+# overlaps the status dot's box and draws nowhere near it, so comparing element
+# boxes reports every row in the console. A `Range` over the cell's contents
+# measures the glyphs, which is what a reader sees covered.
+DRAWN_OVER = """
+() => {
+  const textBox = (el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const r = range.getBoundingClientRect();
+    return (r.width || r.height) ? r : null;
+  };
+  const hits = [];
+  for (const row of document.querySelectorAll('.row')) {
+    const marker = row.querySelector(':scope > .st, :scope > .sig');
+    if (!marker) continue;
+    const m = marker.getBoundingClientRect();
+    for (const cell of row.querySelectorAll(':scope > *')) {
+      if (cell === marker || !cell.textContent.trim()) continue;
+      const t = textBox(cell);
+      if (!t) continue;
+      const ox = Math.min(m.right, t.right) - Math.max(m.left, t.left);
+      const oy = Math.min(m.bottom, t.bottom) - Math.max(m.top, t.top);
+      if (ox > 1 && oy > 1) hits.push(cell.textContent.trim().slice(0, 40));
+    }
+  }
+  return hits.slice(0, 8);
+}
+"""
+
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
@@ -275,6 +305,7 @@ def main() -> int:
             # one screen with half a table on it.
             page.set_viewport_size({"width": 390, "height": 844})
             page.wait_for_timeout(250)
+            drawn_over: list[dict[str, object]] = []
             narrow.append({"nav_reachable": page.evaluate(
                 "() => { const r = document.querySelector('.rail');"
                 " return !!r && getComputedStyle(r).display !== 'none'"
@@ -289,6 +320,14 @@ def main() -> int:
                     ".filter(e => e.scrollWidth > e.clientWidth + 1).length")
                 if over:
                     narrow.append({"view": view, "clipped": over})
+                # Nothing may be drawn on top of text. Three collisions lived
+                # here and every existing check passed through all of them:
+                # nothing was clipped, nothing overflowed, and a mailbox
+                # rendered as `e@outbound.example` because the status dot sat
+                # on the first character of the address. D-38.
+                covered = page.evaluate(DRAWN_OVER)
+                if covered:
+                    drawn_over.append({"view": view, "text": covered})
             narrow.append({"horizontal_overflow": page.evaluate(
                 "() => document.documentElement.scrollWidth - window.innerWidth")})
             page.set_viewport_size({"width": 1440, "height": 900})
@@ -296,6 +335,7 @@ def main() -> int:
             report["rows_that_wrapped"] = wrapped
             report["clipped_in_panel"] = clipped
             report["on_a_phone"] = narrow
+            report["drawn_over_text_on_a_phone"] = drawn_over
             report["stat_tiles"] = tiles
             # Two views may share a label; they must not share the whole set.
             seen, repeated = {}, []
@@ -345,6 +385,10 @@ def main() -> int:
         if report["rows_that_wrapped"] or report["clipped_in_panel"]:
             print("a row grew past its height, or a value ran outside its box",
                   file=sys.stderr)
+            return 1
+        if report["drawn_over_text_on_a_phone"]:
+            print("something is drawn on top of text at 390px:",
+                  json.dumps(report["drawn_over_text_on_a_phone"])[:400], file=sys.stderr)
             return 1
         # The document the browser built is in the database, at the version it
         # bumped to and carrying the value that was typed. Anything less and
