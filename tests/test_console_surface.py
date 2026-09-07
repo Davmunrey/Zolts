@@ -155,3 +155,30 @@ def test_every_component_class_in_the_markup_is_styled():
               if re.search(r"\." + re.escape(c) + r"\s*(?=[{,:.\[])", STYLE)}
     missing = sorted(used - styled - DYNAMIC)
     assert not missing, f"classes used in the markup with no rule of their own: {missing}"
+
+
+# -- the stat tiles -------------------------------------------------------
+
+def test_the_stat_tiles_are_cleared_before_a_view_renders():
+    """Otherwise a view that sets none shows the previous view's numbers.
+
+    That is worse than showing nothing: the tiles are the first thing read and
+    they would be confidently wrong. The reset is one line in `render()`, and
+    it has to run before the dispatch rather than inside each renderer — which
+    is exactly how five views came to share the Programs header.
+    """
+    body = SCRIPT[SCRIPT.index("function render(){"):]
+    body = body[:body.index("\n}")]
+    reset = body.index("kpis([])")
+    first_view = min(body.index('state.view === "' + v + '"')
+                     for v in ("prospects", "signals", "spend", "policy", "audit"))
+    assert reset < first_view, "the tiles are cleared after a view has already rendered"
+
+
+def test_a_meter_cannot_overflow_its_track():
+    """A share above 1 draws a fill wider than the bar it is in, which reads as
+    a different number than the one beside it."""
+    builder = SCRIPT[SCRIPT.index("function kpis(tiles)"):]
+    builder = builder[:builder.index("\n}")]
+    assert "Math.max(0, Math.min(1," in builder, (
+        "the meter's share reaches the width without being clamped")

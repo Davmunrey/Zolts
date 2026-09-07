@@ -186,7 +186,7 @@ def main() -> int:
             # A row taller than its declared height means a cell wrapped. A
             # panel element wider than its box means a value is clipped or
             # overlapping. Neither is a matter of taste.
-            wrapped, clipped = [], []
+            wrapped, clipped, tiles = [], [], {}
             for entry in page.locator("nav a[data-view]").all():
                 view = entry.get_attribute("data-view")
                 entry.click()
@@ -204,9 +204,24 @@ def main() -> int:
                     ".map(e => e.textContent.slice(0, 40))")
                 if over:
                     clipped.append({"view": view, "elements": over})
+                # The tiles are the first thing read. A view that sets none
+                # after another set some would show the previous view's
+                # numbers, confidently and wrongly.
+                tiles[view] = page.evaluate(
+                    "() => [...document.querySelectorAll('#kpis .k')]"
+                    ".map(e => e.textContent)")
                 report[f"{view}_view"] = page.locator("#list").inner_text()[:120]
             report["rows_that_wrapped"] = wrapped
             report["clipped_in_panel"] = clipped
+            report["stat_tiles"] = tiles
+            # Two views may share a label; they must not share the whole set.
+            seen, repeated = {}, []
+            for view, labels in tiles.items():
+                key = "|".join(labels)
+                if key and key in seen:
+                    repeated.append([seen[key], view])
+                seen[key] = view
+            report["views_sharing_tiles"] = repeated
 
             report["page_errors"] = errors
             report["csp_violations"] = violations
@@ -225,6 +240,9 @@ def main() -> int:
         db.close()
 
         print(json.dumps(report, indent=2))
+        if report["views_sharing_tiles"]:
+            print("two views showed the same stat tiles", file=sys.stderr)
+            return 1
         if report["rows_that_wrapped"] or report["clipped_in_panel"]:
             print("a row grew past its height, or a value ran outside its box",
                   file=sys.stderr)

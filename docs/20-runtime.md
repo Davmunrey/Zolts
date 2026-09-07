@@ -466,6 +466,20 @@ They share a shape: a name used in one place and defined in another, with nothin
 
 The Programs list also shows what the blueprints promise and no program file implements — 25 plays across 11 blueprints, computed by `Catalog.gaps()` and read by the served console and the demo alike, so a list of four programs in a column built for hundreds no longer reads as a product with four programs.
 
+## How the screen is laid out
+
+At 1920 the console showed four mailboxes across three separate voids: a table stretched to 1,360px with a dead tail, a 340px panel holding two short blocks, and a rail running 650px of nothing between its last entry and the keyboard hints. The information on screen occupied about eight per cent of it.
+
+| | |
+|---|---|
+| **A stat row at the top of every view** | The numbers a view is about, where the eye lands, in the width a wide screen was wasting. They were in the 340px side panel, under a table that had already used the room. Values carry proportional figures rather than `tabular-nums` — at 23px every digit the width of a zero reads loose; tabular is for columns that must align |
+| **A meter where there is a limit** | Ceiling used, capacity used, share denied. The fill carries the severity and the track is a dim step of the same ramp, so the state reads across the whole bar. The share is clamped, because a fill wider than its track states a different number than the one beside it |
+| **The table keeps its ruling below the last row** | A short list reads as a table that ended rather than a hole in the page |
+| **The table stops at a readable width** | The surplus goes to the panel, which is where the density is: `clamp(340px, 25vw, 470px)` |
+| **The rail says what the console is reading** | Demo, or the tenant and its region. The first question when a number looks wrong is whether it came from anywhere, and the page never said |
+
+The stat row folds to two columns below 1560px and one below 900px — before four tiles can clip, because a truncated unit changes what a number means. `scripts/browser_console.py` measures that: it fails on any element wider than its box, and on two views showing the same tiles, which is what a view that forgets to set its own would do.
+
 ## Proving it: policy and the audit log
 
 Two screens for the two questions a regulated buyer asks first, and neither answer was reachable without a terminal.
@@ -650,7 +664,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-807 tests. 277 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+809 tests. 277 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
