@@ -17,17 +17,17 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from runtime.api import auth, console, webhooks
 from runtime.api.signin import SIGN_IN_CSP, sign_in_page
 from runtime.api.auth import CurrentPrincipal, Principal
-from runtime.api.schemas import (AccountIn, EnrichIn, EnrollmentOut, HealthOut,
-                                 IngestOut, KeyIn, MeasurementOut, PersonIn,
-                                 ProgramIn, ProgramOut, ResearchIn, SessionIn,
-                                 SignalIn, SignupIn)
+from runtime.api.schemas import (AccountIn, BaselineIn, EnrichIn, EnrollmentOut,
+                                 HealthOut, IngestOut, KeyIn, MeasurementOut,
+                                 PersonIn, ProgramIn, ProgramOut, ResearchIn,
+                                 SessionIn, SignalIn, SignupIn)
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime.repo import (actions, enrollments, entities, ledger, mappings, programs,
-                          proposals)
+from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
+                          ledger, mappings, programs, proposals)
 from runtime.surface import content_security_policy, document, inject
 from zolts import dsl, experiment
 
@@ -340,6 +340,42 @@ def create_app(db: Database, *, install_connectors: bool = True,
         except onboarding.InvitationError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
+    # -- the baseline ----------------------------------------------------
+
+    @app.get("/v1/baseline")
+    def read_baseline(principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """What this tenant's GTM cost and produced before Zolts, frozen."""
+        with db.tenant_tx(principal.tenant_id) as cur:
+            row = baseline_repo.get(cur)
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                "no baseline is frozen for this tenant")
+        return baseline_repo.as_dict(row)
+
+    @app.post("/v1/baseline", status_code=status.HTTP_201_CREATED)
+    def freeze_baseline(body: BaselineIn,
+                        principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Freeze the baseline. Once: a second capture answers 409 (ADR-042)."""
+        from zolts.baseline import BaselineError, from_mapping
+
+        principal.require("write")
+        try:
+            captured = from_mapping(body.model_dump())
+        except BaselineError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        with db.tenant_tx(principal.tenant_id) as cur:
+            try:
+                row = baseline_repo.freeze(cur, principal.tenant_id, captured,
+                                           signed_by=body.signed_by,
+                                           captured_by=f"key:{principal.key_id}")
+            except baseline_repo.BaselineAlreadyFrozen as exc:
+                raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+            ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                         action="baseline.frozen", subject=str(principal.tenant_id),
+                         detail={"digest": row["digest"], "signed_by": body.signed_by,
+                                 "source": row["source"]})
+        return baseline_repo.as_dict(row)
+
     # -- entities --------------------------------------------------------
 
     @app.get("/v1/accounts")
@@ -559,8 +595,20 @@ def create_app(db: Database, *, install_connectors: bool = True,
                 raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
             ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
                          action="program.activated", subject=program_id, detail={})
+            # Activation is the moment "before Zolts" ends. A tenant that
+            # starts without a frozen baseline has no before to compare
+            # against, ever (decision 35). Noted rather than refused, and
+            # noted where an operator looks.
+            lint: list[str] = []
+            if baseline_repo.get(cur) is None:
+                lint.append("no baseline is frozen for this tenant; the lift this "
+                            "program measures will have nothing before it to compare "
+                            "against (POST /v1/baseline, or `zolts baseline`)")
+                ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                             action="program.activated_without_baseline",
+                             subject=program_id, detail={"program": row["key"]})
         return ProgramOut(id=str(row["id"]), key=row["key"], version=row["version"],
-                          status=row["status"], spec_hash=row["spec_hash"])
+                          status=row["status"], spec_hash=row["spec_hash"], lint=lint)
 
     @app.get("/v1/programs")
     def list_programs(principal: Principal = CurrentPrincipal) -> list[dict[str, Any]]:

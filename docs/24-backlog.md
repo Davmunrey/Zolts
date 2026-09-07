@@ -8,8 +8,8 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | | Count | Evidence |
 |---|---|---|
-| Epics delivered | 40 | `docs/22`, ADR-001 … ADR-041 |
-| Tests | 1038 | 340 against a real Postgres; CI fails a run that skipped them |
+| Epics delivered | 41 | `docs/22`, ADR-001 … ADR-042 |
+| Tests | 1060 | 346 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -22,7 +22,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 |---|---|---|---|---|
 | **B-1** | **Release the runtime to Vercel + Neon** | Everything built is unreachable. A product in production with one channel is worth more than a perfect one with no users | S — the path is written, executed in tests, and released by a workflow that migrates and preflights first (ADR-041) | **Founder**: the Pro plan; GitHub secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `ZOLTS_DATABASE_URL`, `ZOLTS_APP_DATABASE_URL`, `ZOLTS_SECRET_KEY`; the same three `ZOLTS_*` values plus `CRON_SECRET` and `ZOLTS_ENV=production` in the Vercel project. Never through chat, an issue, or a file. `docs/20` has the checklist |
 | **B-2** | Set the `ZOLTS_URL` repository variable | From then on `smoke_deployed.py --strict` runs every hour from `deploy-vercel.yml` and a failed run notifies the owner — the difference between the process being up and the product answering, checked without anybody remembering to | XS | B-1 |
-| **B-3** | First paying partner onboarded end to end | The only validation that matters. Invitation → redeem → connect CRM → activate → first send | M | B-1 |
+| **B-3** | First paying partner onboarded end to end | The only validation that matters. The path is `docs/26`: invitation → letter → baseline → CRM → sending → activate → first send, checked command by command; the three partners' names and countries are the founder's to give | M | B-1, **Founder** (names) |
 
 **Acceptance for B-1:** `preflight` passes in production mode against the real database; `/health` reports every migration applied; `worker ticking` is ok, which on this host means the cron fires; one program activates and one action reaches a provider.
 
@@ -84,6 +84,7 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Guards that bite** | Eleven guards are broken on purpose on every push and a test has to notice. A mutation whose target moved is an error, not a skip | `scripts/mutation_check.py`, `test_mutation_targets.py` |
 | **The console on a phone** | Nothing may be drawn on top of text: the check measures where the glyphs start rather than where the box does, which is what made three collisions invisible to every clipping and overflow check | D-38, `browser_console.py` |
 | **Admission** | A program is checked where it is stored, not where it arrives: holdout, audience, enrichment pricing and policy overrides run inside `publish`, so signup and the CLI get the same answer as the API | ADR-037, `test_admission.py` |
+| **Baseline** | What a tenant cost and produced before Zolts, frozen once at onboarding with a digest the pilot letter quotes; activation without one is noted where an operator looks | ADR-042, `test_baseline.py`, `docs/26` |
 
 ## How an item earns its place
 

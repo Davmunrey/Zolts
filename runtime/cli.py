@@ -24,7 +24,7 @@ from runtime.crypto import Keyring
 from runtime.db import Database, one
 from runtime.provision import (create_tenant, create_webhook_endpoint, issue_api_key,
                                store_connection)
-from runtime.repo import programs
+from runtime.repo import ledger, programs
 
 
 def _db(settings: Settings) -> Database:
@@ -296,6 +296,15 @@ def main(argv: list[str] | None = None) -> int:
     hook = sub.add_parser("webhook", help="create an inbound endpoint; secret shown once")
     hook.add_argument("--tenant", required=True)
     hook.add_argument("--provider", required=True)
+
+    base = sub.add_parser(
+        "baseline", help="freeze what a tenant's GTM cost and produced before Zolts")
+    base.add_argument("--tenant", required=True)
+    base.add_argument("--file", required=True,
+                      help="a JSON document with the fields of POST /v1/baseline; "
+                           "'-' reads stdin")
+    base.add_argument("--signed-by", required=True,
+                      help="who signs the letter that quotes the digest")
 
     serve = sub.add_parser("serve", help="run the API")
     serve.add_argument("--host", default="0.0.0.0")
@@ -831,6 +840,33 @@ def main(argv: list[str] | None = None) -> int:
         # A credential nothing could open is a real failure and the exit code
         # says so, but only after the other credentials were re-sealed.
         return 1 if done.failed else 0
+
+    if args.command == "baseline":
+        from runtime.repo import baseline as baseline_repo
+        from zolts.baseline import BaselineError, from_mapping
+
+        raw = sys.stdin.read() if args.file == "-" else open(args.file, encoding="utf-8").read()
+        try:
+            captured = from_mapping(json.loads(raw))
+        except (BaselineError, ValueError) as exc:
+            print(f"the baseline cannot be frozen as written: {exc}", file=sys.stderr)
+            return 2
+        with db.tenant_tx(args.tenant) as cur:
+            try:
+                row = baseline_repo.freeze(cur, args.tenant, captured,
+                                           signed_by=args.signed_by, captured_by="operator")
+            except baseline_repo.BaselineAlreadyFrozen as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+            ledger.audit(cur, args.tenant, actor="operator", action="baseline.frozen",
+                         subject=args.tenant,
+                         detail={"digest": row["digest"], "signed_by": args.signed_by,
+                                 "source": row["source"]})
+        print(json.dumps({**baseline_repo.as_dict(row),
+                          "note": "quote the digest in the letter the partner signs; the "
+                                  "row and the letter can then be checked against each "
+                                  "other by anyone holding both"}, indent=2, default=str))
+        return 0
 
     if args.command == "webhook":
         created = create_webhook_endpoint(db, args.tenant, provider=args.provider,
