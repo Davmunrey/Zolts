@@ -42,20 +42,22 @@ def _context(**kw) -> ActionContext:
 # -- the direction of stricter --------------------------------------------
 
 def test_a_longer_quiet_window_is_accepted():
-    tightened = tighten(PACK_V1["ES"], {"quiet_hours": {"opens": "19:00", "closes": "09:00"}})
+    tightened = tighten(PACK_V1["ES"], {"quiet_hours": {"start": "19:00", "end": "09:00"}})
     assert tightened.quiet_hours == (time(19, 0), time(9, 0))
 
 
-def test_a_shorter_quiet_window_is_refused():
+def test_a_shorter_quiet_window_does_not_shorten_the_packs():
     """A program cannot buy itself more sending hours than the jurisdiction
-    allows by writing them in its own spec."""
-    with pytest.raises(OverrideIsLooser, match="shorter than"):
-        tighten(PACK_V1["ES"], {"quiet_hours": {"opens": "23:00", "closes": "07:00"}})
+    allows by writing them in its own spec. It is not refused for trying — a
+    program shipped for six countries states one baseline — but the longer
+    window is what applies."""
+    tightened = tighten(PACK_V1["ES"], {"quiet_hours": {"start": "23:00", "end": "07:00"}})
+    assert tightened.quiet_hours == PACK_V1["ES"].quiet_hours
 
 
 def test_a_half_declared_window_is_refused():
     with pytest.raises(OverrideIsLooser, match="not a window"):
-        tighten(PACK_V1["ES"], {"quiet_hours": {"opens": "19:00"}})
+        tighten(PACK_V1["ES"], {"quiet_hours": {"start": "19:00"}})
 
 
 def test_demanding_consent_where_the_pack_asks_less_is_accepted():
@@ -63,11 +65,12 @@ def test_demanding_consent_where_the_pack_asks_less_is_accepted():
     assert tightened.required_basis["email"] is Basis.CONSENT
 
 
-def test_accepting_a_weaker_basis_than_the_pack_is_refused():
-    """Legitimate interest does not stand in for consent, and a program saying
-    it does is asking to be allowed something the jurisdiction refuses."""
-    with pytest.raises(OverrideIsLooser, match="does not tighten"):
-        tighten(PACK_V1["ES"], {"channels_require_basis": {"whatsapp": "legitimate_interest"}})
+def test_a_weaker_basis_than_the_pack_does_not_weaken_it():
+    """Legitimate interest does not stand in for consent. The ES pack requires
+    consent for WhatsApp, and a program asking for less keeps the pack's."""
+    tightened = tighten(PACK_V1["ES"],
+                        {"channels_require_basis": {"whatsapp": "legitimate_interest"}})
+    assert tightened.required_basis["whatsapp"] is Basis.CONSENT
 
 
 def test_extra_suppression_lists_are_added_and_the_pack_s_are_kept():
@@ -96,7 +99,7 @@ def test_a_programs_quiet_hours_actually_deny_a_send():
                     at_nine_pm).decision is Decision.ALLOW
 
     denied = evaluate(_contact(consent={"voice": Basis.LEGITIMATE_INTEREST}), at_nine_pm,
-                      overrides={"quiet_hours": {"opens": "19:00", "closes": "09:00"}})
+                      overrides={"quiet_hours": {"start": "19:00", "end": "09:00"}})
     assert denied.decision is Decision.DENY
     assert denied.rule_key == "quiet_hours"
 
@@ -139,3 +142,46 @@ def test_every_override_the_schema_allows_is_either_applied_or_refused():
     assert allowed - handled == {"max_touches_per_person_per_week"}, (
         f"the schema allows {sorted(allowed)} and nothing handles "
         f"{sorted(allowed - handled - {'max_touches_per_person_per_week'})}")
+
+
+# -- the shipped programs -------------------------------------------------
+
+def test_every_shipped_programs_policy_block_is_accepted():
+    """The guard that would have caught this before it was pushed.
+
+    The first version of `tighten` read `opens`/`closes` — the vocabulary the
+    *schedule* block uses for sending windows — while every program writes
+    `start`/`end`. It also refused a program for restating a basis the pack
+    already requires. Both meant the runtime rejected all four shipped
+    programs, and only the end-to-end smoke run noticed.
+    """
+    from pathlib import Path
+
+    from zolts import dsl
+
+    refused = []
+    for path in sorted(Path("examples/programs").glob("*.yaml")):
+        program = dsl.load(path)
+        overrides = (program.spec.get("policy") or {}).get("overrides") or {}
+        for country, rule in PACK_V1.items():
+            try:
+                tighten(rule, overrides)
+            except OverrideIsLooser as exc:
+                refused.append(f"{path.name} under {country}: {exc}")
+    assert not refused, "a shipped program's policy block is refused:\n  " + "\n  ".join(refused)
+
+
+def test_a_timezone_nobody_implements_is_refused():
+    """Quiet hours are evaluated in the contact's local time. A program naming
+    another zone would be silently evaluated in the contact's anyway."""
+    with pytest.raises(OverrideIsLooser, match="not implemented"):
+        tighten(PACK_V1["ES"], {"quiet_hours": {"start": "19:00", "end": "08:00",
+                                                "tz": "Europe/Madrid"}})
+
+
+def test_restating_the_packs_own_basis_is_not_a_relaxation():
+    """Programs write the requirement into their own spec so it is visible
+    there. Saying something true is not an override."""
+    tightened = tighten(PACK_V1["ES"],
+                        {"channels_require_basis": {"email": "legitimate_interest"}})
+    assert tightened.required_basis["email"] is Basis.LEGITIMATE_INTEREST

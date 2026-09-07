@@ -589,12 +589,20 @@ The schema's own sentence has always been *"Only overrides stricter than the ten
 
 **Stricter has a direction per field, and each is one a compliance officer would recognise.**
 
-| Field | Stricter means | A relaxation is |
-|---|---|---|
-| `quiet_hours` | a longer quiet window | refused: a program cannot buy itself sending hours the jurisdiction denies |
-| `channels_require_basis` | a basis the current one no longer satisfies | refused: legitimate interest does not stand in for consent |
-| `lists_check` | more lists | impossible: lists are added, never replaced, so a program cannot drop the jurisdiction's by omission |
+**The stricter of the two wins, per field and per jurisdiction.**
 
-`zolts.policy.tighten` is pure logic in the reference core, beside the pack it tightens, and it raises `OverrideIsLooser` rather than silently declining. `evaluate` takes the program's block and applies it before the first rule runs, so an override cannot be sidestepped by the ordering. Publishing refuses a loosening, where a 422 costs a retry.
+| Field | What applies | A weaker declaration |
+|---|---|---|
+| `quiet_hours` | the longer window | does not shorten the pack's |
+| `channels_require_basis` | the basis harder to satisfy | does not weaken the pack's |
+| `lists_check` | the union | impossible: a program cannot drop the jurisdiction's by omission |
+
+The first implementation raised on anything weaker, and **refused all four shipped programs**. Program 01 declares `email: legitimate_interest`, which is the ES baseline and a relaxation of the DE and CA packs — a program shipped for six countries states one baseline, and under a stricter jurisdiction the jurisdiction applies. Refusing it was wrong twice over: it rejected correct programs, and it framed a multi-country product as a configuration error.
+
+So the operator is never less protected than they asked for, and never less protected than the law where the contact lives. A refusal is reserved for a declaration nobody can act on: a half-written window, a timezone nothing implements. Those are mistakes, not relaxations.
+
+`zolts.policy.tighten` is pure logic in the reference core, beside the pack it tightens. `evaluate` applies the program's block before the first rule runs, so an override cannot be sidestepped by the ordering.
+
+**Two of my own bugs found by the smoke run, not by the tests.** The first version read `opens`/`closes` — the vocabulary the *schedule* block uses for sending windows — while every program writes `start`/`end`; the second refused a program for restating a basis the pack already required. Both rejected all four shipped programs, every unit test passed, and the nine-stage loop caught it because it had been made able to fail an hour earlier.
 
 **`max_touches_per_person_per_week` stays where it was**, applied by the gate through `ActionContext`: it is a counter about a contact's recent history rather than a rule of the jurisdiction, and moving it into `tighten` would put two unrelated things in one function. The guard against this drifting is a test that reads the schema's own key list and asserts every key is either tightened or accounted for by name.
