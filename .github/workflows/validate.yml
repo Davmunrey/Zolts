@@ -192,6 +192,49 @@ jobs:
           test -s console.html || { echo "::error::/console returned an empty body"; exit 1; }
           echo "console rendered $(wc -c < console.html) bytes"
 
+      # The image's default CMD is what the steps above exercise. `fly.toml`
+      # runs neither of its processes with that command — it declares its own
+      # table, and those two strings are what a deploy executes. A test parses
+      # them; this runs them, because a command that parses can still fail on
+      # a missing file, an unset variable or a wrong working directory.
+      - name: The worker command from fly.toml must run inside the container
+        run: |
+          worker=$(python3 - <<'PY'
+          import tomllib
+          print(tomllib.load(open("fly.toml", "rb"))["processes"]["worker"])
+          PY
+          )
+          echo "fly.toml worker: $worker"
+          # `--once` so it drains and exits rather than looping; the command
+          # itself is the one from the process table.
+          docker run --rm --network host -e ZOLTS_DATABASE_URL="$DB" \
+            -e ZOLTS_APP_DATABASE_URL="$APP_DB" -e ZOLTS_SECRET_KEY \
+            zolts:ci $worker --once
+
+      - name: The api command from fly.toml must serve on the port Fly routes to
+        run: |
+          api=$(python3 - <<'PY'
+          import tomllib
+          fly = tomllib.load(open("fly.toml", "rb"))
+          print(fly["processes"]["api"], fly["http_service"]["internal_port"])
+          PY
+          )
+          command="${api% *}"; port="${api##* }"
+          echo "fly.toml api: $command on $port"
+          docker run -d --name flyapi --network host \
+            -e ZOLTS_DATABASE_URL="$DB" -e ZOLTS_APP_DATABASE_URL="$APP_DB" \
+            -e ZOLTS_SECRET_KEY zolts:ci $command
+          for i in $(seq 1 20); do
+            curl -fsS "http://127.0.0.1:$port/health" > /dev/null && break
+            sleep 2
+          done
+          curl -fsS "http://127.0.0.1:$port/health" | grep -q '"status":"ok"' \
+            || { echo "::error::the fly api command does not answer on $port"; \
+                 docker logs flyapi; exit 1; }
+          echo "the deployed command serves on the port fly.toml routes to"
+
       - name: Show the container's logs on failure
         if: failure()
-        run: docker logs api || true
+        run: |
+          docker logs api || true
+          docker logs flyapi || true
