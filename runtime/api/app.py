@@ -28,7 +28,7 @@ from runtime.engine import audience, enrich_step, enroll
 from runtime.repo import (actions, enrollments, entities, ledger, mappings, programs,
                           proposals)
 from runtime.surface import content_security_policy, document, inject
-from zolts import dsl, experiment
+from zolts import dsl, experiment, policy
 
 SURFACE = Path(__file__).resolve().parent.parent.parent / "design" / "console.html"
 
@@ -512,6 +512,15 @@ def create_app(db: Database, *, install_connectors: bool = True,
         try:
             enrich_step.check(body.spec, body.key)
         except enrich_step.EnrichmentNotPriced as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            # An override that relaxes the pack is refused rather than ignored.
+            # Ignoring is the worst of the three: it lets an operator believe
+            # they are protected by a rule nothing applies.
+            for country in policy.PACK_V1:
+                policy.tighten(policy.PACK_V1[country],
+                               (body.spec.get("policy") or {}).get("overrides") or {})
+        except policy.OverrideIsLooser as exc:
             raise HTTPException(422, str(exc)) from exc
 
         with db.tenant_tx(principal.tenant_id) as cur:

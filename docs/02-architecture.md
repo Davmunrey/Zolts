@@ -572,3 +572,29 @@ Four flagship programs, none of which could enrol anybody once the field was rea
 **Refused at publish, not at runtime.** A field with no price, an account field asked of a person, a person field asked of an account: each is a configuration mistake, and discovering one while a worker is mid-tick turns it into a stalled program. The check runs beside the audience's.
 
 **A miss is absorbed and does not block.** ADR-021 already decided that not finding a phone number is an answer. The step proceeds with what is known, because a sequence that stops on a missing optional field is a sequence that stops.
+
+
+**ADR-036 · An override is applied or refused, never ignored.**
+`spec.policy.overrides` allows four keys and the gate read one. `quiet_hours`, `channels_require_basis` and `lists_check` were parsed by the schema, stored in the spec, rendered in the console — and dropped.
+
+| A program declaring | What happened |
+|---|---|
+| quiet from 19:00 where the pack is quiet from 20:00 | it sent at 19:00 |
+| consent required for email where the pack asks legitimate interest | it sent on legitimate interest |
+| its own do-not-contact list beside the Robinson list | the list was not checked |
+
+The schema's own sentence has always been *"Only overrides stricter than the tenant policy are accepted"*. None were accepted at all.
+
+**Ignoring is the worst of the three possible behaviours.** Honouring an override does what the operator asked. Refusing it tells them it cannot be done. Ignoring it lets them believe they are protected by a rule that nothing applies — and the belief is what makes it dangerous, because the override is exactly what somebody writes after a complaint.
+
+**Stricter has a direction per field, and each is one a compliance officer would recognise.**
+
+| Field | Stricter means | A relaxation is |
+|---|---|---|
+| `quiet_hours` | a longer quiet window | refused: a program cannot buy itself sending hours the jurisdiction denies |
+| `channels_require_basis` | a basis the current one no longer satisfies | refused: legitimate interest does not stand in for consent |
+| `lists_check` | more lists | impossible: lists are added, never replaced, so a program cannot drop the jurisdiction's by omission |
+
+`zolts.policy.tighten` is pure logic in the reference core, beside the pack it tightens, and it raises `OverrideIsLooser` rather than silently declining. `evaluate` takes the program's block and applies it before the first rule runs, so an override cannot be sidestepped by the ordering. Publishing refuses a loosening, where a 422 costs a retry.
+
+**`max_touches_per_person_per_week` stays where it was**, applied by the gate through `ActionContext`: it is a counter about a contact's recent history rather than a rule of the jurisdiction, and moving it into `tighten` would put two unrelated things in one function. The guard against this drifting is a test that reads the schema's own key list and asserts every key is either tightened or accounted for by name.

@@ -11,7 +11,7 @@ before production use.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace, field
 from datetime import datetime, time
 from enum import Enum
 
@@ -130,14 +130,19 @@ def evaluate(
     contact: Contact,
     context: ActionContext,
     pack: dict[str, JurisdictionRule] | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> PolicyDecision:
     """Evaluate one action. The first failing rule wins and is recorded.
 
     Order matters: opt-out and suppression are checked before anything else,
     because an unsubscribed contact must not be reachable even under a valid
     legal basis or a customer override.
+
+    `overrides` is the program's own policy block, applied to the
+    jurisdiction's rule before anything is evaluated. It may only tighten;
+    `tighten` raises on anything that would relax the pack.
     """
-    rule = rule_for(contact.country, pack)
+    rule = tighten(rule_for(contact.country, pack), overrides or {})
     channel = context.channel
     jurisdiction = rule.country
 
@@ -181,6 +186,82 @@ def evaluate(
                               f"{context.remaining_budget_eur:.4f} EUR remaining", jurisdiction)
 
     return PolicyDecision(Decision.ALLOW, "ok", "all checks passed", jurisdiction)
+
+
+class OverrideIsLooser(ValueError):
+    """A program tried to relax the jurisdiction's rule rather than tighten it."""
+
+
+def _quiet_span(window: tuple[time, time]) -> int:
+    """How many hours a quiet window covers, crossing midnight if it must."""
+    start, end = window[0].hour, window[1].hour
+    return (end - start) % 24 or 24
+
+
+def tighten(rule: JurisdictionRule, overrides: dict[str, Any]) -> JurisdictionRule:
+    """Apply a program's policy overrides, refusing any that loosen the rule.
+
+    The schema has always said "Only overrides stricter than the tenant policy
+    are accepted", and the runtime accepted none of them: the gate read
+    `max_touches_per_person_per_week` and ignored `quiet_hours`,
+    `channels_require_basis` and `lists_check`. A program declaring that it
+    must not send between 21:00 and 08:00 sent at three in the morning, and a
+    program naming an extra suppression list did not check it.
+
+    Ignoring is the worst of the three possible behaviours. Honouring an
+    override does what the operator asked; refusing it tells them it cannot be
+    done; ignoring it lets them believe they are protected. Every override here
+    is therefore either applied or raised on.
+
+    Stricter has a direction per field, and each one is the direction a
+    compliance officer would recognise:
+
+      quiet_hours              a longer quiet window
+      channels_require_basis   a basis that is harder to satisfy
+      lists_check              more lists, never fewer
+    """
+    if not overrides:
+        return rule
+
+    quiet = rule.quiet_hours
+    declared = overrides.get("quiet_hours")
+    if declared:
+        opens, closes = declared.get("opens"), declared.get("closes")
+        if not (opens and closes):
+            raise OverrideIsLooser(
+                "quiet_hours needs both `opens` and `closes`; a half-declared "
+                "window is not a window")
+        window = (time.fromisoformat(opens), time.fromisoformat(closes))
+        if _quiet_span(window) < _quiet_span(rule.quiet_hours):
+            raise OverrideIsLooser(
+                f"quiet hours {opens}-{closes} are shorter than the "
+                f"{rule.country} pack's "
+                f"{rule.quiet_hours[0].isoformat('minutes')}-"
+                f"{rule.quiet_hours[1].isoformat('minutes')}, which is a "
+                "relaxation rather than an override")
+        quiet = window
+
+    basis = dict(rule.required_basis)
+    for channel, name in (overrides.get("channels_require_basis") or {}).items():
+        wanted = Basis(name)
+        current = basis.get(channel)
+        # Stricter means the current basis would no longer satisfy the new
+        # requirement. Consent satisfies legitimate interest, so demanding
+        # consent where the pack asks for legitimate interest is a tightening;
+        # the reverse is not.
+        if current is not None and _basis_satisfies(current, wanted):
+            raise OverrideIsLooser(
+                f"{channel} requires {current.value} in the {rule.country} pack; "
+                f"{wanted.value} does not tighten it")
+        basis[channel] = wanted
+
+    lists = tuple(rule.suppression_lists)
+    for name in overrides.get("lists_check") or []:
+        if name not in lists:
+            lists = lists + (name,)
+
+    return replace(rule, required_basis=basis, quiet_hours=quiet,
+                   suppression_lists=lists)
 
 
 def _basis_satisfies(held: Basis, required: Basis) -> bool:
