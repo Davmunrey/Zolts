@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from runtime.db import one, rows
+from runtime.engine import admission
 
 
 class VersionIsImmutable(ValueError):
@@ -31,7 +32,15 @@ def publish(cur, tenant_id: str, *, key: str, version: str, spec: dict[str, Any]
     Republishing the *same* content still succeeds, because a retried request
     and a re-seeded starter program are both legitimate and neither changes
     anything. Different content under a version that exists is refused.
+
+    Admission runs here rather than in the caller because there are five
+    callers and only one of them — the HTTP handler — used to run it. Signup
+    published starter programs into a live tenant with no check at all, so a
+    program with no holdout, an audience by `segment_ref` that nothing
+    resolves, and an enrichment field the price list does not carry was
+    accepted and activated. See `runtime.engine.admission`.
     """
+    admission.check(spec, key)
     cur.execute(
         "insert into program (tenant_id, key, version, spec, spec_hash, status, created_by,"
         " metadata) values (%s,%s,%s,%s,%s,%s,%s,%s)"

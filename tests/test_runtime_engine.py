@@ -8,12 +8,13 @@ mid-flight does not send twice.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from runtime.engine import enroll, planner
+from runtime.engine import admission, enroll, planner
 from runtime.engine.worker import Worker
 from runtime.provision import store_connection
 from runtime.repo import actions, enrollments, entities, ledger, programs
@@ -123,12 +124,26 @@ def test_a_replayed_signal_does_not_enroll_twice(db, tenant, fake):
 
 
 def test_a_program_without_a_holdout_is_refused(db, tenant, fake):
-    """Product invariant 4, enforced where it can actually be violated."""
-    spec = {**SPEC}
-    spec.pop("experiment")
+    """Product invariant 4, at both layers that can violate it.
+
+    Publishing one is now impossible: admission runs inside `publish`, which
+    every one of the five callers goes through. The enrolment check stays
+    anyway, because the table is older than the check — a row written before
+    admission existed, or by an operator with a psql prompt, is still a
+    program the runtime must refuse rather than enrol into a measurement it
+    cannot make.
+    """
+    spec = {k: v for k, v in SPEC.items() if k != "experiment"}
     tid = str(tenant["id"])
     with db.tenant_tx(tid) as cur:
-        _publish(cur, tid, spec=spec, key="no-holdout")
+        with pytest.raises(admission.NotAdmissible, match="declares no holdout"):
+            _publish(cur, tid, spec=spec, key="no-holdout")
+
+    with db.tenant_tx(tid) as cur:
+        # The row admission would never have written, written anyway.
+        cur.execute("insert into program (tenant_id, key, version, spec, spec_hash,"
+                    " status) values (%s,%s,%s,%s,%s,'live')",
+                    (tid, "no-holdout", "1.0.0", json.dumps(spec), "deadbeef"))
         account, _ = _account_with_contact(cur, tid)
         with pytest.raises(enroll.HoldoutMissing):
             _ingest(cur, tid, account["id"])
