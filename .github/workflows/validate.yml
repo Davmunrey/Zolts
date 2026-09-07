@@ -62,6 +62,13 @@ jobs:
           git diff --exit-code -- site vercel.json \
             || { echo "::error::site/ is stale — run PYTHONPATH=. python3 scripts/build_site.py and commit"; exit 1; }
 
+      # Every guard here was watched to fail once, by hand, the day it was
+      # written. This is that verification made repeatable: break each one and
+      # require a test to notice. It runs in seconds because a biting mutation
+      # stops at the first failure.
+      - name: Break each guard and require a test to notice
+        run: python3 scripts/mutation_check.py
+
       - name: Benchmark the waterfall optimiser
         run: python3 scripts/benchmark_waterfall.py
 

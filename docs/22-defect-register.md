@@ -16,6 +16,8 @@ Every defect this repository has found in itself, what it would have cost, and w
 
 **This table used to say 16 executed and 3 read.** Counting the rows gives 14 and 8. The register overstated its own method by five, in the direction that flattered it, and nothing measured it until a test did — the same defect as everything in it, committed by the document that catalogues them. `tests/test_registers.py` now counts the column, so the numbers above are a measurement rather than a memory.
 
+**Mutation is now the only method that runs on every push.** `scripts/mutation_check.py` breaks eight named guards and requires a test to notice; a mutation whose target has moved is an error rather than a skip, because code moving out from under a check is exactly when the check stops being applied. It is not a coverage measurement and `docs/24` VER-1 keeps that item open — it re-proves a curated list, and says nothing about the code it does not name.
+
 **What survives the correction is the sharper claim.** All nine of the read defects were found by reading a *document* against the code — a price nothing charges, an ADR written in the present tense about a connector that does not exist, a script nobody had ever run. Not one was found by reviewing code for a wrong line. Reading works, and what it finds is the absent caller, never the incorrect one.
 
 ## The recurring shape
