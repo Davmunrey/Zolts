@@ -24,7 +24,7 @@ from typing import Any
 
 from runtime.connectors.base import PermanentError, Request, Result, TransientError
 from runtime.connectors.registry import get_connector, providers_for
-from runtime.crypto import open_sealed
+from runtime.crypto import Keyring, open_sealed
 from runtime.db import Database, one
 from runtime.engine import enrich_step, gate, generate, planner
 from runtime import channels, fleet, metering
@@ -64,7 +64,7 @@ def _next_sending_day(now: datetime | None = None) -> datetime:
 
 
 class Worker:
-    def __init__(self, db: Database, *, secret_key: str, lease_seconds: int = 60,
+    def __init__(self, db: Database, *, secret_key: "str | Keyring", lease_seconds: int = 60,
                  batch: int = 25, dry_run: bool = False, name: str | None = None,
                  model_client: Any = None, spend_guard: Any = None) -> None:
         self.db = db

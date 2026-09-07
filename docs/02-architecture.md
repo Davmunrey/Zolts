@@ -655,3 +655,25 @@ The flagship program has carried this comment since it was written: *the exclusi
 **Matching the table name rather than parsing the SQL** is deliberate. The question is "does this program's decision depend on deals", and any mention of the relation means yes. A false positive costs an explicit refusal until a CRM delivers deals; a false negative costs the thing this ADR exists to prevent.
 
 **What is knowingly imprecise.** The guard asks whether *any* source has delivered deals, not whether the source that delivered *this account* did. For a tenant with one CRM — the entry segment — the two are the same question. For a tenant with two, one of them deal-blind, accounts from the blind one read as having no deals. `crm_sync_state` holds one row per provider precisely so the sharper per-account answer is a query change rather than a migration. Recorded rather than hidden.
+
+
+**ADR-039 · The sealing key is replaceable, and the runtime can say when it has been replaced.**
+One key seals every connector credential and every webhook signing secret, for every tenant. `docs/23` carried that as SEC-1 from the day it was written: *one key compromise decrypts every credential for every tenant, and today there is no tested path to rotate*. A key that leaks and cannot be replaced is a permanent compromise of every customer's CRM, and the cheapest moment to build the replacement is before there is any customer data to replace it under.
+
+**A rotation is three states, and only the middle one is hard.**
+
+| State | The runtime must |
+|---|---|
+| before | seal and open with the old key |
+| during | **open with either, seal with the new** |
+| after | seal and open with the new — and be able to prove it |
+
+`crypto.Keyring` is the middle state: `ZOLTS_SECRET_KEY` seals, `ZOLTS_PREVIOUS_SECRET_KEYS` only opens. Trying keys in turn is safe rather than sloppy, because AES-GCM authenticates: a wrong key fails its tag check instead of returning plausible bytes.
+
+**`secret_key_id` exists so that "is the rotation finished" is a count.** It is a truncated hash of the key's own hash — it names a key without disclosing anything about it, which is what lets it sit in the clear beside the ciphertext. Without it the only way to answer the question is to decrypt every row, and an operator mid-rotation asks it repeatedly. This is the same lesson as `crm_sync_state` in ADR-038: when a state is ambiguous and safety depends on telling the two cases apart, make the difference a column rather than an inference.
+
+**The rotation pages by id, not by "what is not yet rotated".** The first draft selected rows whose key id was not the primary's, batch after batch — and a row that no configured key opens never stops matching, so the run re-read it until somebody killed it. Verified by putting that draft back: the test had to be terminated at 45 seconds. Paging by id cannot repeat, and `MAX_BATCHES` turns a regression of it into an error with a name instead of a process that hangs in CI.
+
+**A credential nothing can open is named, not raised on.** Raising would abandon every other credential in the database on account of one whose key is already gone. The row keeps its key id, `outstanding` keeps counting it, the CLI exits non-zero, and preflight refuses to start in production — but the other credentials are safe by then.
+
+**What actually retires the old key is removing it from the environment**, not running the command. The CLI says so on completion, because a rotation that leaves the old key configured has moved the ciphertext and kept the exposure.

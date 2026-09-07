@@ -20,6 +20,7 @@ from runtime.config import Settings
 from runtime.connectors import install_default_connectors
 from runtime.connectors.dataprovider import iter_fields as _iter_fields
 from runtime.connectors.dataprovider import providers as providers_registered
+from runtime.crypto import Keyring
 from runtime.db import Database, one
 from runtime.engine.worker import Worker
 from runtime.provision import (create_tenant, create_webhook_endpoint, issue_api_key,
@@ -31,7 +32,7 @@ def _db(settings: Settings) -> Database:
     return Database(settings.database_url, settings.app_database_url)
 
 
-def quickstart(db: Database, *, secret_key: str, slug: str, name: str, region: str,
+def quickstart(db: Database, *, secret_key: "str | Keyring", slug: str, name: str, region: str,
                blueprint: str, base_url: str) -> dict[str, Any]:
     """Everything a first run needs, in one command.
 
@@ -84,6 +85,32 @@ def quickstart(db: Database, *, secret_key: str, slug: str, name: str, region: s
 
 def dataprovider_fields() -> tuple[str, ...]:
     return tuple(_iter_fields())
+
+
+def _render_rotation(state, done) -> str:
+    """What an operator needs: whether it is finished, and what is left."""
+    lines = []
+    if done is not None:
+        lines.append(f"re-sealed {done.rows} credential(s) across {done.tenants} tenant(s)")
+        if done.failed:
+            lines.append(f"FAILED   {done.failed} credential(s) no configured key opens: "
+                         + ", ".join(done.failures[:5]))
+    lines.append(f"total {state.total}  on the current key {state.on_primary}"
+                 f"  on a previous key {state.on_previous}"
+                 f"  unknown {state.unknown}  unopenable {state.unopenable}")
+    if not state.total:
+        lines.append("nothing is sealed yet; there is nothing to rotate")
+    elif state.unopenable and state.unopenable + state.on_primary == state.total:
+        lines.append(f"{state.unopenable} credential(s) cannot be opened by any key this "
+                     "deployment holds. Re-running will not help: either configure the key "
+                     "that sealed them in ZOLTS_PREVIOUS_SECRET_KEYS, or re-enter those "
+                     "credentials — nothing in this database can recover them")
+    elif state.complete:
+        lines.append("rotation complete — remove the old key from "
+                     "ZOLTS_PREVIOUS_SECRET_KEYS, which is what actually retires it")
+    else:
+        lines.append("rotation incomplete — re-run; the old key must stay configured")
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -259,6 +286,14 @@ def main(argv: list[str] | None = None) -> int:
                          help="check a deployment before it takes traffic")
     pre.add_argument("--json", action="store_true", help="machine-readable output")
 
+    rotate = sub.add_parser(
+        "rotate-key",
+        help="re-seal every credential under ZOLTS_SECRET_KEY; resumable, idempotent")
+    rotate.add_argument("--check", action="store_true",
+                        help="report what is outstanding and change nothing")
+    rotate.add_argument("--batch", type=int, default=100)
+    rotate.add_argument("--json", action="store_true", help="machine-readable output")
+
     hook = sub.add_parser("webhook", help="create an inbound endpoint; secret shown once")
     hook.add_argument("--tenant", required=True)
     hook.add_argument("--provider", required=True)
@@ -301,14 +336,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         connection_id = store_connection(
             db, args.tenant, provider=args.provider, secret=secret,
-            secret_key=settings.secret_key, display_name=args.display_name,
+            secret_key=settings.keyring, display_name=args.display_name,
             config=json.loads(args.config))
         print(json.dumps({"connection_id": connection_id, "provider": args.provider}))
         return 0
 
     if args.command == "quickstart":
         print(json.dumps(quickstart(
-            db, secret_key=settings.secret_key, slug=args.slug, name=args.name,
+            db, secret_key=settings.keyring, slug=args.slug, name=args.name,
             region=args.region, blueprint=args.blueprint, base_url=args.base_url), indent=2))
         return 0
 
@@ -360,7 +395,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(str(exc), file=sys.stderr)
                     return 2
         report = pull(db, args.tenant,
-                      open_sealed(row["secret_enc"], settings.secret_key),
+                      open_sealed(row["secret_enc"], settings.keyring),
                       provider=args.provider, source=source, batch_size=args.limit)
         print(json.dumps(dataclasses.asdict(report), indent=2))
         return 0
@@ -617,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
                     account = dict(found) if found else None
                 results.append(enrichment.resolve(
                     cur, tenant, field_name=args.field, entity=row, account=account,
-                    legal_basis=args.basis, secret_key=settings.secret_key))
+                    legal_basis=args.basis, secret_key=settings.keyring))
 
         hits_found = [r for r in results if r.hit]
         spent = sum(r.cost_micros for r in results)
@@ -694,7 +729,7 @@ def main(argv: list[str] | None = None) -> int:
             if tenant is None:
                 print(f"no tenant {args.tenant}", file=sys.stderr)
                 return 2
-            result = watcher.once(cur, tenant, secret_key=settings.secret_key,
+            result = watcher.once(cur, tenant, secret_key=settings.keyring,
                                   limit=args.limit, only=args.signal)
         print(json.dumps(result.as_dict(), indent=2))
         # A pass where every source failed is not a quiet week.
@@ -766,9 +801,41 @@ def main(argv: list[str] | None = None) -> int:
         # deploy script stops rather than serving a misconfigured runtime.
         return 1 if report.blocking else 0
 
+    if args.command == "rotate-key":
+        from runtime import rotation
+
+        before = rotation.outstanding(db, settings.keyring)
+        if args.check:
+            payload = {"outstanding": before.__dict__, "complete": before.complete}
+            print(json.dumps(payload, indent=2) if args.json
+                  else _render_rotation(before, None))
+            # Not an error: an operator asking "is it done" gets an answer, and
+            # the answer being "no" is what they asked about.
+            return 0
+
+        if not settings.previous_secret_keys and not before.complete:
+            # The rows are sealed under something this deployment does not
+            # hold. Running would rewrite nothing and report failures; saying
+            # so is the useful answer.
+            print("::error::rows are sealed under a key this deployment does not hold, "
+                  "and ZOLTS_PREVIOUS_SECRET_KEYS is empty. Set the old key there "
+                  "before rotating, or the credentials cannot be re-sealed.",
+                  file=sys.stderr)
+            return 1
+
+        done = rotation.rotate(db, settings.keyring, batch_size=args.batch)
+        after = rotation.outstanding(db, settings.keyring)
+        payload = {"rotated": done.__dict__, "outstanding": after.__dict__,
+                   "complete": after.complete}
+        print(json.dumps(payload, indent=2) if args.json
+              else _render_rotation(after, done))
+        # A credential nothing could open is a real failure and the exit code
+        # says so, but only after the other credentials were re-sealed.
+        return 1 if done.failed else 0
+
     if args.command == "webhook":
         created = create_webhook_endpoint(db, args.tenant, provider=args.provider,
-                                          secret_key=settings.secret_key)
+                                          secret_key=settings.keyring)
         print(json.dumps(created))
         return 0
 
@@ -788,7 +855,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"warning: the spend guard '{spend_guard._command}' is not on PATH,"
                       " so every generation will be refused. Install it with"
                       " 'npm i -g @trazum/mcp' or unset ZOLTS_AGENTS.", file=sys.stderr)
-        runner = Worker(db, secret_key=settings.secret_key,
+        runner = Worker(db, secret_key=settings.keyring,
                         lease_seconds=settings.lease_seconds, batch=settings.worker_batch,
                         dry_run=settings.dry_run, model_client=model_client,
                         spend_guard=spend_guard)
@@ -803,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
 
         from runtime.api.app import create_app
 
-        uvicorn.run(create_app(db, secret_key=settings.secret_key),
+        uvicorn.run(create_app(db, secret_key=settings.keyring),
                     host=args.host, port=args.port)
         return 0
 

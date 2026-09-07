@@ -39,6 +39,7 @@ A control with no test is an intention. Each row names the check that fails if t
 | Control | Held by |
 |---|---|
 | Connector credentials sealed with AES-GCM, key derived from `ZOLTS_SECRET_KEY` | `runtime/crypto.py`; `test_connector_secrets_are_not_readable_from_the_database` |
+| The sealing key can be replaced without downtime or data loss, and the runtime reports what is still on the old one | `runtime/rotation.py`; `test_key_rotation.py` (16 tests, including the half-finished rotation and the credential no key opens); preflight `sealed credentials` |
 | An API token is never stored — only its SHA-256 and a display prefix | `test_a_token_is_never_listed` |
 | A leaked key can be revoked and stops working immediately | `test_a_leaked_key_can_be_revoked_and_stops_working` |
 | Revoking never deletes the row, so the audit survives the revocation | `test_revoking_never_deletes_the_row` |

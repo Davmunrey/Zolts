@@ -21,6 +21,17 @@ def _require(name: str) -> str:
     return value
 
 
+def _keys(name: str) -> tuple[str, ...]:
+    """A comma-separated list, empty when unset.
+
+    Separated by commas rather than by a numbered suffix so that adding a key
+    is one edit to one variable, and removing one — which is what finishes a
+    rotation — is the same edit backwards.
+    """
+    raw = os.environ.get(name) or ""
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -31,6 +42,15 @@ class Settings:
     worker_batch: int
     dry_run: bool
     agents_enabled: bool
+    # Keys that still open a sealed credential but never seal a new one. This
+    # is the window a rotation runs in: configured when the new key arrives,
+    # emptied once `zolts rotate-key` reports nothing outstanding. Leaving one
+    # here for ever is the failure mode — the old key stays live, which is the
+    # thing the rotation was for.
+    #
+    # It defaults to empty, and the default is the point: a deployment that is
+    # not mid-rotation should not have to know this field exists.
+    previous_secret_keys: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -43,6 +63,7 @@ class Settings:
             # explicit about running unsafely.
             app_database_url=os.environ.get("ZOLTS_APP_DATABASE_URL") or owner,
             secret_key=_require("ZOLTS_SECRET_KEY"),
+            previous_secret_keys=_keys("ZOLTS_PREVIOUS_SECRET_KEYS"),
             environment=os.environ.get("ZOLTS_ENV", "development"),
             lease_seconds=int(os.environ.get("ZOLTS_LEASE_SECONDS", "60")),
             worker_batch=int(os.environ.get("ZOLTS_WORKER_BATCH", "25")),
@@ -54,6 +75,13 @@ class Settings:
             # fail on start-up.
             agents_enabled=os.environ.get("ZOLTS_AGENTS", "false").lower() == "true",
         )
+
+    @property
+    def keyring(self) -> "Keyring":
+        """The key that seals, and the keys that still open."""
+        from runtime.crypto import Keyring
+
+        return Keyring(primary=self.secret_key, previous=self.previous_secret_keys)
 
     @property
     def isolation_enforced(self) -> bool:

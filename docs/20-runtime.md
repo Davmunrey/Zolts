@@ -383,6 +383,24 @@ Two things need doing by hand on a managed host, and both are deliberate:
 
 **Set `ZOLTS_SECRET_KEY` once and keep it.** It seals connector credentials before they reach the database, which is the property that matters when the database is managed by someone else. Losing it means re-entering every credential. It belongs in a secret manager, not in the database it protects.
 
+**Replacing it is a three-step operation, not an edit.** A key that leaks and cannot be replaced is a permanent compromise of every customer's CRM, so the replacement path is built and tested (ADR-039):
+
+```bash
+# 1. The new key seals; the old one still opens. Nothing is re-sealed yet and
+#    nothing breaks — every credential in the database opens under one of them.
+fly secrets set ZOLTS_SECRET_KEY="$(openssl rand -hex 32)" \
+                ZOLTS_PREVIOUS_SECRET_KEYS="<the old key>"
+
+# 2. Re-seal. Resumable and idempotent: run it again if it is interrupted.
+python3 -m runtime.cli rotate-key            # --check reports without writing
+
+# 3. Retire the old key. This step is the rotation; until it happens the old
+#    key is still live, which is what you were replacing.
+fly secrets unset ZOLTS_PREVIOUS_SECRET_KEYS
+```
+
+`preflight` reports the state on every deploy: how many credentials are sealed under the current key, how many are still on a previous one, and — fatally in production — how many are sealed under a key this deployment does not hold at all.
+
 On Fly, do not enable `auto_stop_machines` for the worker: it holds leases, and stopping it mid-flight makes recovery wait for the lease to expire rather than happen at the next tick.
 
 `ZOLTS_SECRET_KEY` seals connector credentials with AES-GCM before they reach the database, so a dump discloses nothing on its own. Losing it means re-entering every credential; it belongs in a secret manager, not in the database it protects.
@@ -699,7 +717,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-956 tests. 314 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+972 tests. 326 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
