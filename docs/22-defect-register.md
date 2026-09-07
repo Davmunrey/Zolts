@@ -8,7 +8,7 @@ Every defect this repository has found in itself, what it would have cost, and w
 
 | How | Defects found | What it means |
 |---|---|---|
-| **Executed** | 14 | Ran the thing against real infrastructure — real Postgres, real browser, real container |
+| **Executed** | 16 | Ran the thing against real infrastructure — real Postgres, real browser, real container |
 | **Mutated** | 6 | Broke a guard on purpose to see whether it bites |
 | **Looked** | 4 | Rendered a screen and read the screenshot |
 | **CI** | 4 | An existing check fired |
@@ -18,7 +18,7 @@ Every defect this repository has found in itself, what it would have cost, and w
 
 ## The recurring shape
 
-Twenty-two of the thirty-one are one defect wearing different clothes: **a complete specification with no caller.** A price in `docs/12` nothing charges. A column no code sets. A button labelled for a feature that does not exist. A process table CI never runs. A restore script that ends by telling you to test it.
+Twenty-four of the thirty-three are one defect wearing different clothes: **a complete specification with no caller.** A price in `docs/12` nothing charges. A column no code sets. A button labelled for a feature that does not exist. A process table CI never runs. A restore script that ends by telling you to test it.
 
 The second shape, found only once the first was exhausted: **a guard that passes when you break the thing it guards.** Four of those, and one of them was a test written in this same session.
 
@@ -76,6 +76,8 @@ The category that only appears once you go looking for it.
 | D-26 | The first version of that restore test restored into a new database **on the same cluster**, where the role already exists, so the condition the script guards against never arose. Deleting the whole role-creation step left every test passing | **High** — a test that certified a backup nobody had tested | Mutated | The dump is rewritten to grant to a role the cluster does not have |
 | D-27 | The step-3 test faked a stale dump by deleting a bookkeeping row, producing a state that cannot occur, and its failure was first read as a defect in migration 018 | **Low** — a wrong diagnosis, corrected before it became a wrong fix | Executed | A real predecessor is built: every migration but the last, applied and recorded |
 | D-18 | `site/` was stale against `design/console.html` | **Low** | CI | The build is regenerated and CI fails on drift |
+| D-32 | `scripts/smoke_runtime.py` returned `0` unconditionally. Its docstring said it proved "the whole loop is connected"; it printed a report and exited zero with nothing enrolled, nothing sent and no decision recorded. It runs in CI as the one end-to-end check | **Critical** — the single check standing between a disconnected product and a green build could not fail | Executed | Each stage must have happened, and a missing one names itself | Verified by breaking the fixture: the account no longer matches the audience and the run exits 1 naming four dead stages |
+| D-33 | `spec.enrich` is never read by the runtime. Enrichment happens only when an operator types a CLI command, and the fields the shipped programs request — `work_email`, `linkedin_urn`, `tech_stack` — are not the fields the price list carries, which are `email`, `phone` and `firmographics`. It could not have worked if it had been called | **High** — the waterfall is priced, tested and measured, and no program triggers it. For a Clay-class product this is the core loop | Executed | **Open.** Registered as decision 33 with the vocabulary conflict stated | — |
 | D-31 | One subprocess call in the new restore tests inherited the environment without the `ZOLTS_SECRET_KEY` fallback its siblings carry. `Settings.from_env` builds the whole configuration before dispatching, so even `migrate` refuses without a key it never uses. It passed locally, where the variable is exported, and failed in CI, where it is not | **Low** — but the class is not: a test whose requirements are undeclared certifies the machine it ran on, not the code | CI | One helper declares what every subprocess in the file needs; the failure was reproduced with `env -u ZOLTS_SECRET_KEY` before and after |
 | D-21 | ADR-003 claimed zero-copy over the customer's warehouse in the present tense. The word `warehouse` appears nowhere in `runtime/` | **High** — a security review asks to see the connector and there is none | Read | The document is corrected to what ships (decision 29) | A test fails in both directions: while nothing reads a warehouse the document must say so, and the day something does the document is stale |
 
