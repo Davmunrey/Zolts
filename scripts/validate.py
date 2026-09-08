@@ -13,6 +13,11 @@ import jsonschema
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+# This script is invoked as `python3 scripts/validate.py`, without PYTHONPATH —
+# that is how CI runs it and how `docs/20` tells a contributor to. Importing the
+# reference core to ask which controls it honours therefore needs the repository
+# root on the path explicitly.
+sys.path.insert(0, str(ROOT))
 
 TARGETS = (
     ("examples/schema/zolts-program.schema.json", "examples/programs/*.yaml"),
@@ -24,12 +29,37 @@ def _validate(schema_path: str, pattern: str) -> int:
     validator = jsonschema.Draft202012Validator(json.load(open(schema_path)))
     failed = 0
     for path in sorted(glob.glob(pattern)):
-        errors = sorted(validator.iter_errors(yaml.safe_load(open(path))), key=lambda e: list(e.path))
+        document = yaml.safe_load(open(path))
+        errors = sorted(validator.iter_errors(document), key=lambda e: list(e.path))
         print(("OK   " if not errors else "FAIL "), path)
         for err in errors:
             failed = 1
             print("     ", list(err.path), err.message)
+        _report_unenforced(document)
     return failed
+
+
+def _report_unenforced(document: object) -> None:
+    """Name the limits this program declares that the runtime does not hold.
+
+    Valid is not the same as honoured. Every shipped program passes the schema
+    while declaring five or six ceilings nothing enforces (D-63), and the
+    schema is structurally unable to say so — it describes what a document may
+    contain, never what the engine does with it.
+
+    Not a failure. Publishing a program with a decorative ceiling is a decision
+    a person may take; taking it without being told is what this prevents.
+    """
+    from zolts import controls
+
+    if not isinstance(document, dict):
+        return
+    spec = document.get("spec")
+    if not isinstance(spec, dict):
+        return
+    for control in controls.unenforced(spec):
+        print(f"      declares {control.path}, which the runtime does not enforce"
+              f" — {control.what}")
 
 
 def validate_mappings() -> int:

@@ -90,7 +90,7 @@ spec:
 
 | Risk | Control |
 |---|---|
-| Spend leakage | Per-program, per-tenant and daily ceilings; `on_exceed: pause_and_alert` |
+| Spend leakage | **Per-tenant ceiling only, today.** `metering.allowance` refuses an action before it happens and the worker defers it, which is real and tested. The per-program and daily ceilings this row claimed do not exist: `spec.budget.monthly_credits` bounds copy generation and nothing else, and `on_exceed` is read by no runtime code at all (D-63). `zolts/controls.py` names every declared control and whether it is honoured; `scripts/validate.py` prints the unenforced ones for each program |
 | Provider outage | Circuit breaker plus automatic waterfall reordering |
 | Provider price change | Prices are configuration, not code; the optimiser recomputes live |
 | Single-provider dependence | At least two providers per critical field before it is considered GA |
