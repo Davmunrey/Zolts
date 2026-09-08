@@ -105,7 +105,7 @@ select name, ticked_at, date_trunc('second', now() - ticked_at) as ago, detail
 |---|---|
 | no rows | nothing has ever ticked: the worker was never started, or the cron never fired. On Vercel, a deployment on the Hobby plan has no minute cron |
 | rows, all old | it ran and stopped: a crashed worker process, a cron the platform disabled, or a `CRON_SECRET` that changed so every invocation is refused with 401 |
-| a fresh row every minute with `claimed: 0` | the worker is fine; the outbox is empty. If `outbox draining` fails at the same time, the tick is failing before it claims — read its `errors` in the function logs |
+| a fresh row every tick with `claimed: 0` | the worker is fine; the outbox is empty. If `outbox draining` fails at the same time, the tick is failing before it claims — read its `errors` in the function logs |
 
 **Fix.**
 
@@ -121,7 +121,7 @@ read -rs CRON_SECRET && export CRON_SECRET
 curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://zolts.vercel.app/api/tick
 ```
 
-A 401 from that `curl` is a secret that does not match the one the deployment holds; a 503 is a deployment with no secret at all. Either way the cron has been refused on every minute since, and the fix is the variable, not the code.
+A 401 from that `curl` is a secret that does not match the one the deployment holds; a 503 is a deployment with no secret at all. Either way the cron has been refused on every firing since, and the fix is the variable, not the code.
 
 ---
 

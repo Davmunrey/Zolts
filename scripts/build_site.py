@@ -11,6 +11,7 @@ Usage: python3 scripts/build_site.py
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +23,43 @@ from runtime.surface import (DESCRIPTION, TITLE, content_security_policy, docume
                              inject)
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# The cadence the runtime wants, and the cadence that deploys.
+#
+# Vercel's Hobby plan accepts only daily crons, so a minute tick makes the
+# platform refuse the build outright — `cron_jobs_limits_reached`. `docs/02`
+# used to call that "the right failure", on the reasoning that a runtime which
+# cannot tick should not pretend to. The cost of that stance was not visible
+# until it was measured: every deploy had been failing, so the public URL
+# served a build from before the brand, and nothing merged reached a reader.
+#
+# So the concession is explicit rather than silent. `hobby` is the default
+# because it is what actually deploys; `pro` restores the cadence the runtime
+# is designed for in one variable, the day the plan changes. Decision 43.
+CRONS = {
+    "pro": [
+        {"path": "/api/tick", "schedule": "* * * * *"},
+        {"path": "/api/watch", "schedule": "*/15 * * * *"},
+    ],
+    "hobby": [
+        {"path": "/api/tick", "schedule": "0 3 * * *"},
+        {"path": "/api/watch", "schedule": "0 4 * * *"},
+    ],
+}
+
+
+def _plan() -> str:
+    """Which cadence to write. An unknown plan is refused, not defaulted.
+
+    A typo silently falling back to `hobby` would write a daily tick into a
+    Pro deployment and look exactly like a working one.
+    """
+    plan = os.environ.get("ZOLTS_VERCEL_PLAN", "hobby").strip().lower()
+    if plan not in CRONS:
+        raise SystemExit(
+            f"ZOLTS_VERCEL_PLAN is '{plan}'; it must be one of {sorted(CRONS)}")
+    return plan
+
 SOURCE = ROOT / "design" / "console.html"
 OUT_DIR = ROOT / "site"
 
@@ -86,13 +124,9 @@ def build() -> None:
         # Washington talking to a database in Frankfurt pays the Atlantic on
         # every query, and a tick makes dozens.
         "regions": ["fra1"],
-        # The worker, as a schedule. The tick drains the outbox once a minute
-        # and the watcher looks for signals every fifteen; both refuse a call
-        # without the cron's bearer. Every minute needs the Pro plan.
-        "crons": [
-            {"path": "/api/tick", "schedule": "* * * * *"},
-            {"path": "/api/watch", "schedule": "*/15 * * * *"},
-        ],
+        # The worker, as a schedule. Both routes refuse a call without the
+        # cron's bearer whatever the cadence is.
+        "crons": CRONS[_plan()],
         # Production is released by the workflow that migrates and runs
         # preflight first. A push to `main` must not deploy around it, which
         # is what the platform's own git integration would do.

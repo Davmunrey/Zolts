@@ -399,6 +399,55 @@ def test_every_cron_points_at_a_route_the_function_mounts():
         "the worker or the watcher is not scheduled; on this host nothing else runs it")
 
 
+def test_the_shipped_crons_are_ones_the_account_plan_will_actually_accept():
+    """A cadence the platform refuses is not a cadence — it is a deploy that
+    never happens.
+
+    Vercel's Hobby plan accepts only daily crons, and `* * * * *` makes the
+    build fail at `patchBuild` with `cron_jobs_limits_reached`. `docs/02` used
+    to call that "the right failure". It was not: production kept serving a
+    build from before the brand while `main` carried it, and nothing merged
+    reached a reader. The concession is now explicit and reversible — this
+    test holds the shipped file to what deploys, and the companion below keeps
+    the cadence the runtime actually wants from being lost. Decision 43.
+    """
+    for cron in _vercel()["crons"]:
+        fields = cron["schedule"].split()
+        assert len(fields) == 5, f"{cron['path']} has a malformed schedule"
+        minute, hour = fields[0], fields[1]
+        assert minute.isdigit() and hour.isdigit(), (
+            f"{cron['path']} is scheduled '{cron['schedule']}', which runs more "
+            f"than once a day; the Hobby plan refuses the whole deployment for it")
+
+
+def test_the_cadence_the_runtime_wants_is_still_declared():
+    """The daily schedule is a plan concession, not a design change. Losing the
+    Pro cadence would turn a reversible compromise into the new intent."""
+    import os
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import build_site
+
+    assert set(build_site.CRONS) == {"hobby", "pro"}
+    pro = {c["path"]: c["schedule"] for c in build_site.CRONS["pro"]}
+    assert pro["/api/tick"] == "* * * * *", "the tick's real cadence is once a minute"
+    assert pro["/api/watch"] == "*/15 * * * *"
+    assert build_site.CRONS["hobby"] == _vercel()["crons"], (
+        "the shipped file is not what the default plan generates")
+
+    # A typo must not quietly write a daily tick into a Pro deployment.
+    previous = os.environ.get("ZOLTS_VERCEL_PLAN")
+    os.environ["ZOLTS_VERCEL_PLAN"] = "prooo"
+    try:
+        with pytest.raises(SystemExit):
+            build_site._plan()
+    finally:
+        if previous is None:
+            os.environ.pop("ZOLTS_VERCEL_PLAN", None)
+        else:
+            os.environ["ZOLTS_VERCEL_PLAN"] = previous
+
+
 def test_every_path_the_runtime_answers_reaches_the_function():
     """Static files first, then everything else to the function. Without the
     rewrite `/health` is a 404 from the CDN and the console is unreachable."""
