@@ -153,7 +153,23 @@ class Database:
                 applied.append(version)
         finally:
             conn.close()
+        # The shipped jurisdiction pack, stored with the schema rather than by
+        # each of the five callers of this method: a database with tables and
+        # no active pack is one where nothing may be decided at all (D-53).
+        self.install_policy_pack()
         return applied
+
+    def install_policy_pack(self) -> None:
+        """Store the pack this release ships with, so a fresh database has
+        rules that can be named. Idempotent on the digest (D-53)."""
+        from runtime import policy_packs
+
+        with self.admin_pool.connection() as conn:
+            # `dict_row`, like every other cursor in this file: the repo layer
+            # reads rows by name and a tuple row raises three frames down.
+            with conn.cursor(row_factory=dict_row) as cur:
+                policy_packs.install_shipped(cur)
+            conn.commit()
 
     def grant_app_role(self, app_role: str = "zolts_app") -> None:
         """Re-grant table privileges. Idempotent; run after every migration."""

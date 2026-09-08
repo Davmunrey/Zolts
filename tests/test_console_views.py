@@ -218,7 +218,8 @@ def test_policy_groups_by_rule_because_that_is_the_actionable_grouping(db, tenan
                 cur, tid, subject_type="person", subject_id=str(person["id"]),
                 action="email.send",
                 decision=decision, rule_key=rule, jurisdiction="ES",
-                rationale="because the rule said so")
+                rationale="because the rule said so",
+                pack_version="1", pack_digest="test-pack-digest")
         view = console.policy_view(cur)
 
     assert view["totals"] == {"allow": 1, "deny": 2, "denyRate": 0.6667}

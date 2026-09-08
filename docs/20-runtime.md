@@ -6,7 +6,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 
 | Piece | Where | State |
 |---|---|---|
-| Schema, 35 tables, RLS forced on 31 | `runtime/migrations/` | Running on Postgres 16 |
+| Schema, 36 tables, RLS forced on 31 | `runtime/migrations/` | Running on Postgres 16 |
 | Tenant-scoped data access | `runtime/db.py`, `runtime/repo/` | Running |
 | Signal ingest to enrollment, with holdout assignment | `runtime/engine/enroll.py` | Running |
 | Step planning and the transactional outbox | `runtime/engine/planner.py`, `runtime/repo/actions.py` | Running |
@@ -780,7 +780,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1133 tests. 373 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1147 tests. 382 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

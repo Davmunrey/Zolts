@@ -204,7 +204,11 @@ def test_the_deploy_either_builds_with_its_dependencies_or_does_not_build():
 # isolation is keyed on, `invitation` exists before its tenant does,
 # `schema_migration` is the migrator's own bookkeeping, and `worker_heartbeat`
 # is written by a tick that spans every tenant and read by an operator.
-UNSCOPED = {"tenant", "invitation", "schema_migration", "worker_heartbeat"}
+# A jurisdiction's rules are the same for every tenant, and a tenant's own
+# tightening is its programme's `policy.overrides`, versioned with the
+# programme. A per-tenant pack would be a surface where a customer can loosen
+# what a regulator requires (D-53).
+UNSCOPED = {"tenant", "invitation", "schema_migration", "worker_heartbeat", "policy_pack"}
 
 
 @requires_db
