@@ -41,6 +41,7 @@
 | 24 | [Backlog](docs/24-backlog.md) | What is built, what is next, and what is blocked on a decision rather than on engineering |
 | 25 | [Runbook](docs/25-runbook.md) | What an operator does when a signal fails, with every command executed while it was written |
 | 26 | [Partner onboarding](docs/26-partner-onboarding.md) | From an invitation to a first send with a holdout, per CRM, and the letter a pilot signs before it starts |
+| 27 | [Brand](docs/27-brand.md) | Steel on paper, one accent, five data semantics, and the rule that keeps them apart — every figure measured from the shipped surface |
 
 ## Technical artefacts
 
@@ -71,23 +72,23 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 1156 tests, each backing a specific claim made in `docs/`; 382 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
+- `tests/` — 1181 tests, each backing a specific claim made in `docs/`; 382 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
 - `examples/sql/schema.sql` — the original reference DDL, superseded for execution by `runtime/migrations/`
 - `scripts/validate.py` — validates programs against the schema
 - `scripts/benchmark_waterfall.py` — measures optimiser savings against a static waterfall
-- `scripts/mutation_check.py`, `scripts/mutation_coverage.py` — fifteen named guards broken on every push, and a sampled measurement of what share of mutations the tests catch at all
+- `scripts/mutation_check.py`, `scripts/mutation_coverage.py` — sixteen named guards broken on every push, and a sampled measurement of what share of mutations the tests catch at all
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 1156 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 1181 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
 
-The reference core exists to test the plan; the runtime exists to run it. Building both, and then running what was built, has corrected **54 defects** — recorded one by one in [22](docs/22-defect-register.md) with how each was found. Thirty-three of them were the same shape: a complete specification with no caller. A price in `docs/12` nothing charged, a column no code set, a button labelled for a feature that did not exist, a process table CI never ran, a restore script that ends by telling you to test it. The register's most useful column is not the defect, it is **how it was found**: reading found only documents contradicted by code, never a wrong line, and every high-cost one came from executing the thing or from breaking a guard on purpose to see whether it bites. See [19](docs/19-reference-core.md), [20](docs/20-runtime.md) and [22](docs/22-defect-register.md).
+The reference core exists to test the plan; the runtime exists to run it. Building both, and then running what was built, has corrected **56 defects** — recorded one by one in [22](docs/22-defect-register.md) with how each was found. Thirty-four of them were the same shape: a complete specification with no caller. A price in `docs/12` nothing charged, a column no code set, a button labelled for a feature that did not exist, a process table CI never ran, a restore script that ends by telling you to test it. The register's most useful column is not the defect, it is **how it was found**: reading found only documents contradicted by code, never a wrong line, and every high-cost one came from executing the thing or from breaking a guard on purpose to see whether it bites. See [19](docs/19-reference-core.md), [20](docs/20-runtime.md) and [22](docs/22-defect-register.md).
 
 Two more came from rendering the console against live data: the surface crashed on a program with no measurement yet — which is every program on day one — and it reported EUR 1.75m of incremental pipeline against a control arm with zero observed conversions, because its detectable effect had been computed from a floor rather than an estimate. That second one is now a rule in the core: no effect is declared while either arm carries fewer than five observed conversions.
 

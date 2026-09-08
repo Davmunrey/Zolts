@@ -754,3 +754,16 @@ Vercel has functions and a cron, and no processes and no release hook. Each abse
 **A decision cites a digest, and the digest resolves.** `pack_digest` hashes the whole document — required basis per channel, blocked channels, suppression registries and quiet hours — so a field left out of the document would hash the same across a change to it. `record_decision` refuses a decision that cannot name its pack, the same way it refuses one with no reason, and the body behind the digest is kept for as long as the decisions citing it. Rows written before this carry no pack and are reported as unattributed rather than back-filled with today's digest, which would be a provenance nobody has.
 
 **The shipped pack is installed with the schema.** A database with tables and no active pack is one where nothing may be decided, and `active()` raises rather than falling back to the dict — falling back is how a deployment ends up deciding under rules nobody can name.
+
+
+**ADR-045 · Colour inside a data region means a measurement, and only a measurement.**
+The surface carried a violet accent on near-black and painted with it freely. Two of the five measurement colours were reaching places they did not belong: a running programme's status dot wore the verified-lift green inside the programmes table, and the runtime's own p95 latency wore it in the signals view, unconditionally — a slow runtime and a fast one were the same colour, and that colour already meant something else on the same screen. `--live`, the latency semantic, was declared and rendered nowhere. Nothing was broken; a CFO reading colour before text was simply told the wrong thing.
+
+**One accent, barred from data.** Steel `#5980A6` carries brand and interaction. Inside a chart, table or figure it does not appear, and the five semantics — verified lift, control arm, policy denial, held for review, live latency — are the whole vocabulary. Lifecycle is not a measurement and is drawn in ink. `tests/test_brand.py` walks the stylesheet and fails if the accent lands on a selector that paints a measured value, and fails if a declared semantic has no caller.
+
+**Consequence: a new colour needs a new meaning, or it does not ship.** Adding a sixth semantic means adding a sixth thing the product measures. That is the point — the constraint is on the product, not on the palette, and it is what stops a dense screen from accumulating decoration that reads as information.
+
+**The rule is enforced by region, not by distance.** Steel 700 and the live-latency semantic are 4.5 ΔE apart. Colours that close cannot be told apart in one region, so they never share one. Distance-based rules stop scaling the moment a palette grows; a region-based rule does not.
+
+**Where hue cannot carry it, texture does.** Verified lift and the control arm are 8.1 ΔE apart in normal vision and 2.7 under deuteranopia, and they are the pair the product exists to compare. The treatment arm is a fill and the control arm is hatched on the mark's own 45° axis. The cost is that any future two-arm figure inherits this obligation: a chart that separates arms by hue alone is a defect, not a preference. `docs/27`.
+
