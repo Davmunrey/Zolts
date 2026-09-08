@@ -155,8 +155,15 @@ MUTATIONS = (
         find="pack=policy_packs.rules_of(pack_row),",
         replace="pack=None,",
         tests="tests/test_policy_packs.py"),
+    Mutation(
+        id="the-accent-never-enters-a-data-region",
+        claim="inside a chart, table or figure colour means a measurement, and the "
+              "brand accent is barred from those regions (ADR-045)",
+        path="design/console.html",
+        find=".kpi .v.live{color:var(--live)}",
+        replace=".kpi .v.live{color:var(--accent)}",
+        tests="tests/test_brand.py"),
 )
-
 
 def _dirty() -> bool:
     """Modified tracked files only.

@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1147 | 382 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1183 | 382 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -46,7 +46,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Measure mutation coverage across the runtime | Still open, and narrower than it was. `scripts/mutation_check.py` re-proves fifteen named guards on every push — that is regression-proofing a curated list, not a coverage measurement, and it says nothing about the code it does not name. What remains is the real number: generate mutants across `runtime/` and `zolts/` and report the fraction that survives. It needs a tool and a CI budget neither of which exists yet | M |
+| **VER-1** | Mutation coverage across the runtime | **Half done.** `scripts/mutation_coverage.py` samples the mutant space and reports what share the tests catch: `zolts/` measures 39 of 40, 97.5% (95% CI 87-100%), from 512 possible mutants, and CI samples eight on every push to keep the sampler honest. What remains is the runtime's own number — each of its mutants costs a full suite run, so it is a long run rather than a per-push one — and acting on the survivors it names | S |
 
 ### Product
 
@@ -94,6 +94,6 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 
 ## How an item earns its place
 
-The register in `docs/22` is the evidence for this ordering. Thirty-three of fifty-three defects were a specification with no caller. Reading found twenty-one of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
+The register in `docs/22` is the evidence for this ordering. Thirty-three of fifty-four defects were a specification with no caller. Reading found twenty-one of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
 
 So an item is only "done" when something runs it and that run can fail. A specification, a document, a column, a button and a process table have each been the whole of a feature in this repository, and each was found by an execution nobody had performed.

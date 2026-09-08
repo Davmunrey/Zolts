@@ -69,6 +69,16 @@ jobs:
       - name: Break each guard and require a test to notice
         run: python3 scripts/mutation_check.py
 
+      # The other half of VER-1, and a different claim: the step above
+      # re-proves a curated list, this one samples the mutant space and
+      # reports what share the tests catch. Eight here because each mutant
+      # costs a suite run; the number that goes in `docs/22` comes from a
+      # larger sample run by hand. Deliberately not a gate — a sampled rate
+      # moves between runs, and a build that failed on it would be a build
+      # that teaches the team to lower the bar.
+      - name: Sample the mutant space and report what the tests catch
+        run: python3 scripts/mutation_coverage.py --sample 8
+
       - name: Benchmark the waterfall optimiser
         run: python3 scripts/benchmark_waterfall.py
 

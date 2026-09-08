@@ -1,23 +1,49 @@
 <title>Zolts Program Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;450;500&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Zolts product surface — implements DESIGN.md.
+/* Zolts product surface — implements DESIGN.md and docs/27 (the brand).
    Rebuilt as an operator surface rather than a report. The list is the page:
    no cards, no metric-tile row, no section headings with subtitles. Content
    sits on canvas separated by hairlines, the way a tool people live in for
-   eight hours a day is built. Chrome carries the violet accent; it never
-   enters a data region. */
+   eight hours a day is built.
+
+   The ground is paper, not a dark dashboard: a technical drawing you could
+   hand to an auditor rather than the violet-on-near-black every GTM tool has
+   shipped since 2023. Chrome carries the steel accent; it never enters a data
+   region. Inside a chart, table or figure, colour means one thing only, and
+   the five semantics below are the whole vocabulary. */
 :root{
-  --canvas:#08090a; --surface-1:#0e1011; --surface-2:#141618; --surface-3:#1a1d1f; --raised:#1f2325;
-  --hairline:#1c1f22; --hairline-strong:#2b2f34; --hairline-ghost:#121517;
-  --ink:#f2f4f5; --ink-muted:#c2c8cc; --ink-subtle:#8b9297; --ink-tertiary:#5c6367; --ink-inverse:#fff;
-  --accent:#7d4bf5; --accent-hover:#9670f7; --accent-dim:#1a1230; --accent-ring:#8f66f7;
-  --lift:#3ecf7e; --control:#7d8590; --deny:#f4645a; --review:#d9a441; --live:#3bc4d4;
-  --deny-dim:#331614; --review-dim:#31250e; --lift-dim:#123322;
-  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --canvas:#f2f2f3; --surface-1:#ededef; --surface-2:#e7e7ea; --surface-3:#dcdce0; --raised:#fbfbfc;
+  --hairline:#d5d5d9; --hairline-strong:#b7b7ba; --hairline-ghost:#e7e7ea;
+  --line:var(--hairline);
+  --ink:#1d1f20; --ink-muted:#3c3c3e; --ink-secondary:#4b4b4e; --ink-subtle:#55555a;
+  --ink-tertiary:#6f6f72; --ink-inverse:#f2f2f3;
+
+  /* Steel, one accent, on a ramp generated in OKLCH whose 500 step is the
+     declared brand value #5980A6 rather than an approximation of it. 500
+     measures 3.71:1 on paper — chrome, icons and headline scale only — so
+     paragraph-size type in the accent takes 700, which measures 7.40:1.
+     `scripts/build_site.py` never sees these as anything but text; the
+     contrast figures are asserted in `tests/test_brand.py`. */
+  --steel-100:#eef4fb; --steel-200:#d6e4f2; --steel-300:#b7cfe7; --steel-400:#91b3d4;
+  --steel-500:#5980a6; --steel-600:#446a8f; --steel-700:#2f5171; --steel-800:#1d3a54;
+  --steel-900:#0d2438;
+  --accent:var(--steel-500); --accent-hover:var(--steel-600);
+  --accent-dim:var(--steel-100); --accent-ring:var(--steel-700); --accent-text:var(--steel-700);
+
+  /* The five data semantics. Every one is a deep step: legible at 13px on
+     paper and desaturated enough that five on one dense screen read as one
+     family. That family resemblance is also the hazard — lift and control sit
+     2.5 ΔE apart under deuteranopia — so no figure separates two arms by hue
+     alone. See docs/27: the treatment arm is a solid fill and the control arm
+     is hatched on the mark's own 45° axis. */
+  --lift:#2f6b4f; --control:#5d5d60; --deny:#8a3a34; --review:#7a5a1e; --live:#2c455d;
+  --lift-dim:#dbe2df; --deny-dim:#e6dcdc; --review-dim:#e4e0d9; --live-dim:#dadde1;
+
+  --sans:"Archivo",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --ease:cubic-bezier(.23,1,.32,1); --ease-in-out:cubic-bezier(.77,0,.175,1);
 }
 *,*::before,*::after{box-sizing:border-box}
@@ -45,8 +71,18 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;paddin
 .ws{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;width:100%;text-align:left;
     transition:background 90ms var(--ease)}
 
-.ws .glyph{width:18px;height:18px;border-radius:5px;background:var(--accent);display:grid;place-items:center;flex:none}
-.ws .glyph svg{width:11px;height:11px}
+/* The mark and wordmark. Clear space is the extrusion depth, 11% of the
+   mark box, on all four sides; tracking on ZOLTS is fixed at 0.08em and is
+   never set tighter and never lowercase. */
+.brand{display:flex;align-items:center;gap:8px;padding:2px 6px 0}
+.brand .zmark{width:20px;height:20px;flex:none;display:block}
+.wordmark{font-weight:600;font-size:13px;letter-spacing:.08em;color:var(--ink)}
+/* 18px is the minimum mark size, and it is the avatar case: on a steel
+   field, below 28px, the extrusion goes flat and the mark is a single
+   paper silhouette. Square corners — rounding them is forbidden. */
+.ws .glyph{width:18px;height:18px;background:var(--steel-600);
+           display:grid;place-items:center;flex:none}
+.ws .glyph svg{width:11px;height:11px;display:block}
 .ws .name{font-weight:550;font-size:13px;letter-spacing:-.2px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws .chev{color:var(--ink-tertiary);flex:none}
 nav{display:flex;flex-direction:column;gap:1px}
@@ -149,7 +185,12 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .row[aria-selected="true"]{background:var(--surface-2)}
 .row[aria-selected="true"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
 .st{width:9px;height:9px;border-radius:50%;flex:none;justify-self:center}
-.st.live{background:var(--lift)}
+/* A running programme is lifecycle, not measurement. It wore the
+   verified-lift green, which inside a table — a data region — said
+   "this programme's lift is verified" to anyone reading colour before
+   text. Lifecycle is drawn in ink; the five semantics are reserved for
+   what was measured. D-56. */
+.st.live{background:var(--ink)}
 .st.paused{background:var(--ink-tertiary)}
 .st.draft{background:transparent;border:1.5px dashed var(--ink-tertiary)}
 /* Amber and red never existed. Every warning dot in Sending, Review, Policy
@@ -219,6 +260,11 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi .u{margin-top:3px;font-size:11px;line-height:1.4;color:var(--ink-tertiary)}
 .kpi .v.good{color:var(--lift)} .kpi .v.warn{color:var(--review)} .kpi .v.bad{color:var(--deny)}
+/* Latency reads as a measurement, never as a verdict. The runtime's own
+   p95 wore `good` — the verified-lift green — unconditionally, so a
+   slow runtime and a fast one were the same colour, and that colour
+   already meant something else on the same screen. D-56. */
+.kpi .v.live{color:var(--live)}
 /* A ratio against a limit. The fill carries the severity and the track is a
    dim step of the same ramp, so the state reads across the whole bar. */
 .meter{margin-top:9px;height:4px;border-radius:9999px;background:var(--surface-3);overflow:hidden}
@@ -245,7 +291,16 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .track{height:4px;border-radius:9999px;background:var(--surface-3);overflow:hidden}
 .track i{display:block;height:100%;width:100%;border-radius:9999px;transform-origin:left;
          transition:transform 380ms var(--ease)}
-.arm.t .track i{background:var(--lift)} .arm.c .track i{background:var(--control)}
+/* Lift and control are 2.5 ΔE apart under deuteranopia and 8.1 under
+   normal vision: as bars side by side they are one colour to a great
+   many readers. The brand's own grammar separates them — one solid
+   object, everything else a line drawing — so the treatment arm is a
+   fill and the withheld arm is hatched, on the 45° axis the mark is
+   extruded along. The hue still carries meaning; it is no longer the
+   only thing that does. docs/27. */
+.arm.t .track i{background:var(--lift)}
+.arm.c .track i{background:repeating-linear-gradient(45deg,
+  var(--control) 0 2px, transparent 2px 4px), var(--surface-3)}
 .arm .v{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
 .arm.t .v{color:var(--lift)} .arm.c .v{color:var(--control)}
 .note{display:flex;gap:8px;padding:9px 10px;border-radius:5px;font-size:12px;line-height:1.45;margin-top:10px}
@@ -394,9 +449,10 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 
 <div class="app">
   <aside class="rail">
+    <div class="brand"><svg class="zmark" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><path d="M89 0L89 20.5L100 31.5L100 11Z M89 20.5L34 68.5L45 79.5L100 31.5Z M89 68.5L89 89L100 100L100 79.5Z M89 89L0 89L11 100L100 100Z M55 20.5L0 20.5L11 31.5L66 31.5Z" fill="var(--steel-800)"/><path d="M0 0H89V20.5L34 68.5H89V89H0V68.5L55 20.5H0Z" fill="var(--steel-500)" stroke="var(--steel-900)" stroke-width="2.5" stroke-linejoin="miter"/></svg><span class="wordmark">ZOLTS</span></div>
     <div>
       <button class="ws">
-        <span class="glyph"><svg viewBox="0 0 18 18" fill="none"><path d="M4 4h10L4 14h10" stroke="#fff" stroke-width="2" stroke-linecap="square"/></svg></span>
+        <span class="glyph"><svg viewBox="0 0 89 89" aria-hidden="true" focusable="false"><path d="M0 0H89V20.5L34 68.5H89V89H0V68.5L55 20.5H0Z" fill="var(--ink-inverse)"/></svg></span>
         <span class="name" id="ws-name">Northbeam</span>
         <svg class="chev" width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2.2 3.6L4.5 5.9 6.8 3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
       </button>
@@ -1680,8 +1736,8 @@ function renderSignals(){
      unit: stale ? stale + " stale refused" : "none stale",
      tone: stale ? "warn" : ""},
     {label: "The source noticing", value: nf(slow), unit: "min, p95",
-     tone: slow > ours ? "warn" : ""},
-    {label: "This runtime acting", value: nf(ours), unit: "min, p95", tone: "good"}
+     tone: slow > ours ? "warn" : "live"},
+    {label: "This runtime acting", value: nf(ours), unit: "min, p95", tone: "live"}
   ]);
 
   list.innerHTML = rows;

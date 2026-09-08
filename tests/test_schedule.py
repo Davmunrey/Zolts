@@ -126,3 +126,17 @@ def test_a_window_open_every_day_still_moves_the_hour():
                     timezone="Europe/Madrid")
     assert _local(next_open(datetime(2026, 1, 17, 2, tzinfo=timezone.utc), always)) == \
         "Sat 09:00"
+
+
+def test_a_time_with_no_minutes_is_on_the_hour():
+    """`int(minute or 0)` is the fallback for "20" and "20:". A mutation-
+    coverage run changed the 0 to a 1 and nothing failed, which means nothing
+    asserted that a window written without minutes opens on the hour."""
+    from datetime import time
+
+    from zolts.schedule import _parse_time
+
+    assert _parse_time("20", time(9, 0)) == time(20, 0)
+    assert _parse_time("20:", time(9, 0)) == time(20, 0)
+    assert _parse_time("20:30", time(9, 0)) == time(20, 30)
+    assert _parse_time(None, time(9, 0)) == time(9, 0)

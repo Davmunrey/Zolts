@@ -25,7 +25,7 @@ Spoken and chat communication with the founding team may be in any language. Tha
 
 - GTM program definitions are declarative YAML validated against `examples/schema/zolts-program.schema.json`.
 - Never use `on:` as a YAML key — YAML 1.1 coerces `on`/`off`/`yes`/`no` to booleans and validation fails silently. Use `events:`.
-- `python3 scripts/validate.py` and `PYTHONPATH=. python3 -m pytest tests/ -q` must both pass before every commit. CI enforces both on every push, and also `scripts/run_program_tests.py`, the `site/` and `vercel.json` freshness check, `scripts/mutation_check.py`, `scripts/browser_console.py` and `scripts/smoke_runtime.py`.
+- `python3 scripts/validate.py` and `PYTHONPATH=. python3 -m pytest tests/ -q` must both pass before every commit. CI enforces both on every push, and also `scripts/run_program_tests.py`, the `site/` and `vercel.json` freshness check, `scripts/mutation_check.py`, `scripts/mutation_coverage.py` (a sample, reported rather than gated), `scripts/browser_console.py` and `scripts/smoke_runtime.py`.
 - `zolts/` is the reference core: pure logic, no I/O, no external services. Anything requiring infrastructure belongs in the production runtime, not here.
 - A claim asserted in `docs/` that can be tested must have a test. If a measurement contradicts a document, the document is corrected — never the other way round.
 
