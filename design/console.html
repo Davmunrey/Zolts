@@ -1138,13 +1138,20 @@ function renderDetail(){
              // screen that did not say so would let the reader assume it was.
              ? ' <span style="color:var(--ink-tertiary)">· amount reported, not tested</span>'
              : '') + '</dd>'
-      + '<dt>Counted as</dt><dd>' + (p.metricCounts || '—') + '</dd>'
       + '<dt>Holdout</dt><dd class="hi">' + p.holdout + '%</dd>'
       + '<dt>Enrolled</dt><dd>' + (p.enrolled ? nf(p.enrolled) : "—") + '</dd>'
       + '<dt>Signal → action p95</dt><dd>' + (p.p95 == null ? "—" : p.p95 + " min") + '</dd>'
       + '<dt>Spend (QTD)</dt><dd>€' + p.spend.toFixed(2) + '</dd>'
       + '<dt>Monthly budget</dt><dd>' + nf(p.budget) + ' credits</dd>'
-    + '</dl></div>'
+    + '</dl>'
+    // What the metric counts, as a sentence rather than a cell: the props
+    // list is a two-column grid and a sentence in it clipped every term
+    // beside it.
+    + '<p style="margin:10px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
+      + 'Counted as ' + (p.metricCounts || 'any recorded conversion') + '.'
+      + (p.metricTestsValue
+           ? ' The amount is reported beside the count and is not tested.' : '')
+    + '</p></div>'
     + '<div class="block"><div class="blabel">Triggers</div><dl class="props">'
       + p.signals.map(function(sg){
           return '<dt style="font-family:var(--mono);font-size:11.5px">' + sg + '</dt>'
