@@ -131,6 +131,13 @@ MUTATIONS = (
         find="        if not self.resolvable:\n            return NOT_RESOLVABLE\n",
         replace="        if False:\n            return NOT_RESOLVABLE\n",
         tests="tests/test_incrementality_report.py"),
+    Mutation(
+        id="a-percentage-score-is-not-certainty",
+        claim="a provider that scores out of a hundred is not reported as certain",
+        path="runtime/connectors/declarative_provider.py",
+        find="float(raw) / _scale_of(lookup.field,\n                                                                         declared)",
+        replace="float(raw)",
+        tests="tests/test_provider_documents.py"),
 )
 
 

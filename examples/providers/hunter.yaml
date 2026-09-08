@@ -1,0 +1,54 @@
+# Hunter, as a document rather than as a connector.
+#
+# The first *named* supplier this repository ships. Everything before it was
+# either the fake provider the tests register or `example-enrichment.yaml`,
+# which resolves against a host that does not exist — so `docs/12` priced
+# `enrich.email`, the waterfall optimised over it, and no tenant could
+# actually buy an email (decision 38).
+#
+# Nothing here is a contract. Zolts has no agreement with Hunter; this is the
+# document a tenant registers against their own Hunter key, and the price
+# below is the one they were quoted, not one we negotiated. The endpoint,
+# the parameters and the response paths are exercised in
+# `tests/test_provider_documents.py` against a recorded shape, not against
+# Hunter — a test that called the real API would be a test that fails when
+# somebody else's account runs out of credits.
+#
+# One field, deliberately. Hunter finds work emails; it does not sell mobile
+# numbers, and a document claiming `phone` would make the waterfall believe
+# it has two independent suppliers for a field it has none for.
+apiVersion: zolts/v1
+kind: DataProvider
+metadata:
+  provider: hunter
+  name: Hunter Email Finder
+  owner: revops@acme.example
+  description: Resolves a work email from a first name, a last name and a company domain
+spec:
+  transport:
+    base_url: https://api.hunter.io/v2
+    # The key travels as a query parameter because that is what this API
+    # takes. It is sealed at rest like every other credential and is never
+    # written to a log line by this runtime (ADR-019).
+    auth: {kind: query, name: api_key}
+  # What one call costs us, in micros of EUR — the list price of one request
+  # on the Starter plan at the time of writing. The waterfall optimises
+  # against the registration rather than this, and this is what the connector
+  # reports, so a per-call price that differs from the contract is visible
+  # rather than silent.
+  unit_cost_micros: 34000
+  lookups:
+    email:
+      path: /email-finder
+      method: GET
+      query:
+        domain: account.domain
+        first_name: first_name
+        last_name: last_name
+      response:
+        email: data.email
+      # Hunter scores its answer out of 100. Read without the scale below it
+      # arrived as `1.0` — certainty — for an answer the provider called 76%
+      # likely (D-47).
+      confidence: data.score
+      confidence_max: 100
