@@ -702,8 +702,20 @@ Register a fleet with `zolts sending-domain --tenant … --name outbound.example
 | Tenants can send | A tenant has live programs and no working connection | The shape of an onboarding that stopped halfway: programs activated, connector never connected. It enrolls, plans, and sends nothing |
 | Sending domains | A circuit breaker paused a domain | Nothing raises; the campaign simply stops, and the asset takes months to replace |
 | Worker ticking | No tick in five minutes, or never | The outbox signal cannot fail while nothing is due. A worker that died on a quiet weekend — or a cron that never fired — looked healthy until the first action was due, and thirty minutes more (D-39). Every tick writes a heartbeat; a fresh deployment is not draining until something has ticked |
+| Inbound handled | 5 or more inbound events, older than five minutes, were received and never handled | The webhook was accepted, so the provider is satisfied and will not retry. Suppression and measurement are both fed from these events, so the quiet outcome is a suppression never applied — a contact who asked to stop and will be written to again — and a conversion never counted in the lift a partner is invoiced against. The index for this question was declared in migration 005 and nothing ever asked it (D-61) |
 
 The endpoint is unauthenticated and returns counts only, never a tenant's identifiers: it answers an operator's question, and returning identifiers would answer a different one.
+
+### Honouring an unsubscribe by hand
+
+```bash
+python3 -m runtime.cli suppress --tenant <id> --value someone@example.com \
+  --reason "unsubscribed by reply"          # --scope domain stops a whole company
+```
+
+The runtime applies suppressions itself, from a provider's events. This is the path for the moment that automation is the thing that broke — `inbound handled` is failing and `docs/25` says apply the unsubscribes before anything else. `repo.entities.suppress` had existed since the first migration with no operator surface at all, which made honouring an unsubscribe by hand impossible at exactly the hour it becomes urgent (D-62).
+
+It records `source = operator`, so the audit trail says a human decided. It is idempotent on `(tenant, scope, value)` and matches case-insensitively, because an unsubscribe rarely arrives spelled the way the contact was stored. A second run reports that the address was already suppressed and leaves the recorded reason alone — the stored reason is what an auditor reads, and a repeat is how an operator confirms rather than an instruction to rewrite it.
 
 ### Keys
 
@@ -780,7 +792,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1202 tests. 386 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1214 tests. 398 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

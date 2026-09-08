@@ -207,6 +207,18 @@ def main(argv: list[str] | None = None) -> int:
     box.add_argument("--pause", action="store_true")
     box.add_argument("--resume", action="store_true")
 
+    supp = sub.add_parser(
+        "suppress",
+        help="stop sending to an address or a domain, now")
+    supp.add_argument("--tenant", required=True)
+    supp.add_argument("--value", required=True,
+                      help="the address, or the domain when --scope is domain")
+    supp.add_argument("--scope", default="email",
+                      choices=["email", "domain", "person", "account"])
+    supp.add_argument("--reason", required=True,
+                      help="why, in words a regulator would accept: 'unsubscribed', "
+                           "'spam complaint', 'asked by phone'")
+
     dp = sub.add_parser("data-provider", help="register a data provider to buy fields from")
     dp.add_argument("--tenant", required=True)
     dp.add_argument("--key", required=True, help="must match a registered connector")
@@ -613,6 +625,43 @@ def main(argv: list[str] | None = None) -> int:
                      "missing authentication is mail filtered on arrival, not a "
                      "reputation problem to recover from") if issues else
                     "authenticated"}, indent=2))
+        return 0
+
+    if args.command == "suppress":
+        # `repo.entities.suppress` existed from the first migration and had no
+        # operator surface: every caller was the runtime acting on a provider's
+        # event. The runbook's inbound-handled procedure needs a person to be
+        # able to honour an unsubscribe by hand at three in the morning, when
+        # the handler that would have done it automatically is the thing that
+        # broke. Source is `operator` rather than a provider name, so the
+        # audit trail says a human decided this.
+        from runtime.repo import entities
+
+        select = ("select scope, value, reason, source, created_at from suppression"
+                  " where tenant_id = %s and scope = %s and value = %s")
+        with db.tenant_tx(args.tenant) as cur:
+            # Read before writing rather than inferring afterwards: the insert
+            # is `on conflict do nothing`, so the stored row after it is the
+            # older one and cannot be told from a new one by its contents.
+            cur.execute(select, (args.tenant, args.scope, args.value))
+            existing = one(cur)
+            entities.suppress(cur, args.tenant, args.scope, args.value,
+                              args.reason, source="operator")
+            cur.execute(select, (args.tenant, args.scope, args.value))
+            row = one(cur)
+        print(json.dumps({
+            "suppressed": row["value"],
+            "scope": row["scope"],
+            "reason": row["reason"],
+            "source": row["source"],
+            "since": row["created_at"].isoformat(),
+            # Idempotent by unique constraint. Running it twice is how an
+            # operator confirms it took, so a repeat must not read as failure —
+            # and must not claim to have changed a reason it left alone.
+            "note": ("already suppressed since before this command; the stored "
+                     "reason and source are unchanged") if existing else
+                    "suppressed now"},
+            indent=2))
         return 0
 
     if args.command == "mailbox":

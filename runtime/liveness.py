@@ -20,6 +20,11 @@ request 500s, and the first person to notice is the customer:
 * No worker has ticked. The outbox signal only fires once work is due and
   stale, so a worker that died on a quiet weekend — or a cron that never
   fired — was healthy until the first action was due, and half an hour more.
+* An inbound event was received and never handled. A provider's bounce or
+  unsubscribe arrives, the handler raises, the row keeps `handled = false` and
+  its error, and nothing ever looks at it again. Suppression and measurement
+  are both fed from these events, so the quiet outcome is a suppression that
+  was never applied and a conversion that was never counted.
 
 Each is expressed as a threshold with a number beside it, because "the outbox
 is deep" is not actionable and "412 actions have been pending for over 30
@@ -42,6 +47,12 @@ DEAD_THRESHOLD = 10
 # A worker loop ticks every two seconds and the cron every minute. Five
 # minutes without a heartbeat is not a slow tick; it is nothing running.
 HEARTBEAT_MINUTES = 5
+# An inbound event is handled in the same request that received it, so an
+# unhandled row is a handler that raised, never one still in flight. One is a
+# malformed payload from a provider; a wall of them is a handler that broke.
+UNHANDLED_THRESHOLD = 5
+# Below this age the row may belong to a request still on the stack.
+UNHANDLED_MINUTES = 5
 
 
 @dataclass
@@ -79,6 +90,7 @@ def check(db: Database) -> Liveness:
         _programs_without_a_channel(cur, live)
         _burned_domains(cur, live)
         _worker_ticking(cur, live)
+        _inbound_handled(cur, live)
     return live
 
 
@@ -150,6 +162,35 @@ def _outbox(cur, live: Liveness) -> None:
     else:
         live.add("outbox draining", True,
                  f"{count} due, oldest {oldest} minutes" if count else "nothing due",
+                 value=count)
+
+
+def _inbound_handled(cur, live: Liveness) -> None:
+    """Inbound events that were received and never handled.
+
+    `inbound_event_unhandled_ix` was written for this question and nothing ever
+    asked it (D-61): the index existed, the read did not. Every other signal in
+    this module was found by asking what fails without raising; this one was
+    found by asking which index the suite never scans, which is the same
+    question asked of the schema instead of the code.
+    """
+    cur.execute(
+        "select count(*) as n,"
+        " coalesce(extract(epoch from now() - min(received_at)) / 60, 0)::int as oldest"
+        " from inbound_event"
+        " where not handled and received_at < now() - (%s * interval '1 minute')",
+        (UNHANDLED_MINUTES,))
+    row = cur.fetchone()
+    count, oldest = row["n"], row["oldest"]
+    if count >= UNHANDLED_THRESHOLD:
+        live.add("inbound handled", False,
+                 f"{count} inbound events were received and never handled, the oldest "
+                 f"{oldest} minutes ago. Each one is a bounce, an unsubscribe or a reply "
+                 "that suppression and measurement never saw; read the `error` column "
+                 "for the reason", value=count)
+    else:
+        live.add("inbound handled", True,
+                 f"{count} unhandled" if count else "everything received was handled",
                  value=count)
 
 
