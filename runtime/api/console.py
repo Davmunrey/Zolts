@@ -20,11 +20,13 @@ from runtime.repo import enrollments, programs
 from zolts import dsl
 from zolts.catalog import load_catalog
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, is_resolvable, lift, minimum_detectable_effect
+from zolts import report as report_rules
 
-# Outcomes that count as the primary conversion. A program declares its own
-# primary metric; until outcome types are mapped per program this is the set
-# the runtime records, and the mapping is named here rather than buried.
-CONVERSION_TYPES = ["opp_created", "meeting", "reply_positive"]
+# Outcomes that count as the primary conversion: one definition, in
+# `zolts.report`, shared with the measurement endpoint and the frozen report so
+# the three cannot disagree about what converts. A list, because psycopg
+# adapts a tuple as a row and a list as the array `= any(%s)` needs.
+CONVERSION_TYPES = list(report_rules.CONVERSION_TYPES)
 
 AVG_OPPORTUNITY_EUR = 24_000
 

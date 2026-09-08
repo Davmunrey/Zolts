@@ -31,6 +31,7 @@ A control with no test is an intention. Each row names the check that fails if t
 | The application role cannot read invitations | `test_the_application_role_cannot_read_invitations` |
 | The privileged surface is two `security definer` functions returning identifiers only | ADR-008 |
 | CI fails a run that skipped the isolation tests | `test_ci_never_reports_green_having_skipped_these` |
+| The two documents a partner signs against — the baseline and the incrementality report — cannot be updated or deleted by the serving role | `test_the_serving_role_cannot_restate_a_frozen_report_or_a_baseline` (ADR-043) |
 
 **Why an empty set is refused rather than returned:** an empty set is indistinguishable from a correct answer, which is how an isolation bug survives a suite that asserts on results.
 

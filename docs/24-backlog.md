@@ -8,8 +8,8 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | | Count | Evidence |
 |---|---|---|
-| Epics delivered | 41 | `docs/22`, ADR-001 … ADR-042 |
-| Tests | 1072 | 351 against a real Postgres; CI fails a run that skipped them |
+| Epics delivered | 42 | `docs/22`, ADR-001 … ADR-043 |
+| Tests | 1098 | 362 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -46,7 +46,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Measure mutation coverage across the runtime | Still open, and narrower than it was. `scripts/mutation_check.py` re-proves eleven named guards on every push — that is regression-proofing a curated list, not a coverage measurement, and it says nothing about the code it does not name. What remains is the real number: generate mutants across `runtime/` and `zolts/` and report the fraction that survives. It needs a tool and a CI budget neither of which exists yet | M |
+| **VER-1** | Measure mutation coverage across the runtime | Still open, and narrower than it was. `scripts/mutation_check.py` re-proves twelve named guards on every push — that is regression-proofing a curated list, not a coverage measurement, and it says nothing about the code it does not name. What remains is the real number: generate mutants across `runtime/` and `zolts/` and report the fraction that survives. It needs a tool and a CI budget neither of which exists yet | M |
 
 ### Product
 
@@ -80,14 +80,15 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Key rotation** | The key sealing every credential can be replaced with no downtime: both keys open during the window, `rotate-key` re-seals resumably, and preflight reports what is still on the old one | ADR-039, `test_key_rotation.py` |
 | **Operations** | The liveness endpoint answers 503 when a signal fails, so a monitor pointed at it fires; a worker that stops ticking is reported within five minutes, work or no work; `docs/25` says what to do about each signal, and every command on that page was executed while it was written | D-36, D-39, `docs/25`, `test_runbook.py` |
 | **Deployed smoke** | Hourly and strict against the production URL once it is named: every liveness signal, every migration on disk applied, `/api/tick` locked to a stranger. The script itself is executed in tests against live servers in both shapes a deployment takes — the served API and the Vercel entry point — including the release before the secrets exist and a release whose schema is behind its code | `deploy-vercel.yml`, `scripts/smoke_deployed.py`, `test_smoke_deployed.py` |
-| **Guards that bite** | Eleven guards are broken on purpose on every push and a test has to notice. A mutation whose target moved is an error, not a skip | `scripts/mutation_check.py`, `test_mutation_targets.py` |
+| **Guards that bite** | Twelve guards are broken on purpose on every push and a test has to notice. A mutation whose target moved is an error, not a skip | `scripts/mutation_check.py`, `test_mutation_targets.py` |
 | **The console on a phone** | Nothing may be drawn on top of text: the check measures where the glyphs start rather than where the box does, which is what made three collisions invisible to every clipping and overflow check | D-38, `browser_console.py` |
 | **Admission** | A program is checked where it is stored, not where it arrives: holdout, audience, enrichment pricing and policy overrides run inside `publish`, so signup and the CLI get the same answer as the API | ADR-037, `test_admission.py` |
 | **Baseline** | What a tenant cost and produced before Zolts, frozen once at onboarding with a digest the pilot letter quotes; activation without one is noted where an operator looks | ADR-042, `test_baseline.py`, `docs/26` |
 | **Model provider disclosure** | What each agent sends and never sends, that the agent layer is off by default, and that the endpoint is a per-deployment control — with the per-tenant promise two documents made and the code did not keep corrected | `docs/11`, D-42, `test_model_provider_disclosure.py` |
+| **Incrementality report** | What a program did against its holdout, composed from what the runtime already records and frozen at every period close: arms, lift beside the detectable effect, the unread share, decisions, credits by kind, pipeline on opportunities only and only when significant, the baseline's digest quoted. Written once, the document stored verbatim, a verdict that is never *met* | ADR-043, `test_incrementality_report.py`, `smoke_runtime.py` |
 
 ## How an item earns its place
 
-The register in `docs/22` is the evidence for this ordering. Twenty-five of thirty-nine defects were a specification with no caller. Reading found ten of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
+The register in `docs/22` is the evidence for this ordering. Twenty-seven of forty-six defects were a specification with no caller. Reading found fifteen of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
 
 So an item is only "done" when something runs it and that run can fail. A specification, a document, a column, a button and a process table have each been the whole of a feature in this repository, and each was found by an execution nobody had performed.

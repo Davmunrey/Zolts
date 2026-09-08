@@ -124,6 +124,13 @@ MUTATIONS = (
         find="    if last is None:\n        live.add(\"worker ticking\", False,",
         replace="    if last is None:\n        live.add(\"worker ticking\", True,",
         tests="tests/test_hardening.py"),
+    Mutation(
+        id="an-unresolvable-comparison-has-no-verdict",
+        claim="a report declares no effect while either arm holds fewer than five conversions",
+        path="zolts/report.py",
+        find="        if not self.resolvable:\n            return NOT_RESOLVABLE\n",
+        replace="        if False:\n            return NOT_RESOLVABLE\n",
+        tests="tests/test_incrementality_report.py"),
 )
 
 

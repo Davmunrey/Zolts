@@ -18,6 +18,7 @@ From a name on a list to a first send with a holdout, for a design partner on Hu
 | 6 | Partner | Connect sending: domain, mailboxes, Smartlead, the reply webhook | `zolts capacity` shows a cap above zero |
 | 7 | Partner | Activate one program | `lint` is empty; `tenants can send` is ok |
 | 8 | Runtime | The first send | a touch with `status = 'sent'`, and a policy decision beside it |
+| 9 | Operator | Close the period | `zolts close-period` freezes one incrementality report per program, and prints each verdict and digest |
 
 ### 1 · The invitation
 
@@ -130,6 +131,15 @@ select t.channel, t.status, t.sent_at, d.decision, d.rule_key
 
 Then `GET /v1/programs/{program_id}/measurement`: `treatment` and `control` counts, the lift and the minimum detectable effect beside it, and `significant` — which stays `false` for weeks, honestly, until the arms are large enough. The console's Experiments question is deliberately not a view (`docs/20`).
 
+### 9 · The report, frozen
+
+At every period close — `python3 -m runtime.cli close-period --tenant <id>` — the runtime freezes the **incrementality report** for each program that enrolled anybody: the same arms and lift, the unread share, decisions, credits by kind, pipeline on opportunities only, and the baseline's digest from step 4, written once with a digest of its own (ADR-043). `python3 -m runtime.cli report --tenant <id>` prints it; `GET /v1/programs/{program_id}/reports` lists it. The one at the term's last close is what the letter's success table is read from.
+
+```sql
+select verdict, period_start, period_end, digest, frozen_at
+  from incrementality_report order by period_end desc;
+```
+
 ## Per-CRM checklists
 
 | | HubSpot | Pipedrive | Salesforce |
@@ -156,14 +166,14 @@ Then `GET /v1/programs/{program_id}/measurement`: `treatment` and `control` coun
 >
 > | Criterion | Threshold | Where it is read |
 > |---|---|---|
-> | Positive reply rate | >3% | `GET /v1/programs/{program_id}/measurement`, `treatment_rate` |
+> | Positive reply rate | >3% | the frozen report's treatment arm (`primary.treatment_rate`); live, `GET /v1/programs/{program_id}/measurement` |
 > | Email bounce rate | <2% | the Sending view; a domain paused by a cut-off is a failed criterion |
-> | Incremental lift versus holdout | >1.5×, with the minimum detectable effect reported beside it | `lift_pp` and `minimum_detectable_effect_pp` |
-> | Every action carries a recorded policy decision | 100% | the Policy view; it is enforced by construction |
+> | Incremental lift versus holdout | >1.5×, with the minimum detectable effect reported beside it | the frozen report's `primary.lift` beside `primary.minimum_detectable_effect`, and its `verdict` |
+> | Every action carries a recorded policy decision | 100% | the report's decision counts; enforced by construction |
 >
-> A criterion that is not significant at the end of the term is reported as not significant, not as met.
+> The read at the end of the term is the **incrementality report** frozen at the close of the term's last billing period — `GET /v1/programs/{program_id}/reports`, digest quoted on both copies — not a figure read off a screen on the day. A criterion that is not significant at the end of the term is reported as not significant, not as met; a criterion the sample cannot resolve is reported as not resolvable.
 >
-> **After.** If every criterion is met, the pilot converts to a Starter or Growth subscription (`docs/12`) on the term's last day. If not, it ends, the tenant is deleted on request, and both parties keep the measurement.
+> **After.** If every criterion is met, the pilot converts to a Starter or Growth subscription (`docs/12`) on the term's last day. If not, it ends, the tenant is deleted on request, and both parties keep the frozen reports and the baseline.
 >
 > **Data.** Zolts processes contact data on the partner's instructions as a processor (`docs/11`); credentials are sealed at rest, and the partner may revoke every key at any time.
 >

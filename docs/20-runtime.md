@@ -6,7 +6,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 
 | Piece | Where | State |
 |---|---|---|
-| Schema, 34 tables, RLS forced on 30 | `runtime/migrations/` | Running on Postgres 16 |
+| Schema, 35 tables, RLS forced on 31 | `runtime/migrations/` | Running on Postgres 16 |
 | Tenant-scoped data access | `runtime/db.py`, `runtime/repo/` | Running |
 | Signal ingest to enrollment, with holdout assignment | `runtime/engine/enroll.py` | Running |
 | Step planning and the transactional outbox | `runtime/engine/planner.py`, `runtime/repo/actions.py` | Running |
@@ -19,6 +19,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | CLI: migrate, provision, worker, serve | `runtime/cli.py` | Running |
 | The worker as a cron-invoked function, for a host with no processes | `runtime/serverless.py`, `api/index.py` | Executed in tests; the production release waits on the founder's secrets (ADR-041) |
 | The baseline: what a tenant cost and produced before Zolts, frozen once | `zolts/baseline.py`, `runtime/repo/baseline.py`, `POST /v1/baseline` | Running; the letter in `docs/26` quotes its digest (ADR-042) |
+| The incrementality report: what a program did against its holdout, frozen at every period close | `zolts/report.py`, `runtime/reporting.py`, `GET /v1/programs/{program_id}/reports` | Running; written once, verdict never *met* (ADR-043) |
 | Console served from the API with live tenant data | `runtime/api/console.py`, `runtime/surface.py` | Running |
 | Signed inbound webhooks: replies, bounces, opt-outs, deals | `runtime/api/webhooks.py`, `runtime/engine/inbound.py` | Running |
 | Agent layer: propose-only, provenance-checked, eval-gated | `runtime/agents/`, `runtime/engine/generate.py` | Running |
@@ -491,7 +492,7 @@ and runs it: migrate, quickstart (asserting the programs are non-empty), then
 | Alert | 80% of the ceiling, per `docs/18` I6. A warning, not a stop — a customer who finds out at the ceiling found out too late to do anything but stop |
 | Period | One open period per tenant, enforced by a partial unique index. Its terms are copied in at open time, so a mid-month upgrade does not restate the month being consumed |
 | Raise | `zolts set-terms --tenant … --credit-ceiling 80000` lets a tenant spend past the plan; `--credit-ceiling plan` puts it back. Terms that cannot be billed — an enterprise ladder with a gap in it — are refused inside the transaction, so nothing is half-applied |
-| Close | `zolts close-period --tenant …` produces a statement. Idempotent: closing twice returns the first one rather than restating it |
+| Close | `zolts close-period --tenant …` produces a statement, and freezes the incrementality report of every program that enrolled anybody (ADR-043). Idempotent: closing twice returns the first statement and the first reports rather than restating either |
 | Read | `GET /v1/billing/current` for consumption, what is left, and what the period costs so far; `GET /v1/billing/statements` for closed periods |
 
 Seats are counted from live API keys at close time rather than from a number somebody maintains, because a seat count nobody maintains undercharges forever.
@@ -769,7 +770,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1072 tests. 351 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1098 tests. 362 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

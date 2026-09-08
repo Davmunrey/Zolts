@@ -17,6 +17,7 @@
 | `policy_decision` | Record of a policy evaluation (allow/deny plus reason) | append-only, 24-month retention |
 | `cost_event` | Attributed cost (credit, token, send, provider) | basis of the per-play P&L |
 | `tenant_baseline` | What the tenant's GTM cost and produced in the ninety days before Zolts: four spend fields, the funnel, the derived cost per meeting and per opportunity, and a digest the pilot letter quotes. Written once (ADR-042) | one per tenant |
+| `incrementality_report` | What one program did against its holdout as of the end of one billing period: arms, lift beside the minimum detectable effect, the unread share, decisions, credits by kind, pipeline on opportunities only, the baseline's digest, a verdict in three words. The canonical fields, a digest over them and the rendered document, stored verbatim. Written once (ADR-043) | one per program per closed period |
 
 ## Identity graph
 

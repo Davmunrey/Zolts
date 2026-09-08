@@ -9,20 +9,20 @@ Every defect this repository has found in itself, what it would have cost, and w
 | How | Defects found | What it means |
 |---|---|---|
 | **Executed** | 18 | Ran the thing against real infrastructure — real Postgres, real browser, real container |
-| **Read** | 14 | Compared a document against the code, looking for the caller that does not exist |
+| **Read** | 15 | Compared a document against the code, looking for the caller that does not exist |
 | **Mutated** | 5 | Broke a guard on purpose to see whether it bites |
 | **Looked** | 5 | Rendered a screen and read the screenshot |
 | **CI** | 3 | An existing check fired |
 
 **This table used to say 16 executed and 3 read.** Counting the rows gives 14 and 8. The register overstated its own method by five, in the direction that flattered it, and nothing measured it until a test did — the same defect as everything in it, committed by the document that catalogues them. `tests/test_registers.py` now counts the column, so the numbers above are a measurement rather than a memory.
 
-**Mutation is now the only method that runs on every push.** `scripts/mutation_check.py` breaks eleven named guards and requires a test to notice; a mutation whose target has moved is an error rather than a skip, because code moving out from under a check is exactly when the check stops being applied. It is not a coverage measurement and `docs/24` VER-1 keeps that item open — it re-proves a curated list, and says nothing about the code it does not name.
+**Mutation is now the only method that runs on every push.** `scripts/mutation_check.py` breaks twelve named guards and requires a test to notice; a mutation whose target has moved is an error rather than a skip, because code moving out from under a check is exactly when the check stops being applied. It is not a coverage measurement and `docs/24` VER-1 keeps that item open — it re-proves a curated list, and says nothing about the code it does not name.
 
-**What survives the correction is the sharper claim.** All fourteen of the read defects were found by reading a *document* against the code — a price nothing charges, an ADR written in the present tense about a connector that does not exist, a script nobody had ever run. Not one was found by reviewing code for a wrong line. Reading works, and what it finds is the absent caller, never the incorrect one.
+**What survives the correction is the sharper claim.** All fifteen of the read defects were found by reading a *document* against the code — a price nothing charges, an ADR written in the present tense about a connector that does not exist, a script nobody had ever run. Not one was found by reviewing code for a wrong line. Reading works, and what it finds is the absent caller, never the incorrect one.
 
 ## The recurring shape
 
-Twenty-six of the forty-five are one defect wearing different clothes: **a complete specification with no caller.** A price in `docs/12` nothing charges. A column no code sets. A button labelled for a feature that does not exist. A process table CI never runs. A restore script that ends by telling you to test it.
+Twenty-seven of the forty-six are one defect wearing different clothes: **a complete specification with no caller.** A price in `docs/12` nothing charges. A column no code sets. A button labelled for a feature that does not exist. A process table CI never runs. A restore script that ends by telling you to test it.
 
 The second shape, found only once the first was exhausted: **a guard that passes when you break the thing it guards.** Eight of those, and two of them were written in the same session that found them.
 
@@ -58,6 +58,7 @@ Severity is the cost of the defect reaching a paying customer, not the cost of f
 | D-10 | `linkedin`, `ads` and `webhook` were dispatchable with no provider. The shipped flagship program's four LinkedIn steps queued, failed as permanent errors and were cancelled one at a time | **High** — loud in a row nobody reads is silent | Executed | An unexecutable channel becomes a person's task | ADR-027 |
 | D-09 | Every dispatch allocated a mailbox seat, so a CRM task consuming no sending reputation was held by the mailbox daily cap | **Medium** — work stalled by a limit from a channel it is not on | Executed | Only channels that use the fleet allocate | ADR-027 |
 | D-28 | `console.build` was handed a label dictionary instead of the tenant's row; the spend view reads a billing period keyed by id | **Low** — a smoke script passed, CI failed | CI | `build` raises a named error when the tenant has no id | A test holds the stub deliberately |
+| D-46 | `docs/10` said every program reports a real income statement — cost by kind, incremental pipeline, ROI and cost per incremental meeting, *derived* — and called that view the product's primary screen. Nothing derived it. The measurement endpoint returned rates and the console returned spend and, when significant, a pipeline figure from a constant; no artefact joined cost to lift, and every figure was recomputed on each request. The baseline was frozen (ADR-042) and the "after" it exists to be compared with moved every day | **High** — the Act 2 conversation (`docs/17`) had a signed "before" and nothing a CFO could hold beside it; a pilot's final read was whatever the endpoint said on the day somebody looked | Read | `zolts/report.py` composes the report from what the runtime records, `runtime/reporting.py` freezes one per program at every period close, written once, with the document stored verbatim and a digest over inputs and derived figures (ADR-043) | `test_incrementality_report.py`; the serving role cannot update or delete a report; `an-unresolvable-comparison-has-no-verdict` in `scripts/mutation_check.py` |
 
 ### Product surface
 

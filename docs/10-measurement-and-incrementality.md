@@ -26,20 +26,36 @@ For long cycles (over six months), validated proxy metrics are used against hist
 
 ## Per-play P&L
 
-Every program reports a real income statement:
+Every program reports a real income statement. What ships is the **incrementality report** (ADR-043): one per program per closed billing period, composed from the tables the runtime already fills and frozen with the period's statement, written once. Its lines, and where each comes from:
 
-| Line | Source |
+| Line | Source | Ships |
+|---|---|---|
+| Data cost | `cost_event.kind in (enrich.email, enrich.phone, enrich.firmographics)`, in credits billed | yes |
+| AI cost | `cost_event.kind in (agent.generate, agent.dossier)` | yes |
+| Sending cost | `cost_event.kind = email.send`, plus `program.step` and `signal.check` | yes |
+| Human time cost | tasks × configured hourly cost per role | **no** — nothing configures an hourly cost, and a number typed in for the report's sake is the input `docs/17` forbids |
+| **Total cost** | sum, in credits; the period's statement prices them | yes |
+| Arms, lift and the minimum detectable effect | the experiment, on the primary conversion | yes |
+| Incremental conversions | lift × treatment arm, only when significant | yes |
+| Incremental pipeline | the *opportunity* comparison's increment × the CRM's own average deal amount, only when that comparison is significant and the CRM holds an amount | yes, or the reason it is withheld |
+| Incremental closed revenue | won deals over the cycle window | **no** — returns when a tenant has held a cycle |
+| **Cost per incremental meeting** | credits ÷ incremental meetings | **no** — derivable from the fields above; not stated until a partner has a significant read to divide by |
+
+The report also carries what the number rests on — the unread share of conversions (decision 16), the policy decisions and touches behind it — and quotes the baseline's digest, so the "before" of `docs/17` and this "after" can be laid side by side. It never compares them as a lift: the lift is against the concurrent control, and the baseline says what the same money bought before.
+
+This document, not the number of emails sent, is the product's primary artefact. It moves the conversation from activity to return, and it is what sustains the price.
+
+## The verdict
+
+Three words, decided in `zolts.report.Comparison` by the same rules the measurement endpoint and the console apply:
+
+| Verdict | When |
 |---|---|
-| Data cost | `cost_event.kind = enrichment` |
-| AI cost | `cost_event.kind = llm` |
-| Sending and ads cost | `cost_event.kind in (send, ads)` |
-| Human time cost | tasks × configured hourly cost per role |
-| **Total cost** | sum |
-| Incremental pipeline | from the experiment |
-| Incremental closed revenue | from the experiment, over the cycle window |
-| **ROI and cost per incremental meeting** | derived |
+| `not resolvable` | fewer than five observed conversions in either arm, or an arm with nobody in it: no baseline is established and no effect may be declared |
+| `not significant` | the lift sits below the minimum detectable effect for this sample |
+| `significant` | the lift clears it |
 
-This view, not the number of emails sent, is the product's primary screen. It moves the conversation from activity to return, and it is what sustains the price.
+"Met" is not a verdict. A criterion that is not significant at the end of a term is reported as not significant (`docs/26`, the letter), and the report's own wording is tested for the words that would read otherwise.
 
 ## Attribution (as diagnosis, not truth)
 
@@ -53,3 +69,5 @@ Multi-touch attribution is retained for diagnostic questions (which channel appe
 | Changing the primary metric after the fact | Metric frozen when the version is published |
 | Stopping the test on a favourable read | Minimum duration and peeking correction |
 | Comparing periods instead of groups | Only concurrent control comparisons are reported |
+| Freezing a read when it looks good | A report is frozen only by the close of a billing period, cumulative from the first enrollment; there is no endpoint that freezes one on request (ADR-043) |
+| Restating a report after it was read | Written once; the serving role cannot update or delete it; the digest covers inputs and derived figures |

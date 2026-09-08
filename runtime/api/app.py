@@ -13,6 +13,7 @@ from typing import Any
 
 import jsonschema
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.responses import PlainTextResponse
 
 from runtime.api import auth, console, webhooks
 from runtime.api.signin import SIGN_IN_CSP, sign_in_page
@@ -27,9 +28,10 @@ from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
-                          ledger, mappings, programs, proposals)
+                          ledger, mappings, programs, proposals, reports as reports_repo)
 from runtime.surface import content_security_policy, document, inject
 from zolts import dsl, experiment
+from zolts.report import CONVERSION_TYPES
 
 SURFACE = Path(__file__).resolve().parent.parent.parent / "design" / "console.html"
 
@@ -256,6 +258,36 @@ def create_app(db: Database, *, install_connectors: bool = True,
             return [{"id": str(r["id"]), "periodStart": r["starts_at"],
                      "periodEnd": r["ends_at"], **(r["statement"] or {})}
                     for r in cur.fetchall()]
+
+    # -- the frozen reports ----------------------------------------------
+
+    @app.get("/v1/programs/{program_id}/reports")
+    def program_reports(program_id: str,
+                        principal: Principal = CurrentPrincipal) -> list[dict[str, Any]]:
+        """Every incrementality report frozen for a program, newest period first.
+
+        Read-only. A report is frozen by the period close (ADR-043), never on
+        request: a report frozen when somebody asks for one is a report
+        frozen on a favourable read, which `docs/10` lists as an anti-pattern.
+        """
+        with db.tenant_tx(principal.tenant_id) as cur:
+            if programs.get(cur, program_id) is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "program not found")
+            return [reports_repo.as_dict(r) for r in reports_repo.for_program(cur, program_id)]
+
+    @app.get("/v1/reports/{report_id}")
+    def read_report(report_id: str,
+                    format: str = Query("json", pattern="^(json|markdown)$"),
+                    principal: Principal = CurrentPrincipal) -> Any:
+        """One frozen report: its canonical fields and digest, or the document
+        itself as it was stored — never re-rendered."""
+        with db.tenant_tx(principal.tenant_id) as cur:
+            row = reports_repo.get(cur, report_id)
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
+        if format == "markdown":
+            return PlainTextResponse(row["rendered"], media_type="text/markdown")
+        return reports_repo.as_dict(row)
 
     # -- the browser session ---------------------------------------------
 
@@ -697,7 +729,7 @@ def create_app(db: Database, *, install_connectors: bool = True,
                 "select e.variant, count(distinct o.enrollment_id) as converted"
                 " from enrollment e join outcome o on o.enrollment_id = e.id"
                 " where e.program_id = %s and o.type = any(%s) group by e.variant",
-                (program_id, ["opp_created", "meeting", "reply_positive"]))
+                (program_id, list(CONVERSION_TYPES)))
             converted = {r["variant"]: int(r["converted"]) for r in cur.fetchall()}
 
         treatment = counts.get("treatment", 0)
