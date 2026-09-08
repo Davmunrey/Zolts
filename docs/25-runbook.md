@@ -283,6 +283,33 @@ select detail->>'program' as program, detail->>'signal' as signal,
 
 ---
 
+## Nothing is sending and the error names a policy pack
+
+`NoActivePack` from the gate means the deployment has tables and no rules it can name, so it refuses to decide rather than falling back to whatever the release ships (ADR-044). It is the safe failure and it stops every send.
+
+```sh
+zolts policy-pack                     # what new decisions cite: version, digest, publisher
+zolts policy-pack --history           # what has been published, newest first
+zolts migrate                         # installs the shipped pack if none is active
+```
+
+A pack is published, not deployed, and by an operator rather than a tenant (decision 41):
+
+```sh
+# The document is validated before it is stored: a pack missing a country is a
+# pack that allows cold email there, so it is refused rather than accepted with
+# a gap.
+zolts policy-pack --file eu-2026-03.json --version 2026.03
+```
+
+The pack that was active yesterday stays readable — the decisions taken under it cite its digest, and the document behind that digest is kept. Publishing the same document twice is the same pack.
+
+| Symptom | What it means |
+|---|---|
+| `no policy pack is active` | Nothing published and the shipped one not installed. Run `zolts migrate` |
+| A send denied that used to be allowed | The active pack changed. `zolts policy-pack --history` says when and who published it; the decision's digest says which one denied |
+| The Policy view reports decisions with no pack | Rows written before the packs were versioned. They are not back-filled: a provenance nobody has is worse than an admitted gap |
+
 ## Restoring from a backup
 
 `scripts/restore.sh`, executed end to end in CI against a real dump (`ADR-033`). Read it before running it: step 1 creates the application role, and a restore into a cluster where that role already exists behaves differently from one where it does not — which is the failure the test reproduces (D-26).
