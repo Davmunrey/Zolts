@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure what share of mutations the tests catch. A number, not a list.
 
-`scripts/mutation_check.py` breaks fifteen named guards on every push and
+`scripts/mutation_check.py` breaks sixteen named guards on every push and
 requires a test to notice. That is regression-proofing a curated list: it says
 nothing about the code it does not name, and `docs/24` has kept VER-1 open for
 the real number since it was written.
@@ -45,6 +45,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Below this, a run reports no rate at all. Eight mutants put the 95% interval
+# at roughly 22-78%, which is not a measurement of anything — and printed
+# beside the documented number it reads as a contradiction rather than as
+# noise. A small run still applies and restores mutants, which is what CI uses
+# it for, and it still names its survivors, which is the actionable half.
+RATE_NEEDS = 30
 
 # Which tests could catch a mutation in each target, and how long that costs.
 # A target whose suite is not run is a target this script will not report on.
@@ -250,6 +257,7 @@ def measure(target: str, sample: int, seed: int) -> dict[str, object]:
         print(f"  {index}/{len(chosen)} {'caught  ' if bitten else 'SURVIVED'} "
               f"{mutant.where} {mutant.was} -> {mutant.becomes}", file=sys.stderr)
 
+    reportable = len(chosen) >= RATE_NEEDS
     low, high = _wilson(len(caught), len(chosen))
     return {
         "target": target,
@@ -259,8 +267,14 @@ def measure(target: str, sample: int, seed: int) -> dict[str, object]:
         "seed": seed,
         "caught": len(caught),
         "survived": len(survived),
-        "caughtShare": round(len(caught) / len(chosen), 4) if chosen else None,
-        "confidence95": [low, high],
+        "caughtShare": (round(len(caught) / len(chosen), 4)
+                        if chosen and reportable else None),
+        "confidence95": [low, high] if reportable else None,
+        "rateWithheld": None if reportable else (
+            f"a sample of {len(chosen)} says nothing about a rate; at least "
+            f"{RATE_NEEDS} are needed for the interval to be worth printing. "
+            f"This run applied and restored {len(chosen)} mutants and named "
+            f"{len(survived)} survivors, which is what it is for"),
         # Named, because a survival rate with no list is a number nobody can
         # act on. Each of these is a line a test could be written against.
         "survivors": [m.as_dict() for m in survived],
@@ -287,14 +301,21 @@ def main() -> int:
     report = measure(args.target, args.sample, args.seed)
     print(json.dumps(report, indent=2))
 
-    share = report["caughtShare"]
-    if share is None:
+    if not report["sampled"]:
         print("::error::no mutants were generated, so nothing was measured", file=sys.stderr)
         return 2
-    low, high = report["confidence95"]
-    print(f"::notice::{report['caught']}/{report['sampled']} mutants caught in "
-          f"{args.target} ({share:.0%}, 95% CI {low:.0%}-{high:.0%}), sampled from "
-          f"{report['mutantsAvailable']}", file=sys.stderr)
+    share = report["caughtShare"]
+    if share is None:
+        print(f"::notice::{report['caught']}/{report['sampled']} mutants caught in "
+              f"{args.target}; no rate reported — {report['rateWithheld']}", file=sys.stderr)
+    else:
+        low, high = report["confidence95"]
+        print(f"::notice::{report['caught']}/{report['sampled']} mutants caught in "
+              f"{args.target} ({share:.0%}, 95% CI {low:.0%}-{high:.0%}), sampled from "
+              f"{report['mutantsAvailable']}", file=sys.stderr)
+    for survivor in report["survivors"]:
+        print(f"::notice::survived: {survivor['where']} "
+              f"{survivor['was']} -> {survivor['becomes']}", file=sys.stderr)
     # Deliberately not a gate. A sampled rate moves between runs, and a build
     # that fails on it would be a build that teaches the team to raise the
     # threshold. The number belongs in `docs/22`, where it can be argued with.

@@ -1,5 +1,8 @@
 """The DSL expression subset must be safe by construction."""
 
+import os
+from pathlib import Path
+
 import pytest
 
 from zolts.expr import UnsafeExpression, evaluate, names, validate
@@ -137,3 +140,57 @@ def test_assignment_operator_is_rejected():
     with pytest.raises(UnsafeExpression):
         validate("outcome.type = 'unsubscribe'")
     assert evaluate("outcome.type == 'unsubscribe'", {"outcome": {"type": "unsubscribe"}})
+
+
+def test_a_path_at_the_depth_limit_is_read_and_one_deeper_is_refused():
+    """The boundary itself. A mutation-coverage run swapped `>` for `>=` in the
+    depth check and every test still passed: the limit was asserted from one
+    side only, so a rule reading a path at exactly the limit would have started
+    failing on a change nobody would have caught."""
+    from zolts.expr import _MAX_PATH_DEPTH, UnsafeExpression, evaluate
+
+    # `payload` plus enough segments to sit exactly on the limit.
+    tail = ["a"] * (_MAX_PATH_DEPTH - 1)
+    at_the_limit = ".".join(["payload"] + tail)
+    value: object = 7
+    for _ in tail:
+        value = {"a": value}
+
+    assert evaluate(f"{at_the_limit} == 7", {"payload": value}) is True
+    with pytest.raises(UnsafeExpression, match="exceeds depth"):
+        evaluate(f"{at_the_limit}.deeper == 1", {"payload": {}})
+
+
+def test_a_clause_evaluates_the_same_under_every_hash_seed():
+    """`names()` reports a path and its own prefixes, and both bind the same
+    name in the scope. Binding them in set order let the shallower one land
+    last and overwrite the namespace with its raw value, so the next segment
+    raised `AttributeError: 'dict' object has no attribute 'a'`.
+
+    Set iteration over strings follows the process hash seed, so this was not a
+    clause that failed — it was a clause that failed on some workers. Enrollment
+    for a depth-three `where` flipped on restart, and the error escaped the
+    `TypeError` guard D-37 put around trigger evaluation, so it surfaced as a
+    500 on `POST /v1/signals`. Driven in subprocesses because the seed is fixed
+    before the interpreter starts. D-55.
+    """
+    import subprocess
+    import sys
+
+    probe = (
+        "from zolts.expr import evaluate;"
+        "print(evaluate('payload.a.a == 7', {'payload': {'a': {'a': 7}}}),"
+        "      evaluate('payload and payload.a == 7', {'payload': {'a': 7}}),"
+        "      evaluate('payload.a.a == 8', {'payload': {'a': {'a': 7}}}))"
+    )
+    root = Path(__file__).resolve().parent.parent
+    seen = set()
+    for seed in range(1, 9):
+        done = subprocess.run(
+            [sys.executable, "-c", probe], cwd=root, capture_output=True, text=True,
+            env={**os.environ, "PYTHONPATH": ".", "PYTHONHASHSEED": str(seed)})
+        assert done.returncode == 0, f"seed {seed} raised: {done.stderr.strip()}"
+        seen.add(done.stdout.strip())
+
+    assert seen == {"True True False"}, (
+        f"the same clause on the same payload gave {sorted(seen)} across hash seeds")

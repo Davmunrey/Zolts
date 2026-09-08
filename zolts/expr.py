@@ -147,7 +147,20 @@ def resolve(path: str, variables: dict[str, Any]) -> Any:
 
 
 class _Scope(dict):
-    """Exposes dotted paths to `eval` as attribute access on a namespace object."""
+    """Exposes dotted paths to `eval` as attribute access on a namespace object.
+
+    `names()` reports every attribute chain it walks, so a clause reading
+    `payload.a.a` yields both that path and its prefix `payload.a`, and a clause
+    reading a bare root beside a dotted one yields `payload` too. Both bind the
+    same name. Binding them in the order a set happens to iterate let the
+    shallower one land last and overwrite the namespace with its raw value, so
+    the next segment raised `AttributeError: 'dict' object has no attribute`.
+
+    Set iteration over strings follows the process hash seed, so the same clause
+    on the same payload evaluated `True` on one worker and raised on the next.
+    A dotted path therefore always wins over a bare one at the same name: the
+    namespace is the only binding under which every reported path resolves. D-55.
+    """
 
     def __init__(self, variables: dict[str, Any], paths: set[str]):
         super().__init__()
@@ -160,20 +173,29 @@ class _Scope(dict):
             if rest:
                 roots.setdefault(root, {})[rest] = value
             else:
-                self[root] = value
+                self.setdefault(root, value)
         for root, fields in roots.items():
-            if root not in self:
-                self[root] = _Namespace(fields)
+            self[root] = _Namespace(fields)
 
 
 class _Namespace:
     def __init__(self, fields: dict[str, Any]):
+        # The whole branch is collected before anything is assigned, for the
+        # reason `_Scope` documents: `{"a": {...}, "a.a": 7}` binds `a` twice,
+        # and the dotted key is the one the expression reads through.
+        branches: dict[str, dict[str, Any]] = {}
+        leaves: dict[str, Any] = {}
         for key, value in fields.items():
             head, _, tail = key.partition(".")
             if tail:
-                setattr(self, head, _Namespace({tail: value}))
+                branches.setdefault(head, {})[tail] = value
             else:
+                leaves[head] = value
+        for head, value in leaves.items():
+            if head not in branches:
                 setattr(self, head, value)
+        for head, branch in branches.items():
+            setattr(self, head, _Namespace(branch))
 
     def __getattr__(self, name: str) -> Any:
         # Any field the fixture did not provide is absent, not an AttributeError.

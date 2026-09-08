@@ -1,7 +1,7 @@
 """The measurement itself, checked. A coverage number nobody verified is worse
 than none: it reads as evidence and is a script's opinion of itself.
 
-`scripts/mutation_check.py` re-proves fifteen named guards; this file is about
+`scripts/mutation_check.py` re-proves sixteen named guards; this file is about
 `scripts/mutation_coverage.py`, which samples the mutant space and reports what
 share the tests catch. What matters here is that its mutants are real — they
 change the source, they parse, and the file comes back exactly as it was — and
@@ -154,3 +154,18 @@ def test_an_interrupted_run_puts_the_file_back(tmp_path):
             child.kill()
     assert target.read_text() == "ORIGINAL = 1\n", (
         "an interrupted run left the file mutated")
+
+
+def test_a_sample_too_small_to_mean_anything_reports_no_rate(monkeypatch):
+    """Eight mutants put the interval at roughly 22-78%. Printed beside the
+    documented number that reads as a contradiction rather than as noise, so a
+    small run reports what it actually proves: mutants applied, restored, and
+    survivors named."""
+    monkeypatch.setattr(coverage, "_caught", lambda args: True)
+    small = coverage.measure("zolts", sample=4, seed=3)
+    assert small["caughtShare"] is None and small["confidence95"] is None
+    assert "says nothing about a rate" in small["rateWithheld"]
+    assert small["sampled"] == 4 and small["caught"] == 4
+
+    assert coverage.RATE_NEEDS >= 30, (
+        "a floor below thirty is a floor that lets an unreportable rate through")
