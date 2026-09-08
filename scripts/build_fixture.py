@@ -16,7 +16,7 @@ Usage: PYTHONPATH=. python3 scripts/build_fixture.py
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from zolts import dsl
@@ -46,7 +46,73 @@ OBSERVED = {
 # a program where it is 62% next to one where it is zero, because that spread
 # is the point.
 
-AVG_OPPORTUNITY_EUR = 24_000
+# What one deal is worth, per archetype. One global average priced an
+# ecommerce reorder like an enterprise contract, which is how €24,000 came to
+# multiply a replenishment programme (D-49). Chosen, like the rates above; a
+# live tenant's console reads the average of their own synced deals and never
+# sees these.
+DEAL_EUR = {
+    "series-a-hiring-surge": 24_000,
+    "workspace-expansion-trigger": 9_400,
+    "replenishment-winback": 180,
+    "new-site-and-reputation": 3_200,
+}
+
+# What the last closed period froze for the two programs that have run long
+# enough to have one (ADR-043). The arms and the rates come from OBSERVED
+# above; the opportunity split and the credit split are observed too, because
+# no program has run and neither can be derived from a reply rate. Everything
+# the panel shows — the verdict, the lift beside the effect the sample can
+# detect, the incremental pipeline or the reason it is withheld — is computed
+# by `zolts.report`, the module the runtime freezes with, so the demo cannot
+# show a verdict the product would not reach.
+# How many enrollments in each arm produced an *opportunity*, not a reply.
+# Observed, like the rates above, and separate from them because euros come
+# from deals: multiplying a reply-rate lift by a deal size prices a reply as a
+# deal, which is what the pipeline figure used to do (D-49).
+# Chosen so the demo shows both halves at the level that matters. A programme
+# resolves on replies far sooner than on deals, which is the honest shape and
+# the reason the pipeline figure is the one that stays empty longest.
+OPPORTUNITIES = {
+    # A third of the positive replies became a deal, and one control account
+    # did: below the five-per-arm floor, so nothing may be declared at all.
+    "series-a-hiring-surge":       {"treatment": 34, "control": 1},
+    # Expansion inside an existing customer converts about half its replies,
+    # and both arms clear the floor. This is the one that resolves.
+    "workspace-expansion-trigger": {"treatment": 120, "control": 10},
+    # Ecommerce, where an opportunity is a repeat order and most positive
+    # replies are one. Eight thousand enrollments and still not significant,
+    # because the control arm reorders too.
+    "replenishment-winback":       {"treatment": 1180, "control": 121},
+    "new-site-and-reputation":     {"treatment": 21, "control": 1},
+}
+
+# How many synced deals carry an amount, which is what a live tenant's average
+# is taken over. Counted from the split above rather than typed beside it.
+DEMO_DEALS_WITH_AMOUNT = sum(sum(o.values()) for o in OPPORTUNITIES.values())
+
+FROZEN = {
+    "series-a-hiring-surge": {
+        "period": (date(2026, 5, 1), date(2026, 6, 1)),
+        "credits": {"email.send": 6120.0, "enrich.email": 3200.0, "agent.generate": 955.0},
+        "touches": 6120, "decisions": {"allow": 6120, "deny": 214},
+    },
+    "workspace-expansion-trigger": {
+        "period": (date(2026, 5, 1), date(2026, 6, 1)),
+        "credits": {"email.send": 2140.0, "signal.check": 1482.0},
+        "touches": 2140, "decisions": {"allow": 2140, "deny": 61},
+    },
+}
+
+# The tenant's own "before", declared at onboarding (ADR-042). The report
+# quotes its digest so the demo shows the pair a partner signs: what the same
+# money bought before, and what the holdout says the programs added.
+DEMO_BASELINE = {
+    "window_start": "2026-01-01", "window_end": "2026-03-31",
+    "spend_tools_micros": 1_400_000_000, "spend_data_micros": 900_000_000,
+    "spend_sending_micros": 400_000_000, "spend_people_micros": 12_000_000_000,
+    "contacted": 4200, "replied": 151, "meetings": 34, "opportunities": 11,
+}
 
 # Fixed so the build is reproducible. Quiet-hours logic reads `local_hour`, not
 # this, so no decision depends on it.
@@ -294,6 +360,96 @@ def _signals_view() -> dict[str, object]:
     }
 
 
+def _pipeline(key: str, n_treat: int, n_control: int,
+              opps: dict[str, int]) -> dict[str, object]:
+    """What the holdout says the deals were worth, or why there is no figure.
+
+    One rule, in `zolts.report`: the increment is on opportunities, and only
+    when that comparison clears the effect the sample can detect.
+    """
+    from zolts.report import Comparison
+
+    comparison = Comparison(treatment_enrolled=n_treat, control_enrolled=n_control,
+                            treatment_converted=opps["treatment"],
+                            control_converted=opps["control"])
+    increment = comparison.incremental_conversions
+    deal = DEAL_EUR[key]
+    return {
+        "pipeline": None if increment is None else increment * deal,
+        "pipelineWithheld": (None if increment is not None
+                             else f"the opportunity comparison is {comparison.verdict}"),
+        "incrementalOpportunities": increment,
+        "oppTreat": opps["treatment"], "oppControl": opps["control"],
+        "avgOpportunityEur": deal,
+        "opportunitiesWithAmount": DEMO_DEALS_WITH_AMOUNT,
+    }
+
+
+def _frozen_reports(program, holdout: float, seen: dict | None) -> list[dict[str, object]]:
+    """The frozen reports for one program, as the console's panel reads them.
+
+    Built through `zolts.report`, so the verdict on screen is the verdict the
+    runtime would freeze — including the one that resolves nothing.
+    """
+    from zolts.baseline import from_mapping as baseline_from_mapping
+    from zolts.report import BaselineQuote, Comparison, IncrementalityReport
+
+    frozen = FROZEN.get(program.key)
+    opps = OPPORTUNITIES.get(program.key, {"treatment": 0, "control": 0})
+    if not (frozen and seen):
+        return []
+
+    n_control = round(seen["enrolled"] * holdout / 100)
+    n_treat = seen["enrolled"] - n_control
+    before = baseline_from_mapping(DEMO_BASELINE)
+    report = IncrementalityReport(
+        program_key=program.key, program_version=program.version,
+        spec_hash=program.spec_hash,
+        period_start=frozen["period"][0], period_end=frozen["period"][1],
+        holdout_pct=holdout,
+        primary=Comparison(treatment_enrolled=n_treat, control_enrolled=n_control,
+                           treatment_converted=round(seen["treat"] * n_treat),
+                           control_converted=round(seen["ctrl"] * n_control)),
+        opportunities=Comparison(
+            treatment_enrolled=n_treat, control_enrolled=n_control,
+            treatment_converted=opps["treatment"],
+            control_converted=opps["control"]),
+        converted_by_type={"opp_created": opps},
+        unread_conversions=round(seen["treat"] * n_treat * seen["unread"]),
+        touches_sent=frozen["touches"], decisions=frozen["decisions"],
+        credits_by_kind=frozen["credits"],
+        average_opportunity_micros=DEAL_EUR[program.key] * 1_000_000,
+        opportunities_with_amount=DEMO_DEALS_WITH_AMOUNT,
+        baseline=BaselineQuote(
+            digest=before.digest(), window_start=before.window_start,
+            window_end=before.window_end,
+            monthly_spend_micros=before.monthly_spend_micros,
+            meetings=before.meetings, opportunities=before.opportunities,
+            cost_per_meeting_micros=before.cost_per_meeting_micros,
+            cost_per_opportunity_micros=before.cost_per_opportunity_micros))
+    body = report.canonical()
+    primary = body["primary"]
+    pipeline = body["incremental_pipeline_micros"]
+    return [{
+        "id": report.digest()[:8],
+        "periodStart": report.period_start.isoformat(),
+        "periodEnd": report.period_end.isoformat(),
+        "verdict": report.verdict,
+        "digest": report.digest(),
+        "liftPp": None if primary["lift"] is None else round(primary["lift"] * 100, 2),
+        "mdePp": (None if primary["minimum_detectable_effect"] is None
+                  else round(primary["minimum_detectable_effect"] * 100, 2)),
+        "nTreat": primary["treatment_enrolled"], "nControl": primary["control_enrolled"],
+        "incremental": primary["incremental_conversions"],
+        "pipelineEur": None if pipeline is None else round(pipeline / 1_000_000),
+        "withheld": body["pipeline_withheld_because"],
+        "credits": body["credits_total"],
+        "unreadShare": body["unread_share"],
+        "baselineDigest": before.digest(),
+        "frozenAt": f"{report.period_end.isoformat()}T00:00:00+00:00",
+    }]
+
+
 def _spend_view() -> dict[str, object]:
     """A Growth period part-way through, priced by the real price list."""
     from zolts.billing import PLANS
@@ -343,8 +499,12 @@ def build() -> dict:
             # claim that it is.
             "spec": program.spec,
             "meta": program.raw["metadata"],
+            # The signed artefact beside the live figure. Empty for a program
+            # no period has closed on, which is every program in week one.
+            "reports": _frozen_reports(program, holdout, seen),
         }
 
+        opps = OPPORTUNITIES.get(program.key, {"treatment": 0, "control": 0})
         if seen:
             n_control = round(seen["enrolled"] * holdout / 100)
             n_treat = seen["enrolled"] - n_control
@@ -388,9 +548,13 @@ def build() -> dict:
                     f"fewer than {MIN_CONVERSIONS_PER_ARM} conversions in an arm; "
                     "the baseline is not established"),
                 "p95": seen["p95"], "spend": seen["spend"],
-                # Pipeline is only reported when the lift clears the MDE. This
-                # is the product's central claim, so the fixture enforces it.
-                "pipeline": round(delta["absolute"] * n_treat * AVG_OPPORTUNITY_EUR) if significant else None,
+                # Pipeline is euros, and euros come from deals. It multiplied
+                # the conversion lift — mostly positive replies — by a deal
+                # size, pricing a reply as a deal (D-49). It now rests on the
+                # opportunity comparison, computed by the same `zolts.report`
+                # rules the runtime and the frozen report use, and says why
+                # when it rests on nothing.
+                **_pipeline(program.key, n_treat, n_control, opps),
                 # The whole curve, so the surface can offer a holdout slider
                 # without carrying a second copy of the formula in JavaScript.
                 "mdeCurve": {
@@ -408,6 +572,10 @@ def build() -> dict:
                           "unverifiedShare": None,
                           "significant": False, "neededHoldout": None, "p95": None,
                           "spend": 0.0, "pipeline": None,
+                          "pipelineWithheld": "nobody was enrolled",
+                          "incrementalOpportunities": None, "oppTreat": 0, "oppControl": 0,
+                          "avgOpportunityEur": DEAL_EUR[program.key],
+                          "opportunitiesWithAmount": DEMO_DEALS_WITH_AMOUNT,
                           "unresolvedReason": "no enrollments"})
         programs.append(entry)
 

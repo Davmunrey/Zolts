@@ -183,6 +183,14 @@ def main() -> int:
             page.wait_for_selector("#activation-note", timeout=15_000)
             report["activation_note"] = page.locator("#activation-note").inner_text()
 
+            # 3a-bis. The CFO's half of the same screen. A tenant on its first
+            #         day has no frozen report, and the panel has to say that
+            #         rather than be absent — the operator running an
+            #         onboarding is the person who needs to know one is coming
+            #         (ADR-043).
+            frozen = page.locator("div.block", has_text="Frozen reports").first
+            report["frozen_reports_panel"] = frozen.inner_text()[:200]
+
             # 3b. ADR-002 said the UI generates DSL, and the button that
             #     promised it was labelled "Open in editor" and did nothing.
             #     This drives the real one: open it, change the holdout, and
@@ -377,6 +385,10 @@ def main() -> int:
         if not phone[0].get("nav_reachable") or any("clipped" in e for e in phone) \
                 or phone[-1].get("horizontal_overflow"):
             print("the console is not usable at 390px", file=sys.stderr)
+            return 1
+        if "period" not in report.get("frozen_reports_panel", "").lower():
+            print("the Frozen reports panel does not say when one appears:",
+                  report.get("frozen_reports_panel"), file=sys.stderr)
             return 1
         if report["views_sharing_tiles"]:
             print("two views showed the same stat tiles", file=sys.stderr)

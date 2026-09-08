@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 42 | `docs/22`, ADR-001 … ADR-043 |
-| Tests | 1116 | 364 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1120 | 368 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -88,9 +88,10 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Model provider disclosure** | What each agent sends and never sends, that the agent layer is off by default, and that the endpoint is a per-deployment control — with the per-tenant promise two documents made and the code did not keep corrected | `docs/11`, D-42, `test_model_provider_disclosure.py` |
 | **Incrementality report** | What a program did against its holdout, composed from what the runtime already records and frozen at every period close: arms, lift beside the detectable effect, the unread share, decisions, credits by kind, pipeline on opportunities only and only when significant, the baseline's digest quoted. Written once, the document stored verbatim, a verdict that is never *met* | ADR-043, `test_incrementality_report.py`, `smoke_runtime.py` |
 | **A named data supplier** | `enrich.email` is priced, planned by the optimiser and now buyable: Hunter ships as a provider document a tenant registers against their own key, no connector written. A provider's confidence is reported on the scale it was given in, and a registration whose key and document disagree is refused before it is stored | decision 38, D-47, D-48, `test_provider_documents.py` |
+| **The CFO's half of the console** | The frozen report is read on the programme it belongs to: verdict, lift beside the detectable effect, digest, credits, and the baseline it quotes. A tenant with none is told when one appears rather than shown an empty panel | ADR-043, decision 39, `browser_console.py` |
 
 ## How an item earns its place
 
-The register in `docs/22` is the evidence for this ordering. Twenty-eight of forty-eight defects were a specification with no caller. Reading found seventeen of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
+The register in `docs/22` is the evidence for this ordering. Thirty of fifty defects were a specification with no caller. Reading found eighteen of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
 
 So an item is only "done" when something runs it and that run can fail. A specification, a document, a column, a button and a process table have each been the whole of a feature in this repository, and each was found by an execution nobody had performed.

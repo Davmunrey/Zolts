@@ -763,6 +763,7 @@
         "name": "New site and reputation",
         "blueprint": "local-services-multisite"
       },
+      "reports": [],
       "enrolled": 412,
       "nTreat": 371,
       "nControl": 41,
@@ -780,6 +781,12 @@
       "p95": 22,
       "spend": 980.4,
       "pipeline": null,
+      "pipelineWithheld": "the opportunity comparison is not resolvable",
+      "incrementalOpportunities": null,
+      "oppTreat": 21,
+      "oppControl": 1,
+      "avgOpportunityEur": 3200,
+      "opportunitiesWithAmount": 1488,
       "mdeCurve": {
         "5": 13.81,
         "6": 12.72,
@@ -978,6 +985,7 @@
         "name": "Replenishment winback",
         "blueprint": "ecommerce-dtc"
       },
+      "reports": [],
       "enrolled": 8930,
       "nTreat": 8037,
       "nControl": 893,
@@ -995,6 +1003,12 @@
       "p95": 12,
       "spend": 611.4,
       "pipeline": null,
+      "pipelineWithheld": "the opportunity comparison is not significant",
+      "incrementalOpportunities": null,
+      "oppTreat": 1180,
+      "oppControl": 121,
+      "avgOpportunityEur": 180,
+      "opportunitiesWithAmount": 1488,
       "mdeCurve": {
         "5": 5.32,
         "6": 4.88,
@@ -1275,6 +1289,26 @@
         "blueprint": "b2b-saas-sales-led",
         "description": "Recent Series A plus RevOps/Data roles opened => multithreaded outbound"
       },
+      "reports": [
+        {
+          "id": "af4d61f2",
+          "periodStart": "2026-05-01",
+          "periodEnd": "2026-06-01",
+          "verdict": "not significant",
+          "digest": "af4d61f2f544cdabf7ba3743c92d42930eed77d7a2f762be98a11b9fe7124eba",
+          "liftPp": 4.48,
+          "mdePp": 5.06,
+          "nTreat": 1156,
+          "nControl": 128,
+          "incremental": null,
+          "pipelineEur": null,
+          "withheld": "the opportunity comparison is not resolvable (fewer than 5 conversions in an arm; the baseline is not established)",
+          "credits": 10275.0,
+          "unreadShare": 0.294118,
+          "baselineDigest": "b4986435f475eadc462762be3447563116f4f26d39a25036ec6d1e2dfce24a75",
+          "frozenAt": "2026-06-01T00:00:00+00:00"
+        }
+      ],
       "enrolled": 1284,
       "nTreat": 1156,
       "nControl": 128,
@@ -1292,6 +1326,12 @@
       "p95": 41,
       "spend": 3426.32,
       "pipeline": null,
+      "pipelineWithheld": "the opportunity comparison is not resolvable",
+      "incrementalOpportunities": null,
+      "oppTreat": 34,
+      "oppControl": 1,
+      "avgOpportunityEur": 24000,
+      "opportunitiesWithAmount": 1488,
       "mdeCurve": {
         "5": 6.69,
         "6": 6.13,
@@ -1488,6 +1528,26 @@
         "name": "Workspace expansion trigger",
         "blueprint": "b2b-saas-plg"
       },
+      "reports": [
+        {
+          "id": "fa84b29f",
+          "periodStart": "2026-05-01",
+          "periodEnd": "2026-06-01",
+          "verdict": "significant",
+          "digest": "fa84b29f01a4258b3a64e78bdd2d95e88d61142fe05a03a10516daf38498c911",
+          "liftPp": 5.33,
+          "mdePp": 4.19,
+          "nTreat": 1819,
+          "nControl": 321,
+          "incremental": 97,
+          "pipelineEur": 592200,
+          "withheld": null,
+          "credits": 3622.0,
+          "unreadShare": 0.0,
+          "baselineDigest": "b4986435f475eadc462762be3447563116f4f26d39a25036ec6d1e2dfce24a75",
+          "frozenAt": "2026-06-01T00:00:00+00:00"
+        }
+      ],
       "enrolled": 2140,
       "nTreat": 1819,
       "nControl": 321,
@@ -1504,7 +1564,13 @@
       "unresolvedReason": null,
       "p95": 9,
       "spend": 842.16,
-      "pipeline": 2401080,
+      "pipeline": 592200,
+      "pipelineWithheld": null,
+      "incrementalOpportunities": 63,
+      "oppTreat": 120,
+      "oppControl": 10,
+      "avgOpportunityEur": 9400,
+      "opportunitiesWithAmount": 1488,
       "mdeCurve": {
         "5": 6.8,
         "6": 6.25,

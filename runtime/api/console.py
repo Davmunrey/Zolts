@@ -12,14 +12,14 @@ whether it is looking at a demo or a tenant.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from runtime import fleet
 from runtime.repo import enrollments, programs
 from zolts import dsl
 from zolts.catalog import load_catalog
-from zolts.experiment import MIN_CONVERSIONS_PER_ARM, is_resolvable, lift, minimum_detectable_effect
+from zolts.experiment import MIN_CONVERSIONS_PER_ARM, minimum_detectable_effect
+from zolts.report import BASELINE_RATE_FLOOR, SIGNIFICANT, Comparison
 from zolts import report as report_rules
 
 # Outcomes that count as the primary conversion: one definition, in
@@ -27,8 +27,6 @@ from zolts import report as report_rules
 # the three cannot disagree about what converts. A list, because psycopg
 # adapts a tuple as a row and a list as the array `= any(%s)` needs.
 CONVERSION_TYPES = list(report_rules.CONVERSION_TYPES)
-
-AVG_OPPORTUNITY_EUR = 24_000
 
 # The holdout range the console plots. Below 5 the estimate is unstable; above
 # 25 the cost of the holdout exceeds what the precision buys.
@@ -54,6 +52,55 @@ def _unverified(cur, program_id: str) -> tuple[int, int]:
     return int(row["unread"] or 0), int(row["total"] or 0)
 
 
+def _reports(cur, program_id: str) -> list[dict[str, Any]]:
+    """The frozen incrementality reports for a program, newest period first.
+
+    Read out of the stored canonical body rather than recomputed: the point of
+    freezing one (ADR-043) is that the number a partner read in month three is
+    the number this screen shows in month nine, and a surface that recomputed
+    it would be a second answer with the same name.
+
+    Six of them, which is two quarters of monthly periods — enough to see a
+    verdict change, short enough that the panel stays a panel.
+    """
+    cur.execute(
+        "select id, period_start, period_end, verdict, digest, body, frozen_at"
+        " from incrementality_report where program_id = %s"
+        " order by period_end desc, frozen_at desc limit 6", (program_id,))
+    out = []
+    for row in cur.fetchall():
+        body = row["body"] or {}
+        primary = body.get("primary") or {}
+        pipeline = body.get("incremental_pipeline_micros")
+        baseline = body.get("baseline") or {}
+        out.append({
+            "id": str(row["id"]),
+            "periodStart": row["period_start"].isoformat(),
+            "periodEnd": row["period_end"].isoformat(),
+            "verdict": row["verdict"],
+            "digest": row["digest"],
+            # Percentage points, the unit the rest of this panel is in.
+            "liftPp": (None if primary.get("lift") is None
+                       else round(primary["lift"] * 100, 2)),
+            "mdePp": (None if primary.get("minimum_detectable_effect") is None
+                      else round(primary["minimum_detectable_effect"] * 100, 2)),
+            "nTreat": primary.get("treatment_enrolled", 0),
+            "nControl": primary.get("control_enrolled", 0),
+            "incremental": primary.get("incremental_conversions"),
+            # Euros, because the report holds micros and no screen reads micros.
+            "pipelineEur": None if pipeline is None else round(pipeline / 1_000_000),
+            # Why there is no figure, in the report's own words. A dash with no
+            # reason is what made the live console's first measurement panel
+            # unreadable (D-28).
+            "withheld": body.get("pipeline_withheld_because"),
+            "credits": body.get("credits_total", 0),
+            "unreadShare": body.get("unread_share"),
+            "baselineDigest": baseline.get("digest"),
+            "frozenAt": row["frozen_at"].isoformat(),
+        })
+    return out
+
+
 def _rates(cur, program_id: str) -> tuple[int, int, int, int]:
     counts = enrollments.variant_counts(cur, program_id)
     cur.execute(
@@ -64,6 +111,39 @@ def _rates(cur, program_id: str) -> tuple[int, int, int, int]:
     converted = {r["variant"]: int(r["converted"]) for r in cur.fetchall()}
     return (counts.get("treatment", 0), counts.get("control", 0),
             converted.get("treatment", 0), converted.get("control", 0))
+
+
+def _opportunity_conversions(cur, program_id: str) -> tuple[int, int]:
+    """Enrollments in each arm that produced an opportunity.
+
+    Separate from `_rates` because euros come from deals: a lift measured over
+    every conversion type is mostly positive replies, and multiplying that by a
+    deal size prices a reply as a deal (D-49).
+    """
+    cur.execute(
+        "select e.variant, count(distinct o.enrollment_id) as converted"
+        " from enrollment e join outcome o on o.enrollment_id = e.id"
+        " where e.program_id = %s and o.type = 'opp_created' group by e.variant",
+        (program_id,))
+    converted = {r["variant"]: int(r["converted"]) for r in cur.fetchall()}
+    return converted.get("treatment", 0), converted.get("control", 0)
+
+
+def _deal_value(cur) -> tuple[int | None, int]:
+    """The tenant's own average deal amount, in micros, and what it averages.
+
+    Theirs, not ours, and no longer a constant in this file. A runtime that
+    carried an average deal size priced every tenant's pipeline at a number
+    somebody here chose — €24,000, a mid-market B2B SaaS figure, applied to an
+    ecommerce reorder as readily as to an enterprise contract (D-49). The demo
+    declares its own assumption in `scripts/seed_demo.py`; a tenant with no
+    amounts synced gets no figure and the reason why.
+    """
+    cur.execute("select avg(amount_micros)::bigint as average, count(*) as n"
+                " from opportunity where amount_micros is not null and amount_micros > 0")
+    row = cur.fetchone()
+    n = int(row["n"] or 0)
+    return (int(row["average"]) if n else None), n
 
 
 def _spend_and_latency(cur, program_id: str) -> tuple[float, int | None, int | None]:
@@ -129,23 +209,40 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
     holdout = float(experiment.get("holdout_pct", 0))
 
     # Enrolled in both arms is enough to show rates. Declaring an effect needs
-    # a baseline the control arm actually establishes.
+    # a baseline the control arm actually establishes — and that judgement is
+    # `zolts.report.Comparison`, the same object the frozen report is made of,
+    # so this screen and the signed document cannot reach different verdicts
+    # about the same two arms (ADR-043).
     measurable = n_treat > 0 and n_control > 0
-    resolvable = measurable and is_resolvable(c_treat, c_control)
-    baseline = max(control_rate, 0.01)
-    mde = (minimum_detectable_effect(baseline_rate=baseline, n_treatment=n_treat,
-                                     n_control=n_control) * 100) if resolvable else None
-    movement = lift(treat_rate, control_rate) if measurable else {}
-    abs_lift = round(movement.get("absolute", 0.0) * 100, 2) if measurable else None
+    primary = Comparison(treatment_enrolled=n_treat, control_enrolled=n_control,
+                         treatment_converted=c_treat, control_converted=c_control)
+    resolvable = primary.resolvable
+    baseline = max(control_rate, BASELINE_RATE_FLOOR)
+    mde = (None if primary.minimum_detectable_effect is None
+           else primary.minimum_detectable_effect * 100)
+    abs_lift = round((primary.lift or 0.0) * 100, 2) if measurable else None
     spend, p95, detection_p95 = _spend_and_latency(cur, program_id)
     unread, converted_total = _unverified(cur, program_id)
 
-    # Pipeline is reported only when the lift clears the effect the sample can
-    # detect. A number that reads as a result and is not one is the failure the
-    # product exists to prevent, so it is withheld rather than caveated.
-    significant = bool(resolvable and abs_lift is not None and abs_lift > mde)
-    pipeline = (round(n_treat * (abs_lift / 100) * AVG_OPPORTUNITY_EUR)
-                if significant and abs_lift else None)
+    # Pipeline is euros, and euros come from deals. It multiplied the lift in
+    # *conversions* — a set that is mostly positive replies — by an assumed
+    # deal size, so a reply counted as an opportunity and the figure overstated
+    # by the whole reply-to-opportunity ratio (D-49). It now rests on the
+    # opportunity comparison and on the tenant's own average deal amount, and
+    # says why when it rests on neither.
+    o_treat, o_control = _opportunity_conversions(cur, program_id)
+    opportunities = Comparison(treatment_enrolled=n_treat, control_enrolled=n_control,
+                               treatment_converted=o_treat, control_converted=o_control)
+    average_micros, with_amount = _deal_value(cur)
+    increment = opportunities.incremental_conversions
+    significant = primary.verdict == SIGNIFICANT
+    pipeline = (None if increment is None or average_micros is None
+                else round(increment * average_micros / 1_000_000))
+    withheld = None
+    if pipeline is None:
+        withheld = ("the CRM holds no opportunity with an amount"
+                    if increment is not None else
+                    f"the opportunity comparison is {opportunities.verdict}")
 
     needed = None
     if resolvable and abs_lift is not None and not significant:
@@ -193,9 +290,8 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
         "absLift": abs_lift,
         # Relative lift is infinite at a zero control rate, which is not a
         # number a screen can carry and not one JSON can encode.
-        "relLift": (round(movement["relative"], 2)
-                    if measurable and math.isfinite(movement.get("relative", math.inf))
-                    else None),
+        "relLift": (round(primary.treatment_rate / primary.control_rate, 2)
+                    if measurable and primary.control_rate else None),
         "mde": round(mde, 2) if mde is not None else None,
         "significant": significant, "neededHoldout": needed,
         # Named so the surface can say why rather than showing a silent dash.
@@ -210,7 +306,21 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
         # two to change, and they need opposite fixes.
         "detectionP95": detection_p95,
         "spend": spend, "pipeline": pipeline,
+        # Euros against the holdout, and what they rest on: how many
+        # opportunities the holdout says would not have existed, and the
+        # tenant's own average deal amount rather than a constant. Null with a
+        # reason beside it, never a silent dash (D-28).
+        "pipelineWithheld": withheld,
+        "incrementalOpportunities": increment,
+        "oppTreat": o_treat, "oppControl": o_control,
+        "avgOpportunityEur": (None if average_micros is None
+                              else round(average_micros / 1_000_000)),
+        "opportunitiesWithAmount": with_amount,
         "mdeCurve": _mde_curve(baseline, enrolled) if enrolled else {},
+        # The signed artefact, beside the live figure it was frozen from. The
+        # CFO surface `docs/17` asks for is derived from what the operator
+        # already produced and asks the customer for nothing (ADR-043).
+        "reports": _reports(cur, program_id),
     }
 
 
