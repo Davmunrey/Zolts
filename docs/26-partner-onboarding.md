@@ -160,15 +160,15 @@ select verdict, period_start, period_end, digest, frozen_at
 >
 > **Before.** The baseline frozen on [date] with digest `[64 hex characters]`, declared by [name, role]: monthly GTM spend of €[tools] on tools, €[data] on data, €[sending] on sending and €[people] on people; in the ninety days to [window end], [contacted] contacts made, [replied] replies, [meetings] meetings and [opportunities] opportunities — a cost per meeting of €[x] and per opportunity of €[y]. The row is written once and the digest can be recomputed from it by either party.
 >
-> **What runs.** [Program key], on [blueprint], with a [10]% holdout assigned deterministically per account. The holdout is not waived. A conversion is a positive reply, a meeting or an opportunity created, and the measurement reports how many replies were read by a person beside how many were counted (decision 16).
+> **What runs.** [Program key], on [blueprint], with a [10]% holdout assigned deterministically per account. The holdout is not waived. A conversion is what the programme's declared `primary_metric` counts, inside the window that metric names — for [program key], [metric] — and it is named in the frozen report and covered by its digest (decision 40), and the measurement reports how many replies were read by a person beside how many were counted (decision 16).
 >
 > **Success.** Measured on the treatment arm against the holdout, over the term:
 >
 > | Criterion | Threshold | Where it is read |
 > |---|---|---|
-> | Positive reply rate | >3% | the frozen report's treatment arm (`primary.treatment_rate`); live, `GET /v1/programs/{program_id}/measurement` |
+> | Positive reply rate | >3% | the frozen report's `converted_by_type.reply_positive.treatment` over `primary.treatment_enrolled`. **Not** `primary.treatment_rate`: since decision 40 that is the rate of the programme's own declared metric, which for the flagship is opportunities |
 > | Email bounce rate | <2% | the Sending view; a domain paused by a cut-off is a failed criterion |
-> | Incremental lift versus holdout | >1.5×, with the minimum detectable effect reported beside it | the frozen report's `primary.lift` beside `primary.minimum_detectable_effect`, and its `verdict` |
+> | Incremental lift versus holdout | >1.5×, with the minimum detectable effect reported beside it | the frozen report's `primary.lift` beside `primary.minimum_detectable_effect`, and its `verdict` — on `primary_metric`, which the report names and the digest covers |
 > | Every action carries a recorded policy decision | 100% | the report's decision counts; enforced by construction |
 >
 > The read at the end of the term is the **incrementality report** frozen at the close of the term's last billing period — `GET /v1/programs/{program_id}/reports`, digest quoted on both copies — not a figure read off a screen on the day. A criterion that is not significant at the end of the term is reported as not significant, not as met; a criterion the sample cannot resolve is reported as not resolvable.

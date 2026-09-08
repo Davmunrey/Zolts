@@ -29,12 +29,13 @@ from datetime import date
 
 from zolts.experiment import (MIN_CONVERSIONS_PER_ARM, is_resolvable,
                               minimum_detectable_effect)
+from zolts.metrics import DEFAULT as DEFAULT_METRIC
 
-# Outcomes that count as the primary conversion. A program declares its own
-# primary metric; until outcome types are mapped per program this is the set
-# the runtime records, and it is named once, here, so the measurement
-# endpoint, the console and the report cannot disagree about what converts.
-CONVERSION_TYPES = ("opp_created", "meeting", "reply_positive")
+# What counts when a program declares no primary metric. A program that does
+# declare one is measured on that metric's own events inside its own window
+# (`zolts.metrics`, D-51); this is the fallback, defined there so the
+# measurement endpoint, the console and this module cannot disagree.
+CONVERSION_TYPES = DEFAULT_METRIC.events
 
 SIGNIFICANT = "significant"
 NOT_SIGNIFICANT = "not significant"
@@ -198,6 +199,11 @@ class IncrementalityReport:
     holdout_pct: float
     primary: Comparison
     opportunities: Comparison
+    # What the primary comparison counted, and for how long after each account
+    # entered. Part of the digest: two reports with the same arms and
+    # different metrics are two different claims (D-51).
+    primary_metric: str = DEFAULT_METRIC.name
+    metric_window_days: int = DEFAULT_METRIC.window_days
     # Conversions by outcome type and arm, so the composition of the primary
     # number is visible: a lift made of positive replies is not a lift made
     # of opportunities, and the reader should not have to trust that.
@@ -276,6 +282,8 @@ class IncrementalityReport:
             "period_start": self.period_start.isoformat(),
             "period_end": self.period_end.isoformat(),
             "holdout_pct": self.holdout_pct,
+            "primary_metric": self.primary_metric,
+            "metric_window_days": self.metric_window_days,
             "primary": self.primary.canonical(),
             "opportunities": self.opportunities.canonical(),
             "converted_by_type": {t: dict(sorted(arms.items()))
@@ -325,8 +333,9 @@ class IncrementalityReport:
             f"| Control | {p.control_enrolled} | {p.control_converted} "
             f"| {_pct_rate(p.control_rate)} |",
             "",
-            _lift_sentence(p) + " A conversion is a positive reply, a meeting or an "
-            f"opportunity created. Conversions counted: {self.conversions}; of them "
+            _lift_sentence(p) + f" A conversion here is what `{self.primary_metric}` "
+            f"counts, inside {self.metric_window_days} days of enrolment. "
+            f"Conversions counted: {self.conversions}; of them "
             f"resting on a reply nobody read: {self.unread_conversions}"
             + (f" ({_pct(round(100 * self.unread_share, 1))})"
                if self.unread_share is not None else "")
@@ -444,6 +453,9 @@ def from_mapping(data: dict[str, object]) -> IncrementalityReport:
             period_start=date.fromisoformat(str(data["period_start"])),
             period_end=date.fromisoformat(str(data["period_end"])),
             holdout_pct=float(data["holdout_pct"]),
+            primary_metric=str(data.get("primary_metric") or DEFAULT_METRIC.name),
+            metric_window_days=int(data.get("metric_window_days")
+                                   or DEFAULT_METRIC.window_days),
             primary=_comparison(primary),
             opportunities=_comparison(opps),
             converted_by_type={str(t): {str(a): int(n) for a, n in arms.items()}

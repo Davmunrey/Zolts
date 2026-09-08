@@ -31,7 +31,7 @@ from runtime.repo import (actions, baseline as baseline_repo, enrollments, entit
                           ledger, mappings, programs, proposals, reports as reports_repo)
 from runtime.surface import content_security_policy, document, inject
 from zolts import dsl, experiment
-from zolts.report import CONVERSION_TYPES
+from zolts import metrics
 
 SURFACE = Path(__file__).resolve().parent.parent.parent / "design" / "console.html"
 
@@ -725,12 +725,12 @@ def create_app(db: Database, *, install_connectors: bool = True,
             if program is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "program not found")
             counts = enrollments.variant_counts(cur, program_id)
-            cur.execute(
-                "select e.variant, count(distinct o.enrollment_id) as converted"
-                " from enrollment e join outcome o on o.enrollment_id = e.id"
-                " where e.program_id = %s and o.type = any(%s) group by e.variant",
-                (program_id, list(CONVERSION_TYPES)))
-            converted = {r["variant"]: int(r["converted"]) for r in cur.fetchall()}
+            # The metric this programme declared, counted inside the window it
+            # declared. Every programme used to be measured on the same three
+            # outcome types with no window at all (D-51).
+            metric = metrics.resolve(
+                (program["spec"].get("experiment") or {}).get("primary_metric"))
+            converted = console._converted(cur, program_id, metric)
 
         treatment = counts.get("treatment", 0)
         control = counts.get("control", 0)
@@ -751,7 +751,9 @@ def create_app(db: Database, *, install_connectors: bool = True,
             program_key=program["key"], treatment=treatment, control=control,
             holdout_pct=holdout, treatment_rate=t_rate, control_rate=c_rate,
             lift_pp=lift_pp, minimum_detectable_effect_pp=mde * 100 if resolvable else -1,
-            significant=bool(resolvable and lift_pp > mde * 100))
+            significant=bool(resolvable and lift_pp > mde * 100),
+            primary_metric=metric.name, metric_counts=metric.describes,
+            metric_window_days=metric.window_days)
 
     # -- CRM mappings ----------------------------------------------------
 

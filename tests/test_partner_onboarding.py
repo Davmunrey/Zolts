@@ -90,3 +90,41 @@ def test_the_letter_quotes_the_pilot_terms_docs_18_decided():
     assert "€5k" in text and "three months" in text, (
         "the pilot terms (decision B7: always paid, €5k for three months) are not on the page")
     assert "digest" in text, "the letter does not quote the baseline digest"
+
+
+def test_every_report_path_the_letter_names_resolves_in_a_real_report():
+    """The letter tells a partner where to read each criterion. A path that
+    does not exist in the frozen document is a criterion nobody can check —
+    and one of them stopped existing when `primary.treatment_rate` became the
+    declared metric's rate rather than the reply rate (decision 40, D-51)."""
+    import re
+    from datetime import date
+
+    from zolts.report import BaselineQuote, Comparison, IncrementalityReport
+
+    body = IncrementalityReport(
+        program_key="k", program_version="1.0.0", spec_hash="h",
+        period_start=date(2026, 1, 1), period_end=date(2026, 4, 1), holdout_pct=10.0,
+        primary_metric="opportunity_created_90d", metric_window_days=90,
+        primary=Comparison(100, 100, 9, 4),
+        opportunities=Comparison(100, 100, 9, 4),
+        converted_by_type={"reply_positive": {"treatment": 12, "control": 5}},
+        decisions={"allow": 90}, credits_by_kind={"email.send": 90.0},
+        baseline=BaselineQuote(digest="f" * 64, window_start=date(2025, 9, 1),
+                               window_end=date(2025, 12, 1), monthly_spend_micros=1,
+                               meetings=1, opportunities=1,
+                               cost_per_meeting_micros=1,
+                               cost_per_opportunity_micros=1)).canonical()
+
+    # Backticked dotted paths in the letter's criteria table, e.g.
+    # `converted_by_type.reply_positive.treatment`.
+    criteria = PAGE.read_text()
+    criteria = criteria[criteria.index("> **Success.**"):criteria.index("> **After.**")]
+    paths = {p for p in re.findall(r"`([a-z_]+(?:\.[a-z_]+)+)`", criteria)}
+    assert paths, "the letter names no report path at all"
+    for path in paths:
+        current = body
+        for part in path.split("."):
+            assert isinstance(current, dict) and part in current, (
+                f"the letter reads `{path}` and a frozen report has no {part!r}")
+            current = current[part]

@@ -116,7 +116,7 @@ def test_a_program_with_no_conversions_reports_no_share(db, tenant):
 @requires_db
 def test_a_classified_negative_is_not_a_conversion_at_all(db, tenant):
     """Reading the reply is what makes the difference. Unread, it counted."""
-    from runtime.api.console import CONVERSION_TYPES
+    from zolts.metrics import DEFAULT as METRIC
 
     tid = str(tenant["id"])
     with db.tenant_tx(tid) as cur:
@@ -124,7 +124,7 @@ def test_a_classified_negative_is_not_a_conversion_at_all(db, tenant):
         cur.execute("select type, verified_by from outcome")
         row = cur.fetchone()
     assert row["type"] == "reply_negative"
-    assert row["type"] not in CONVERSION_TYPES
+    assert row["type"] not in METRIC.events
     assert row["verified_by"] == "triage"
 
 
