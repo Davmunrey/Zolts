@@ -19,7 +19,8 @@ class DecisionWithoutAReason(ValueError):
 
 def record_decision(cur, tenant_id: str, *, subject_type: str, subject_id: str,
                     action: str, decision: str, rule_key: str,
-                    jurisdiction: str | None, rationale: str) -> str:
+                    jurisdiction: str | None, rationale: str,
+                    pack_version: str, pack_digest: str) -> str:
     """Record one decision. The reason is not optional.
 
     Invariant 3 asks for allow or deny *with a reason*, and only the first two
@@ -35,12 +36,20 @@ def record_decision(cur, tenant_id: str, *, subject_type: str, subject_id: str,
         raise DecisionWithoutAReason(
             f"{action} on {subject_type} {subject_id} decided '{decision}' under "
             f"rule '{rule_key}' with no reason recorded")
+    # And which rules. A reason that names a rule key is only half an answer
+    # while the rules live in code that changes every release: the digest is
+    # what makes the reason reproducible years later (D-53).
+    if not (pack_digest or "").strip():
+        raise DecisionWithoutAReason(
+            f"{action} on {subject_type} {subject_id} decided '{decision}' without "
+            f"naming the policy pack that decided it")
     cur.execute(
         "insert into policy_decision (tenant_id, subject_type, subject_id, action,"
-        " decision, rule_key, jurisdiction, rationale) values (%s,%s,%s,%s,%s,%s,%s,%s)"
+        " decision, rule_key, jurisdiction, rationale, pack_version, pack_digest)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
         " returning id",
         (tenant_id, subject_type, subject_id, action, decision, rule_key,
-         jurisdiction, rationale),
+         jurisdiction, rationale, pack_version, pack_digest),
     )
     return str(one(cur)["id"])
 

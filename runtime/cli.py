@@ -168,6 +168,13 @@ def main(argv: list[str] | None = None) -> int:
     close = sub.add_parser("close-period", help="close a tenant's billing period")
     close.add_argument("--tenant", required=True)
 
+    pack = sub.add_parser(
+        "policy-pack",
+        help="publish a jurisdiction pack, or print the one decisions cite")
+    pack.add_argument("--file", help="a pack document; omitted, prints the active pack")
+    pack.add_argument("--version", help="the version new decisions will cite")
+    pack.add_argument("--history", action="store_true", help="what has been published")
+
     rep = sub.add_parser(
         "report", help="print the frozen incrementality reports; frozen at close-period")
     rep.add_argument("--tenant", required=True)
@@ -465,6 +472,41 @@ def main(argv: list[str] | None = None) -> int:
                           "reports": [{"program": str(r["program_id"]),
                                        "verdict": r["verdict"], "digest": r["digest"]}
                                       for r in frozen]}, indent=2))
+        return 0
+
+    if args.command == "policy-pack":
+        # Deliberately not an HTTP route, and deliberately not per tenant: a
+        # surface where a customer edits what a regulator requires is not one
+        # this product should have (D-53). Same reasoning as `invite`.
+        from runtime import policy_packs
+        from zolts.policy import PackDocumentError
+
+        with db.admin_tx() as cur:
+            if args.history:
+                print(json.dumps(policy_packs.history(cur), indent=2, default=str))
+                return 0
+            if not args.file:
+                current = policy_packs.active(cur)
+                print(json.dumps({k: current[k] for k in
+                                  ("version", "digest", "published_by", "published_at")},
+                                 indent=2, default=str))
+                return 0
+            if not args.version:
+                print("--version names what new decisions will cite", file=sys.stderr)
+                return 2
+            raw = sys.stdin.read() if args.file == "-" else Path(args.file).read_text()
+            try:
+                document = json.loads(raw) if raw.lstrip().startswith("{") else \
+                    __import__("yaml").safe_load(raw)
+                published = policy_packs.publish(cur, document, version=args.version,
+                                                 published_by="operator")
+            except (PackDocumentError, ValueError) as exc:
+                print(f"the pack cannot be published as written: {exc}", file=sys.stderr)
+                return 2
+        print(json.dumps({"version": published["version"], "digest": published["digest"],
+                          "note": "decisions taken from now on cite this digest; the packs "
+                                  "before it are kept so their decisions still resolve"},
+                         indent=2))
         return 0
 
     if args.command == "report":

@@ -2,8 +2,18 @@
 
 Claim under test (docs/11): every external action passes a jurisdictional
 evaluation before it executes, and the default posture blocks rather than
-permits. Packs are data, not code, so a regulatory change ships without a
-deployment.
+permits.
+
+**Packs are documents.** `PACK_V1` below is the one a deployment ships with;
+a published pack is a row, so a regulatory change is an operator publishing a
+document rather than an engineer shipping a release (`runtime/policy_packs.py`).
+That sentence used to be here as a claim while the only pack was this dict,
+which is the shape of every defect in `docs/22` (D-53).
+
+**A decision records the pack that made it.** `pack_digest` hashes the whole
+document, the digest is stored on every `policy_decision`, and the body it
+hashes is kept — so the rule that decided can be produced years later instead
+of inferred from whatever this file says today.
 
 This is product logic, not legal advice. Packs require counsel validation
 before production use.
@@ -11,9 +21,12 @@ before production use.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, replace, field
 from datetime import datetime, time
 from enum import Enum
+from typing import Any
 
 
 class Decision(str, Enum):
@@ -114,6 +127,11 @@ PACK_V1: dict[str, JurisdictionRule] = {
     ),
 }
 
+# The shipped pack's version. A pack published later carries its own; this is
+# the one a deployment falls back to when nothing has been published, so a
+# fresh database is never running unversioned rules (D-53).
+PACK_V1_VERSION = "1"
+
 # An unknown jurisdiction is not an implicit allow. Consent is required until a
 # pack exists, which is the whole point of a default-deny posture.
 UNKNOWN_JURISDICTION = JurisdictionRule(
@@ -124,6 +142,73 @@ UNKNOWN_JURISDICTION = JurisdictionRule(
 
 def rule_for(country: str, pack: dict[str, JurisdictionRule] | None = None) -> JurisdictionRule:
     return (pack or PACK_V1).get(country.upper(), UNKNOWN_JURISDICTION)
+
+
+class PackDocumentError(ValueError):
+    """A pack document that cannot be read as a set of rules."""
+
+
+def to_document(pack: dict[str, JurisdictionRule]) -> dict[str, Any]:
+    """The pack as the document that is stored and hashed.
+
+    Every field a rule decides by, in a stable order. What is *not* here is as
+    important as what is: a document that omitted `quiet_hours` would hash the
+    same before and after a change to them, and the digest would certify a
+    rule it never covered.
+    """
+    return {
+        "rules": {
+            country: {
+                "country": rule.country,
+                "required_basis": {channel: basis.value
+                                   for channel, basis in sorted(rule.required_basis.items())},
+                "blocked_channels": sorted(rule.blocked_channels),
+                "suppression_lists": list(rule.suppression_lists),
+                "quiet_hours": [rule.quiet_hours[0].isoformat(),
+                                rule.quiet_hours[1].isoformat()],
+            }
+            for country, rule in sorted(pack.items())
+        }
+    }
+
+
+def from_document(document: dict[str, Any]) -> dict[str, JurisdictionRule]:
+    """A pack read back from its stored document.
+
+    Strict on the way in. A rule this cannot read is refused rather than
+    dropped: a pack silently missing Germany is a pack that allows German
+    cold email, which is the one failure the default-deny posture exists to
+    prevent.
+    """
+    rules = (document or {}).get("rules")
+    if not isinstance(rules, dict) or not rules:
+        raise PackDocumentError("the pack document declares no rules")
+    out: dict[str, JurisdictionRule] = {}
+    for country, raw in rules.items():
+        try:
+            out[str(country).upper()] = JurisdictionRule(
+                country=str(raw["country"]),
+                required_basis={str(channel): Basis(value)
+                                for channel, value in (raw.get("required_basis") or {}).items()},
+                blocked_channels=frozenset(raw.get("blocked_channels") or ()),
+                suppression_lists=tuple(raw.get("suppression_lists") or ()),
+                quiet_hours=(time.fromisoformat(raw["quiet_hours"][0]),
+                             time.fromisoformat(raw["quiet_hours"][1])),
+            )
+        except (KeyError, TypeError, ValueError, IndexError) as exc:
+            raise PackDocumentError(f"rule for {country!r} cannot be read: {exc}") from exc
+    return out
+
+
+def pack_digest(pack: dict[str, JurisdictionRule]) -> str:
+    """sha256 over the pack's document.
+
+    A policy decision records this beside its rule key, so the rule that
+    decided can be produced years later rather than inferred from whatever
+    the code says today (D-53).
+    """
+    blob = json.dumps(to_document(pack), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def evaluate(

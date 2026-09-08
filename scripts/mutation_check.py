@@ -148,6 +148,13 @@ MUTATIONS = (
         replace='        " group by e.variant",\n'
                 '        (program_id, list(metric.events)))',
         tests="tests/test_metrics.py"),
+    Mutation(
+        id="the-gate-decides-under-the-published-pack",
+        claim="a send is judged by the pack that was published, not the one in this release",
+        path="runtime/engine/gate.py",
+        find="pack=policy_packs.rules_of(pack_row),",
+        replace="pack=None,",
+        tests="tests/test_policy_packs.py"),
 )
 
 

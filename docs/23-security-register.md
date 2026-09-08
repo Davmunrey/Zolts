@@ -23,6 +23,7 @@ A control with no test is an intention. Each row names the check that fails if t
 
 | Control | Held by |
 |---|---|
+| A policy decision names the pack that made it | `policy_pack` holds the published document, one active at a time; `record_decision` refuses a decision that cannot name its version and digest, and the body behind a digest is kept for as long as the decisions citing it (ADR-044, D-53). `test_policy_packs.py` |
 | `force row level security` on every tenant-scoped table — the owning role is bound by the policy too | `test_runtime_isolation.py`; preflight reports it |
 | A query that sets no tenant **raises** rather than returning an empty set | `test_a_query_without_a_tenant_raises_rather_than_returning_nothing` |
 | A tenant cannot read another's rows | `test_a_tenant_reads_only_its_own_rows` |

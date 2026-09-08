@@ -109,3 +109,12 @@ def _clean_database(request):
         # Not under `tenant`: a heartbeat is a worker's, not a tenant's, and
         # one test's tick must not make the next test's deployment look alive.
         cur.execute("delete from worker_heartbeat")
+        # Packs are not a tenant's, so `truncate tenant cascade` leaves them:
+        # a test that publishes one would decide the next test's sends. Emptied
+        # and reinstalled rather than filtered by publisher, because publishing
+        # the shipped digest again rewrites that row's publisher and a filter
+        # would then delete the only pack there is.
+        from runtime import policy_packs
+
+        cur.execute("delete from policy_pack")
+        policy_packs.install_shipped(cur)

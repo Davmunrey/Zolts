@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from runtime import policy_packs
 from runtime.repo import entities, ledger
 from zolts import policy
 
@@ -98,12 +99,18 @@ def check(cur, tenant_id: str, *, person: dict[str, Any], channel: str,
     # schema has always allowed four overrides and the runtime read one: a
     # program declaring stricter quiet hours sent at three in the morning, and
     # one naming an extra suppression list did not check it.
-    verdict = policy.evaluate(contact, context, overrides=overrides)
+    # The published pack, not the dict in `zolts/policy.py`. A deployment with
+    # no active pack refuses rather than deciding under rules nobody can name
+    # (D-53), and the decision cites the digest of the rules that produced it.
+    pack_row = policy_packs.active(cur)
+    verdict = policy.evaluate(contact, context, pack=policy_packs.rules_of(pack_row),
+                              overrides=overrides)
     decision_id = ledger.record_decision(
         cur, tenant_id, subject_type="person", subject_id=str(person["id"]),
         action=f"{channel}.send", decision=verdict.decision.value,
         rule_key=verdict.rule_key, jurisdiction=verdict.jurisdiction,
-        rationale=verdict.rationale)
+        rationale=verdict.rationale, pack_version=pack_row["version"],
+        pack_digest=pack_row["digest"])
 
     return GateResult(
         allowed=verdict.allowed, decision=verdict.decision.value,

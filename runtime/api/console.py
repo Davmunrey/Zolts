@@ -402,6 +402,7 @@ def policy_view(cur, limit: int = 200) -> dict[str, Any]:
     """
     cur.execute(
         "select d.decision, d.rule_key, d.jurisdiction, d.action, d.rationale,"
+        "       d.pack_version, d.pack_digest,"
         "       d.decided_at, coalesce(p.full_name, p.email::text) as subject"
         "  from policy_decision d"
         "  left join person p on p.id = d.subject_id"
@@ -409,6 +410,8 @@ def policy_view(cur, limit: int = 200) -> dict[str, Any]:
     recent = [{
         "decision": r["decision"], "rule": r["rule_key"],
         "jurisdiction": r["jurisdiction"] or "—",
+        # The rules that decided, not the rules in today's release.
+        "pack": (r["pack_digest"] or "")[:12] or "—",
         "channel": str(r["action"]).split(".")[0],
         "subject": r["subject"] or "—",
         "rationale": r["rationale"],
@@ -426,9 +429,21 @@ def policy_view(cur, limit: int = 200) -> dict[str, Any]:
 
     allowed = sum(e["allow"] for e in by_rule.values())
     denied = sum(e["deny"] for e in by_rule.values())
+    # Which rules decided, and how many decisions cannot say. A decision with
+    # no pack is one taken before the packs were versioned (D-53); it is
+    # reported rather than hidden, because "we cannot tell you which rule"
+    # is the honest answer and a screen that omitted it would imply otherwise.
+    cur.execute("select pack_version, pack_digest, count(*) as n from policy_decision"
+                " group by pack_version, pack_digest order by n desc")
+    packs = [{"version": r["pack_version"], "digest": r["pack_digest"], "decisions": int(r["n"])}
+             for r in cur.fetchall()]
+    unattributed = sum(p["decisions"] for p in packs if not p["digest"])
+
     return {
         "recent": recent,
         "byRule": sorted(by_rule.values(), key=lambda e: -(e["deny"] + e["allow"])),
+        "packs": [p for p in packs if p["digest"]],
+        "decisionsWithNoPack": unattributed,
         "totals": {"allow": allowed, "deny": denied,
                    # The share of work the engine stopped. A tenant at zero has
                    # either a clean list or a policy that is not running, and

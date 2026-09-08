@@ -16,7 +16,7 @@ evaluate(subject, action, context) → { allow | deny | review, rule_key, ration
 
 Inputs: the contact's effective jurisdiction (country of residence, not of the domain), the legal basis declared per channel, consent state and its provenance, suppression and exclusion lists, frequency limits, local quiet hours, tenant quotas, remaining budget, and the classification of AI-generated content.
 
-Every decision is persisted in `policy_decision` (append-only, 24 months). A DPO can answer "why did this person receive this message?" with a query, not an investigation.
+Every decision is persisted in `policy_decision` (append-only, 24 months) with the pack version and digest that decided it. A DPO can answer "why did this person receive this message?" with a query, not an investigation — and the query returns the rule text that applied at the time.
 
 ## Jurisdiction matrix (policy pack v1 extract)
 
@@ -31,7 +31,9 @@ Every decision is persisted in `policy_decision` (append-only, 24 months). A DPO
 | Canada | CASL: consent (express, or implied within a window) | — | Default pack: blocked unless recorded consent exists |
 | LATAM | Varies by country (LGPD in Brazil, LFPDPPP in Mexico) | Varies | Per-country packs, opt-out by default |
 
-The pack is **data, not code**: it updates without a deployment and is versioned. A regulatory change propagates to every tenant with a changelog and a DPO notification.
+The pack is **data, not code**: a row, published by an operator with `zolts policy-pack --file … --version 2`, one active at a time, and no deployment involved (ADR-044). It was this sentence beside a dict in `zolts/policy.py` until D-53. What still needs building is the notification half: a regulatory change reaches every tenant immediately because there is one active pack, and telling their DPO it happened is an operator writing an email.
+
+**A decision names the rules that made it.** Every `policy_decision` carries the version and the `sha256` digest of the pack that produced it, and the document behind that digest is kept — so *why did this person receive this message* is answered with the rules as they stood that day, not as they stand now. Decisions written before the packs were versioned carry no digest and are reported as unattributed rather than back-filled.
 
 ## GDPR: concrete implementation
 

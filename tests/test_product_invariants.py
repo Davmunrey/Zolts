@@ -111,7 +111,19 @@ def test_a_policy_decision_without_a_reason_is_refused(db, tenant):
                     cur, tenant["id"], subject_type="person",
                     subject_id=str(uuid.uuid4()), action="email.send",
                     decision="deny", rule_key="suppression.unsubscribed",
-                    jurisdiction="ES", rationale=empty)
+                    jurisdiction="ES", rationale=empty,
+                    pack_version="1", pack_digest="test-pack-digest")
+
+        # And the other half of the same invariant: a reason that names a rule
+        # key is only half an answer while the rules live in code that changes
+        # every release, so a decision that cannot name its pack is refused
+        # here too (D-53).
+        with pytest.raises(ledger.DecisionWithoutAReason, match="policy pack"):
+            ledger.record_decision(
+                cur, tenant["id"], subject_type="person",
+                subject_id=str(uuid.uuid4()), action="email.send",
+                decision="allow", rule_key="eu.b2b", jurisdiction="ES",
+                rationale="within the rule", pack_version="1", pack_digest="")
 
 
 @pytest.mark.db

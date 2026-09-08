@@ -301,7 +301,8 @@ def test_the_live_view_model_matches_the_fixtures_shape(client, db, tenant, key)
         ledger.record_decision(cur, str(tenant["id"]), subject_type="person",
                                subject_id=str(person["id"]), action="email.send",
                                decision="deny", rule_key="suppression.unsubscribed",
-                               jurisdiction="ES", rationale="contact opted out of email")
+                               jurisdiction="ES", rationale="contact opted out of email",
+                pack_version="1", pack_digest="test-pack-digest")
     live = client.get("/v1/console", headers=_auth(key)).json()
 
     decision_keys = set(next(iter(fixture["decisions"].values()))[0])
