@@ -17,11 +17,13 @@ OK    actions completing: 0 dead in the last 24 hours
 OK    connections healthy: no connection is in error
 OK    tenants can send: every tenant with live programs can send
 OK    sending domains: no domain is paused by a cut-off
+OK    worker ticking: 1 worker ticked in the last 5 minutes, the latest 0 minutes ago
+OK    inbound handled: everything received was handled
 
 DRAINING
 ```
 
-Six signals, and the section below with the same name says what to do about each. `/health` answers whether the process is up; this answers whether it is doing anything. They are different questions and the second is the one a customer notices.
+Seven signals, and the section below with the same name says what to do about each. `/health` answers whether the process is up; this answers whether it is doing anything. They are different questions and the second is the one a customer notices.
 
 ---
 
@@ -122,6 +124,44 @@ curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://zolts.vercel.app/api/t
 ```
 
 A 401 from that `curl` is a secret that does not match the one the deployment holds; a 503 is a deployment with no secret at all. Either way the cron has been refused on every firing since, and the fix is the variable, not the code.
+
+---
+
+## `inbound handled` is failing
+
+```
+FAIL  inbound handled: N inbound events were received and never handled, the
+      oldest M minutes ago
+```
+
+**What it means.** A provider posted a bounce, an unsubscribe or a reply, the runtime stored it, and the handler that should have acted on it raised. The row keeps `handled = false` and the reason in `error`.
+
+This one is quiet in the way that costs the most. Nothing 500s — the webhook was accepted and the provider is satisfied, so it will not retry. Suppression and measurement are both fed from these events, so every unhandled row is potentially a suppression that was never applied (a contact who asked to stop and will be written to again) and a conversion that was never counted (a reply missing from the lift a partner is invoiced against).
+
+**Diagnose.**
+
+```sql
+select provider, event_type, left(error, 80) as error, count(*)
+  from inbound_event where not handled
+ group by 1, 2, 3 order by 4 desc;
+```
+
+| Error contains | What to do |
+|---|---|
+| `no enrollment for` | the event names a recipient this runtime never sent to — usually a provider replaying a campaign from before onboarding. Safe to mark handled |
+| a `KeyError` or a missing field | the provider changed its payload shape. Fix the mapping first; these rows are replayable |
+| `suppression` or a policy name | the event was understood and the action on it failed. This is the expensive class: treat it as a compliance incident and check `docs/23` |
+
+**Unsubscribes first, always.** Before anything else, apply the ones that stop a send:
+
+```sql
+select payload->>'email' from inbound_event
+ where not handled and event_type in ('unsubscribe', 'spam_complaint');
+```
+
+Every address that query returns must be suppressed by hand (`runtime.cli suppress`) before the next tick, whatever else is still broken. A bounce counted late is a measurement error; an unsubscribe applied late is a regulator's letter.
+
+**Then replay** once the cause is fixed. There is no replay command yet: re-post the stored payload to the same endpoint, which is idempotent on the provider's own event id (`inbound_event_external_uq`), or mark the rows handled if they were understood and acted on by hand.
 
 ---
 

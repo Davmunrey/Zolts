@@ -79,6 +79,16 @@ jobs:
       - name: Sample the mutant space and report what the tests catch
         run: python3 scripts/mutation_coverage.py --sample 8
 
+      # The same posture applied to the schema. An index is chosen by the
+      # planner and never named in a query, so no amount of grepping settles
+      # whether one is read; Postgres counts it. This reads the counters the
+      # suite above just produced — `--no-run`, because re-running the suite to
+      # measure it would double the job for nothing. Reported, not gated: a
+      # zero means no test needed the index, which is a question for a person
+      # and not a reason to fail a build (D-60, D-61).
+      - name: Report the indexes the suite never used
+        run: python3 scripts/unused_indexes.py --no-run
+
       - name: Benchmark the waterfall optimiser
         run: python3 scripts/benchmark_waterfall.py
 
