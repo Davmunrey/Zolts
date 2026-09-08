@@ -27,6 +27,9 @@ TARGETS = (
 
 def _validate(schema_path: str, pattern: str) -> int:
     validator = jsonschema.Draft202012Validator(json.load(open(schema_path)))
+    # A program's `spec.policy` and a blueprint's are different schemas wearing
+    # the same name, so which document this is decides which controls apply.
+    surface = "blueprint" if "blueprint" in schema_path else "program"
     failed = 0
     for path in sorted(glob.glob(pattern)):
         document = yaml.safe_load(open(path))
@@ -35,11 +38,11 @@ def _validate(schema_path: str, pattern: str) -> int:
         for err in errors:
             failed = 1
             print("     ", list(err.path), err.message)
-        _report_unenforced(document)
+        _report_unenforced(document, surface)
     return failed
 
 
-def _report_unenforced(document: object) -> None:
+def _report_unenforced(document: object, surface: str) -> None:
     """Name the limits this program declares that the runtime does not hold.
 
     Valid is not the same as honoured. Every shipped program passes the schema
@@ -57,7 +60,7 @@ def _report_unenforced(document: object) -> None:
     spec = document.get("spec")
     if not isinstance(spec, dict):
         return
-    for control in controls.unenforced(spec):
+    for control in controls.unenforced(spec, surface):
         print(f"      declares {control.path}, which the runtime does not enforce"
               f" — {control.what}")
 
