@@ -112,6 +112,9 @@ def _render_rotation(state, done) -> str:
     return "\n".join(lines)
 
 
+NL = chr(10)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="zolts", description="Zolts runtime operations")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -164,6 +167,13 @@ def main(argv: list[str] | None = None) -> int:
 
     close = sub.add_parser("close-period", help="close a tenant's billing period")
     close.add_argument("--tenant", required=True)
+
+    rep = sub.add_parser(
+        "report", help="print the frozen incrementality reports; frozen at close-period")
+    rep.add_argument("--tenant", required=True)
+    rep.add_argument("--program", help="a program key; every program when omitted")
+    rep.add_argument("--json", action="store_true",
+                     help="the canonical fields and the digest rather than the document")
 
     domain = sub.add_parser(
         "sending-domain",
@@ -435,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "close-period":
-        from runtime import metering
+        from runtime import metering, reporting
 
         with db.tenant_tx(args.tenant) as cur:
             cur.execute("select * from tenant where id = %s", (args.tenant,))
@@ -445,10 +455,36 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             period = metering.open_period(cur, tenant)
             closed = metering.close_period(cur, tenant, str(period["id"]))
+            # The "after", frozen with the statement: the period's costs stop
+            # moving at close, and so must the report a partner reads (ADR-043).
+            frozen = reporting.freeze_all(cur, tenant, closed, frozen_by="operator")
         print(json.dumps({"period": str(closed["id"]),
                           "from": closed["starts_at"].isoformat(),
                           "to": closed["ends_at"].isoformat(),
-                          "statement": closed["statement"]}, indent=2))
+                          "statement": closed["statement"],
+                          "reports": [{"program": str(r["program_id"]),
+                                       "verdict": r["verdict"], "digest": r["digest"]}
+                                      for r in frozen]}, indent=2))
+        return 0
+
+    if args.command == "report":
+        from runtime.repo import reports as reports_repo
+
+        with db.tenant_tx(args.tenant) as cur:
+            if args.program:
+                cur.execute("select id from program where key = %s", (args.program,))
+            else:
+                cur.execute("select id from program")
+            program_ids = [str(r["id"]) for r in cur.fetchall()]
+            frozen = [row for pid in program_ids for row in reports_repo.for_program(cur, pid)]
+        if not frozen:
+            print("no report is frozen for this tenant; reports are frozen by close-period",
+                  file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps([reports_repo.as_dict(r) for r in frozen], indent=2))
+        else:
+            print(NL.join(r["rendered"] for r in frozen))
         return 0
 
     if args.command == "set-terms":

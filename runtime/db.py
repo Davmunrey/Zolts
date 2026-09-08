@@ -174,6 +174,12 @@ class Database:
             # connection behind the signup endpoint. The role that serves
             # tenant requests has no reason to reach them.
             conn.execute(f"revoke all on invitation from {app_role}")
+            # Written once, by construction and not only by convention: the
+            # baseline (ADR-042) and the incrementality report (ADR-043) are
+            # the two documents a partner signs against, and the role that
+            # serves requests has no statement that can restate either.
+            conn.execute(f"revoke update, delete on tenant_baseline from {app_role}")
+            conn.execute(f"revoke update, delete on incrementality_report from {app_role}")
             conn.commit()
 
 

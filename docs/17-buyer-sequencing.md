@@ -53,6 +53,8 @@ Captured during the first onboarding, with no user friction — and stored, sinc
 - Cost per meeting and per opportunity before Zolts (derived once and stored, so the signed number never moves with a formula).
 - A frozen, signed snapshot: this is the Act 2 document. The pilot letter quotes the row's digest, and either party can recompute it.
 
+And the other half of that document, since ADR-043: the **incrementality report**, frozen per program at every period close, cumulative from the first enrollment, written once. It quotes the baseline's digest and carries the arms, the lift beside the detectable effect, the unread share, the decisions, the credits by kind and — on opportunities only, and only when significant — the pipeline. Its verdict is one of three words and *met* is not one of them. Both halves are derived from what the operator's programs already record: nobody enters anything for the CFO's sake, which is the guardrail below. Decision 37 closes the buyer question on exactly this: the operator lands the account, and this pair of frozen documents is what keeps and expands it.
+
 ## The dual-buyer trap (and its guardrail)
 
 Risk: building a builder too technical for the CFO and a governance layer too heavy for the operator, ending with a product that is mediocre for both.

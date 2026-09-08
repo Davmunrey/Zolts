@@ -61,6 +61,6 @@ That is not a broken demo. It is the product declining to report €3M of pipeli
 |---|---|
 | "Are these real customers?" | No. The population is synthetic and labelled as such on the tenant itself |
 | "Did you pick the rates to make this work?" | Yes, and they are printed. 4.0% and 7.5%. The measurement of them is not picked |
-| "Where does €5.34M come from?" | The measured lift times the treatment arm times €24,000 per opportunity. That last number is a console constant and the first thing to replace with theirs |
+| "Where does €5.34M come from?" | The measured lift times the treatment arm times €24,000 per opportunity. That last number is a console constant and the first thing to replace with theirs — the frozen incrementality report already does: it multiplies only the opportunity comparison by the CRM's own average deal amount, and withholds the figure when the CRM holds none (ADR-043) |
 | "What if my lift is smaller?" | Then the MDE curve says how much volume or holdout you need. Run the 6,000 case |
 | "Why is the capacity so high?" | Raised for the demo. Left at the shipped 25/200/2,000 the measured lift goes *negative*, because intent-to-treat counts every treatment enrollment whether or not capacity reached it. Worth showing to a buyer who runs a small team — it is a real finding about their configuration, not a flaw |

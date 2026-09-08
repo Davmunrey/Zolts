@@ -16,7 +16,7 @@
 | Share of claims with verified provenance | Leading | >90% | >98% |
 | Share of tier 2/3 touches auto-sent | Leading | 60% | 85% |
 | Tenants with a baseline captured within 7 days | Leading | 100% | 100% |
-| Accounts with accumulated significant lift (Act 2 eligible) | Leading | — | >60% |
+| Accounts with accumulated significant lift (Act 2 eligible) — tenants whose latest frozen incrementality report says `significant` (ADR-043) | Leading | — | >60% |
 | Brand incidents from AI content | Lagging | 0 | 0 |
 | Average incremental lift versus holdout | Lagging | >1.5× | >2.5× |
 | Runtime uptime | Lagging | 99.5% | 99.9% |

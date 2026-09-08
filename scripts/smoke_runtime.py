@@ -39,7 +39,7 @@ from runtime.connectors.fake import FakeConnector         # noqa: E402
 from runtime.connectors import sync                       # noqa: E402
 from runtime.connectors.crm import (Capabilities, CrmAccount,  # noqa: E402
                                     CrmContact, CrmOpportunity, DealStatus)
-from runtime import enrichment, metering                  # noqa: E402
+from runtime import enrichment, metering, reporting       # noqa: E402
 from runtime.connectors.dataprovider import register_provider  # noqa: E402
 from runtime.connectors.fake import FakeDataProvider      # noqa: E402
 from runtime.api import console                            # noqa: E402
@@ -268,6 +268,11 @@ def main() -> int:
         # nothing, which is the defect ADR-017 was written about.
         period = metering.open_period(cur, tenant_row)
         statement = metering.close_period(cur, tenant_row, str(period["id"]))
+        # -- report: the close freezes the "after" ------------------------
+        # One reply is one conversion, below the floor at which any effect
+        # may be declared, so the frozen report has to say `not resolvable`
+        # and never anything that reads as met (ADR-043).
+        frozen = reporting.freeze_all(cur, tenant_row, statement, frozen_by="smoke")
 
     print(json.dumps({
         "program": {"key": program.key, "version": program.version,
@@ -291,6 +296,9 @@ def main() -> int:
         "statement": {"closed": statement.get("closed_at") is not None,
                       "seats": statement.get("seats_used"),
                       "body": statement.get("statement")},
+        "reports": [{"program": str(r["program_id"]), "verdict": r["verdict"],
+                     "period": f"{r['period_start']} to {r['period_end']}",
+                     "digest": r["digest"]} for r in frozen],
         # One reply is one conversion, which is below the floor at which any
         # effect may be declared. The smoke run asserts that it is withheld:
         # the loop being connected is not the same as the loop having a result.
@@ -322,6 +330,8 @@ def main() -> int:
         "the policy gate decided": bool(decisions),
         "the reply was applied": bool(webhook_effects),
         "the period closed into a statement": statement.get("closed_at") is not None,
+        "the close froze a report that declares nothing": bool(frozen) and all(
+            r["verdict"] == "not resolvable" for r in frozen),
     }
     missing = [name for name, happened in stages.items() if not happened]
     if missing:
