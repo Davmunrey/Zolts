@@ -46,7 +46,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Mutation coverage across the runtime | **Done.** `scripts/mutation_coverage.py` samples the mutant space and reports what share the tests catch. `zolts/` measures 39 of 40, 97.5% (95% CI 87-100%), from 512 possible mutants, and CI samples eight on every push to keep the sampler honest. `runtime/` was measured separately — each mutant costs a full Postgres suite run — and its first pass applied nineteen and left nine alive. Seven were real and are guarded (`tests/test_survivors.py`); two were equivalent and are annotated where they live. No rate is quoted for the runtime: nineteen is below the floor, and the survivor list was the point. `docs/22` carries the numbers | S |
+| **VER-1** | Mutation coverage across the runtime | **Done, and measured.** `zolts/` catches 39 of 40 sampled mutants — 97.5%, 95% CI 87-100%, from 512 possible. `runtime/` catches **22 of 30 — 73%, 95% CI 56-86%, from 1,467 possible**, each mutant costing a full Postgres suite run. Half the runtime's survivors were equivalent and are annotated where they live; of the four that were real, one is guarded and three are named in `docs/22` rather than quietly dropped. CI samples eight on every push to keep the sampler honest, and the measurement now runs against its own database so a suite and a mutation pass no longer contend | S |
 
 ### Product
 
