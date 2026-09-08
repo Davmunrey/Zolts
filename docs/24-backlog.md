@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1186 | 382 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1194 | 383 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -46,7 +46,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Mutation coverage across the runtime | **Half done.** `scripts/mutation_coverage.py` samples the mutant space and reports what share the tests catch: `zolts/` measures 39 of 40, 97.5% (95% CI 87-100%), from 512 possible mutants, and CI samples eight on every push to keep the sampler honest. What remains is the runtime's own number — each of its mutants costs a full suite run, so it is a long run rather than a per-push one — and acting on the survivors it names | S |
+| **VER-1** | Mutation coverage across the runtime | **Done.** `scripts/mutation_coverage.py` samples the mutant space and reports what share the tests catch. `zolts/` measures 39 of 40, 97.5% (95% CI 87-100%), from 512 possible mutants, and CI samples eight on every push to keep the sampler honest. `runtime/` was measured separately — each mutant costs a full Postgres suite run — and its first pass applied nineteen and left nine alive. Seven were real and are guarded (`tests/test_survivors.py`); two were equivalent and are annotated where they live. No rate is quoted for the runtime: nineteen is below the floor, and the survivor list was the point. `docs/22` carries the numbers | S |
 
 ### Product
 

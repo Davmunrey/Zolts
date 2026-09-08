@@ -70,6 +70,11 @@ class Database:
 
     @property
     def admin_pool(self) -> ConnectionPool:
+        # The owner role bypasses RLS, so its pool is deliberately the smaller
+        # of the two. The exact cap is a tuning constant: a mutation-coverage
+        # run flagged `max_size=5` as unkilled, and it is — no behaviour this
+        # suite can reach distinguishes four owner connections from five, and
+        # a test asserting the literal would be a test of itself.
         if self._admin_pool is None:
             self._admin_pool = ConnectionPool(self._owner_url, min_size=1, max_size=4,
                                               kwargs=_connect_kwargs(self._owner_url), open=True)

@@ -278,6 +278,14 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
     needed = None
     if resolvable and abs_lift is not None and not significant:
         for pct, value in _mde_curve(baseline, enrolled).items():
+            # `<` rather than `<=`: an effect exactly equal to the detectable
+            # one is at the threshold, not past it, and the conservative
+            # reading is that more enrolment is still needed. A mutation-
+            # coverage run flagged `<=` as unkilled, which is the honest
+            # reading of a strict comparison between two computed floats:
+            # equality would need `_mde_curve` to land on the observed lift to
+            # the last bit. Annotated rather than answered with a test that
+            # asserts a no-op.
             if value < abs_lift:
                 needed = int(pct)
                 break

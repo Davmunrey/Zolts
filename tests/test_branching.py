@@ -108,6 +108,27 @@ def test_engagement_is_read_from_the_record_rather_than_a_counter(db, tenant):
 
 
 @requires_db
+def test_an_open_is_counted_as_an_open(db, tenant):
+    """`int(touches.get("opened") or 0)` had its `or` mutated to `and`, which
+    makes `opened` zero whenever there are opens — and the mutation lived.
+
+    The test above seeds a reply and asserts the reply. Nothing asserted the
+    count this branch is named after, so a play gated on "opened but did not
+    reply" would have stopped firing for every contact who opened, silently:
+    the step is skipped, the enrollment walks on, and the run reports success.
+    """
+    tid, _, enrollment = _seed(db, tenant, opened=True)
+    with db.tenant_tx(tid) as cur:
+        seen = planner.engagement(cur, str(enrollment["id"]))
+
+    assert seen["opened"] == 1, "an open was recorded and counted as none"
+    assert seen["replied"] == 0
+    assert seen["has_replied"] is False
+    assert seen["no_response"] is False, (
+        "somebody who opened is not somebody who did not respond")
+
+
+@requires_db
 def test_skipped_steps_are_walked_in_one_write(db, tenant):
     """A sequence whose remaining steps are all excluded would otherwise take
     one tick per step to notice it had finished."""
