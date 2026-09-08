@@ -325,7 +325,7 @@
             },
             "overrides": {
               "type": "object",
-              "description": "Only overrides stricter than the tenant policy are accepted.",
+              "description": "Only overrides stricter than the tenant policy are accepted, and only the overrides named here. An unknown key is refused rather than ignored: `max_touches_per_week` is one word short of the real name, and accepting it silently applied the default of 3 to a program asking for 1 (D-65).",
               "properties": {
                 "quiet_hours": {
                   "type": "object"
@@ -343,7 +343,8 @@
                     "type": "string"
                   }
                 }
-              }
+              },
+              "additionalProperties": false
             }
           }
         },

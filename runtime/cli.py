@@ -139,8 +139,16 @@ def main(argv: list[str] | None = None) -> int:
     conn.add_argument("--display-name", default="default")
     conn.add_argument("--config", default="{}")
     # The secret is read from stdin so it never reaches a shell history file or
-    # a process listing.
-    conn.add_argument("--secret-stdin", action="store_true", default=True)
+    # a process listing. There is no other way to supply it and there is not
+    # meant to be, so this flag selects nothing: it was `store_true` with
+    # `default=True`, which cannot be switched off, and no code read it (D-66).
+    # It stays accepted because `docs/20`, `docs/25` and `docs/26` all put it in
+    # the command an operator copies, and rejecting it would break three
+    # documented invocations to remove a word. It says what it is instead.
+    conn.add_argument("--secret-stdin", action="store_true", default=True,
+                      help="accepted and ignored: the secret is always read from "
+                           "stdin, so that it never reaches a shell history file "
+                           "or a process listing")
 
     worker = sub.add_parser("worker", help="run the execution loop")
     worker.add_argument("--once", action="store_true")

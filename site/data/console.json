@@ -837,7 +837,7 @@
         "t2": true
       },
       "budget": 8000,
-      "specHash": "2b1afe7aec489230",
+      "specHash": "16d05a01f49c5f53",
       "name": "Replenishment winback",
       "spec": {
         "trigger": {
@@ -948,11 +948,7 @@
               "whatsapp": "consent",
               "ads": "consent"
             },
-            "max_touches_per_person_per_week": 2,
-            "discount_authority": {
-              "max_pct": 15,
-              "requires_approval_above": 20
-            }
+            "max_touches_per_person_per_week": 2
           }
         },
         "experiment": {

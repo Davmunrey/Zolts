@@ -34,13 +34,17 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Control:
-    """One limit a program may declare."""
+    """One limit a program or a blueprint may declare."""
     path: str
     what: str
     #: Where the runtime enforces it, or None when it does not.
     enforced_by: str | None
     #: What a customer loses by declaring it today. Empty when it is enforced.
     consequence: str = ""
+    #: Which document declares it. A program's `spec.policy` and a blueprint's
+    #: are different schemas that happen to share a name, so the two are never
+    #: matched against each other.
+    surface: str = "program"
 
     @property
     def honoured(self) -> bool:
@@ -146,6 +150,42 @@ CONTROLS: tuple[Control, ...] = (
         consequence=(
             "Declared and never evaluated, so a program that wins on its primary "
             "metric while damaging a guardrail reports an unqualified win")),
+
+    # -- declared by a blueprint, carried into a program's policy overlay,
+    #    and read by nothing (D-64) ---------------------------------------
+    Control(
+        "spec.policy.special_category_inference",
+        "whether the runtime may infer special category data about a person",
+        enforced_by=None,
+        surface="blueprint",
+        consequence=(
+            "The only value the schema allows is `forbidden`, so a blueprint can "
+            "state the prohibition and nothing checks it. `zolts/catalog.py` carries "
+            "the whole policy block into the overlay, so the declaration travels the "
+            "full distance to a live program and is then consulted by nobody — the "
+            "gate reads one key from the merged policy and this is not it. Article 9 "
+            "data is the category where a wrong inference is a regulator's letter "
+            "rather than a bad send")),
+    Control(
+        "spec.policy.copy_approval_required",
+        "whether generated copy needs a person's approval before it may send",
+        enforced_by=None,
+        surface="blueprint",
+        consequence=(
+            "The auto-send gate is decided per play by `auto_send_requires.eval_score` "
+            "(`zolts/dsl.py` refuses a play that auto-sends without one). A blueprint "
+            "that says approval is required for its whole archetype does not tighten "
+            "that, so an archetype meant to be human-reviewed is not")),
+    Control(
+        "spec.policy.discount_authority",
+        "what commercial latitude a generated message may offer",
+        enforced_by=None,
+        surface="blueprint",
+        consequence=(
+            "Nothing reads it and nothing constrains the copywriter against it, so a "
+            "generated message may offer terms the archetype does not permit. "
+            "Provenance (ADR-012) requires a claim to quote a source; it says nothing "
+            "about an offer")),
 )
 
 HONOURED = tuple(c for c in CONTROLS if c.honoured)
@@ -187,12 +227,16 @@ def declared_paths(spec: dict) -> list[str]:
     return out
 
 
-def unenforced(spec: dict) -> list[Control]:
-    """The controls this program declares that the runtime does not hold.
+def unenforced(spec: dict, surface: str = "program") -> list[Control]:
+    """The controls this document declares that the runtime does not hold.
 
     Publishing a program says which of its own limits are decoration. Silence
     here was the defect; a list is the correction.
+
+    `surface` keeps a program's `spec.policy` and a blueprint's apart. They are
+    different schemas wearing the same name, and matching one against the other
+    would report a limit the document could not have declared.
     """
     declared = declared_paths(spec)
     return [c for c in NOT_HONOURED
-            if any(_matches(c.path, d) for d in declared)]
+            if c.surface == surface and any(_matches(c.path, d) for d in declared)]
