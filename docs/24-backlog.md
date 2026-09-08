@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 42 | `docs/22`, ADR-001 … ADR-043 |
-| Tests | 1132 | 373 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1133 | 373 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -93,6 +93,6 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 
 ## How an item earns its place
 
-The register in `docs/22` is the evidence for this ordering. Thirty-one of fifty-one defects were a specification with no caller. Reading found nineteen of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
+The register in `docs/22` is the evidence for this ordering. Thirty-two of fifty-two defects were a specification with no caller. Reading found twenty of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
 
 So an item is only "done" when something runs it and that run can fail. A specification, a document, a column, a button and a process table have each been the whole of a feature in this repository, and each was found by an execution nobody had performed.
