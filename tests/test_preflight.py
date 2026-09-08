@@ -8,11 +8,53 @@ exists to prevent.
 
 from __future__ import annotations
 
+import contextlib
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 import pytest
 
 from runtime import preflight
 from runtime.config import Settings
+from runtime.db import Database
 from tests.conftest import APP_URL, OWNER_URL, requires_db
+
+
+def _plaintext(url: str) -> str:
+    """The same database, reached without TLS."""
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query) if k != "sslmode"]
+    query.append(("sslmode", "disable"))
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
+@contextlib.contextmanager
+def _unencrypted_db():
+    """A database handle whose connection is provably not encrypted.
+
+    Both no-TLS branches of the check need one, and neither used to ask for it
+    — they inherited whatever the ambient server did. A Debian-packaged
+    Postgres ships `ssl = on`; the `postgres:16` container CI runs does not. So
+    the same two tests exercised the *local* branch on one machine and the
+    *TLS* branch on the other: green on CI, red on a contributor's laptop,
+    against a product that is correct on both. A test that fails on correct
+    code teaches the team to press re-run, which is worth less than no test
+    (D-35).
+
+    `sslmode=disable` makes the premise the test's own, and the assertion below
+    fails loudly rather than quietly proving a different branch, if some future
+    server refuses a plaintext connection.
+    """
+    database = Database(_plaintext(OWNER_URL or ""), _plaintext(APP_URL or ""))
+    try:
+        with database.admin_tx() as cur:
+            cur.execute("select ssl from pg_stat_ssl where pid = pg_backend_pid()")
+            assert cur.fetchone()["ssl"] is False, (
+                "this connection negotiated TLS despite sslmode=disable, so the "
+                "test would exercise the TLS branch and assert nothing about the "
+                "branch it names")
+        yield database
+    finally:
+        database.close()
 
 
 def _settings(**overrides) -> Settings:
@@ -151,8 +193,10 @@ def test_the_rendering_names_what_is_blocking():
 def test_a_remote_database_without_tls_blocks_production(db):
     """The local case is fine and the remote case is not, so the check has to
     know the difference or it is either noise or a false pass."""
-    report = preflight.run(
-        _settings(database_url="postgresql://u:p@ep-x.eu-central-1.aws.neon.tech/zolts"), db)
+    with _unencrypted_db() as unencrypted:
+        report = preflight.run(
+            _settings(database_url="postgresql://u:p@ep-x.eu-central-1.aws.neon.tech/zolts"),
+            unencrypted)
     check = _named(report, "encryption in transit")
     assert not check.ok and check.fatal
     assert "not local" in check.detail
@@ -160,7 +204,8 @@ def test_a_remote_database_without_tls_blocks_production(db):
 
 @requires_db
 def test_a_local_database_without_tls_is_fine(db):
-    report = preflight.run(_settings(), db)
+    with _unencrypted_db() as unencrypted:
+        report = preflight.run(_settings(), unencrypted)
     check = _named(report, "encryption in transit")
     assert check.ok
     assert "local" in check.detail
