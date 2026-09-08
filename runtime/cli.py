@@ -611,13 +611,21 @@ def main(argv: list[str] | None = None) -> int:
             import yaml
 
             from runtime.connectors.declarative_provider import (ProviderDocumentError,
-                                                                 validate)
+                                                                 provider_of, validate)
             try:
                 mapping = validate(yaml.safe_load(Path(args.mapping).read_text()))
             except ProviderDocumentError as exc:
                 # Refused on the way in: the first lookup happens against a real
                 # endpoint with a real credential.
                 print(f"the provider document is not usable: {exc}", file=sys.stderr)
+                return 2
+            named = provider_of(mapping)
+            if named != args.key:
+                # The same check the installer makes, made before the row
+                # exists rather than on the tick that would have used it.
+                print(f"the document describes '{named}' and --key says '{args.key}'; the "
+                      f"waterfall asks for a provider by its key, so these must match",
+                      file=sys.stderr)
                 return 2
 
         fields = [f.strip() for f in args.fields.split(",") if f.strip()]

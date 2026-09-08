@@ -25,7 +25,8 @@ question, and where in the answer the value is.
             domain: account.domain
           response:                   # canonical field <- response path
             email: data.email
-          confidence: data.score      # optional, 0..1
+          confidence: data.score      # optional
+          confidence_max: 100         # the scale that path is expressed in
 
 A lookup whose response mapping produces nothing is a miss, not an error. That
 distinction is the whole reason the optimiser can learn: a miss lowers a
@@ -85,7 +86,47 @@ def validate(document: dict[str, Any]) -> dict[str, Any]:
         if not (lookup.get("response") or {}):
             raise ProviderDocumentError(
                 f"lookups.{field_name}.response maps nothing, so every call is a miss")
+        _scale_of(field_name, lookup)
     return document
+
+
+def _scale_of(field_name: str, lookup: dict[str, Any]) -> float:
+    """The range the provider's own confidence is expressed in.
+
+    Providers do not agree on it: one returns 0.92 and another returns 92 for
+    the same belief. Clamping both into [0, 1] made the second one *certain*
+    (D-47), and certainty is what the dossier shows an operator and what the
+    waterfall's accuracy floor is read against. So the document states its
+    scale, and a scale with no confidence path to scale is refused rather
+    than ignored.
+    """
+    raw = lookup.get("confidence_max")
+    if raw is None:
+        return 1.0
+    try:
+        scale = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ProviderDocumentError(
+            f"lookups.{field_name}.confidence_max is not a number: {raw!r}") from exc
+    if scale <= 0:
+        raise ProviderDocumentError(
+            f"lookups.{field_name}.confidence_max must be above zero, not {scale}")
+    if not lookup.get("confidence"):
+        raise ProviderDocumentError(
+            f"lookups.{field_name}.confidence_max scales a confidence this document "
+            f"never reads")
+    return scale
+
+
+def provider_of(document: dict[str, Any]) -> str:
+    """The name this document answers to.
+
+    The waterfall looks a provider up by its registration's key and this is
+    what the runtime registers it under, so the two have to be the same string
+    (D-48). One function, so the CLI and the installer cannot disagree about
+    which one wins.
+    """
+    return str((document.get("metadata") or {}).get("provider") or "declarative")
 
 
 @dataclass
@@ -104,8 +145,7 @@ class DeclarativeDataProvider:
     @property
     def capabilities(self) -> DataCapabilities:
         return DataCapabilities(
-            provider=str((self.document.get("metadata") or {}).get("provider")
-                         or "declarative"),
+            provider=provider_of(self.document),
             fields=tuple(sorted(self._spec["lookups"])),
             billed_on_miss=bool(self._spec.get("billed_on_miss", False)))
 
@@ -184,7 +224,8 @@ class DeclarativeDataProvider:
             raw = extract(answer, declared["confidence"])
             if raw is not MISSING:
                 try:
-                    confidence = max(0.0, min(1.0, float(raw)))
+                    confidence = max(0.0, min(1.0, float(raw) / _scale_of(lookup.field,
+                                                                         declared)))
                 except (TypeError, ValueError):
                     confidence = 0.0
         return Found(hit=True, values=values,

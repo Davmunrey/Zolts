@@ -647,10 +647,18 @@ A source that errors records nothing and bills nothing: the check history is wha
 | Order | `runtime/enrichment.py` asks `zolts.waterfall` which provider is cheapest for this cohort and stops on the first hit. The premium provider is not called for a field the cheap one found |
 | Learn | Every attempt is recorded. Below 30 calls in a cohort a provider is scored on its registered default; above it, on its own record. The matrix is the asset `docs/15` says a competitor cannot buy |
 | Absorb | A miss costs us and is not billed. An error is not a miss: a 401 raises rather than teaching the optimiser that a broken integration has poor coverage |
+| Scale | A provider's confidence is stored on the scale its document declares. A score out of a hundred read as a fraction is certainty, and certainty is what the provenance answer shows (D-47) |
 | Defend | Every resolved value records the provider, the confidence and the legal basis. `enrichment.provenance()` answers the DPO's question from the same rows the matrix is built from |
 | Refuse | A value that already belongs to another person is not written. Three colleagues and one shared address merges two identities, which is worse than an empty field |
 
 ```sh
+# The one named supplier that ships (decision 38). `--key` must be the name
+# the document carries: the optimiser plans by the key and the runtime
+# registers by the document, and a row where they differ was planned and then
+# not found (D-48).
+printf '%s' "$HUNTER_KEY" | zolts connect --tenant … --provider hunter --secret-stdin
+zolts data-provider --tenant … --key hunter --fields email   --cost-micros 34000 --mapping examples/providers/hunter.yaml   --connection <connection-id>
+
 zolts data-provider --tenant … --key acme-data --fields email,phone   --cost-micros 28000 --mapping examples/providers/example-enrichment.yaml   --connection <connection-id>
 zolts enrich --tenant … --field email --limit 50 --dry-run
 zolts hit-rates --tenant …
@@ -770,7 +778,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1098 tests. 362 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1116 tests. 364 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

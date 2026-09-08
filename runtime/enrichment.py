@@ -99,7 +99,7 @@ def install_declared(cur) -> list[str]:
     repository keeps finding rather than one to add.
     """
     from runtime.connectors.dataprovider import register_provider
-    from runtime.connectors.declarative_provider import DeclarativeDataProvider
+    from runtime.connectors.declarative_provider import DeclarativeDataProvider, provider_of
 
     cur.execute("select key, config from data_provider where enabled")
     installed = []
@@ -107,6 +107,17 @@ def install_declared(cur) -> list[str]:
         mapping = (row["config"] or {}).get("mapping")
         if not mapping:
             continue
+        # The registration's key is the name the plan will ask for. Registering
+        # the document under its own metadata name instead left a provider the
+        # optimiser chose and `get_provider` could not find, and that raised
+        # out of the buy rather than skipping the provider (D-48).
+        named = provider_of(mapping)
+        if named != row["key"]:
+            raise EnrichmentError(
+                f"data provider '{row['key']}' carries a document for '{named}'. The "
+                f"waterfall asks for a provider by the registration's key, so this row "
+                f"would be planned and then not found: register it under '{named}', or "
+                f"name the document '{row['key']}'")
         register_provider(DeclarativeDataProvider(document=mapping))
         installed.append(row["key"])
     return installed

@@ -71,6 +71,12 @@ spec:
   failure_policy: {timeout_ms: 4000, retries: 2, circuit_breaker: 5xx_rate>0.2/60s}
 ```
 
+**What ships is smaller than the block above and is a document, not a connector.** `examples/providers/` holds the registrations a tenant can make today: `hunter.yaml` resolves `email` from a first name, a last name and a company domain against the tenant's own Hunter key (decision 38), and `example-enrichment.yaml` is the template for anything else. Limits, DPA metadata and a per-provider circuit breaker are not in the document yet; the runtime's own breaker and rate limiting stand in the way meanwhile.
+
+**A provider's confidence is read on the scale it was given in.** One provider returns `0.92` and another `92` for the same belief. The second was clamped to `1.0` and shown to an operator as certainty (D-47), so a document now declares `confidence_max` beside the path it reads, and a scale with no path to scale is refused.
+
+**A registration answers to one name.** The optimiser plans by the registration's key and the runtime registered the document under the document's name; a row whose two disagreed was planned and then not found (D-48). The CLI refuses the mismatch before the row exists.
+
 **Accuracy is measured, not accepted.** Every email sent returns ground truth (bounce, reply, verification), and that signal retrains the hit-rate matrix. Within six months Zolts knows each provider's real quality per cohort better than the provider does. That dataset is a defensible asset.
 
 ## Verification and quality
