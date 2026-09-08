@@ -20,8 +20,9 @@ from typing import Any
 
 from runtime.repo import baseline as baseline_repo
 from runtime.repo import ledger, reports
-from zolts.report import (CONVERSION_TYPES, BaselineQuote, Comparison,
-                          IncrementalityReport, ReportError)
+from zolts import metrics
+from zolts.report import (BaselineQuote, Comparison, IncrementalityReport,
+                          ReportError)
 
 # The statuses a touch has once a provider accepted it. `queued` and `failed`
 # are attempts, not touches a person received.
@@ -40,7 +41,15 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
     program_id = str(program["id"])
     end: datetime = period["ends_at"]
     spec = program.get("spec") or {}
-    holdout = float((spec.get("experiment") or {}).get("holdout_pct", 0))
+    experiment = spec.get("experiment") or {}
+    holdout = float(experiment.get("holdout_pct", 0))
+    # The metric this programme declared, and the window it declared it in.
+    # Every report used to count the same three outcome types, at any time
+    # after enrolment, whatever the programme said it measured (D-51).
+    try:
+        metric = metrics.resolve(experiment.get("primary_metric"))
+    except metrics.MetricError:
+        metric = metrics.DEFAULT
 
     cur.execute("select min(entered_at) as first from enrollment"
                 " where program_id = %s and entered_at < %s", (program_id, end))
@@ -57,7 +66,7 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
         " from enrollment e join outcome o on o.enrollment_id = e.id"
         " where e.program_id = %s and e.entered_at < %s and o.occurred_at < %s"
         "   and o.type = any(%s) group by e.variant, o.type",
-        (program_id, end, end, list(CONVERSION_TYPES)))
+        (program_id, end, end, list(metrics.OUTCOME_TYPES)))
     by_type: dict[str, dict[str, int]] = {}
     for r in cur.fetchall():
         by_type.setdefault(r["type"], {})[r["variant"]] = int(r["n"])
@@ -68,8 +77,10 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
         "   and o.type = 'reply_positive') as unread"
         " from enrollment e join outcome o on o.enrollment_id = e.id"
         " where e.program_id = %s and e.entered_at < %s and o.occurred_at < %s"
-        "   and o.type = any(%s) group by e.variant",
-        (program_id, end, end, list(CONVERSION_TYPES)))
+        "   and o.type = any(%s)"
+        "   and o.occurred_at < e.entered_at + make_interval(days => %s)"
+        " group by e.variant",
+        (program_id, end, end, list(metric.events), metric.window_days))
     converted, unread = {}, 0
     for r in cur.fetchall():
         converted[r["variant"]] = int(r["converted"])
@@ -101,7 +112,17 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
     with_amount = int(deals["n"] or 0)
     average = int(deals["average"]) if with_amount else None
 
-    opps = by_type.get("opp_created", {})
+    # The opportunity arms, inside the same window: a deal a year later is
+    # not this period's increment, however real it is.
+    cur.execute(
+        "select e.variant, count(distinct o.enrollment_id) as n"
+        " from enrollment e join outcome o on o.enrollment_id = e.id"
+        " where e.program_id = %s and e.entered_at < %s and o.occurred_at < %s"
+        "   and o.type = 'opp_created'"
+        "   and o.occurred_at < e.entered_at + make_interval(days => %s)"
+        " group by e.variant",
+        (program_id, end, end, metric.window_days))
+    opps = {r["variant"]: int(r["n"]) for r in cur.fetchall()}
     frozen = baseline_repo.get(cur)
     quote = None if frozen is None else BaselineQuote(
         digest=frozen["digest"], window_start=frozen["window_start"],
@@ -115,7 +136,8 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
 
     return IncrementalityReport(
         program_key=program["key"], program_version=str(program["version"]),
-        spec_hash=program["spec_hash"],
+        spec_hash=program["spec_hash"], primary_metric=metric.name,
+        metric_window_days=metric.window_days,
         period_start=_utc_date(start), period_end=_utc_date(end),
         holdout_pct=holdout,
         primary=Comparison(

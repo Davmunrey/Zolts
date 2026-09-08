@@ -11,6 +11,21 @@ Multi-touch attribution answers "who gets the credit?" — a political question.
 - Randomisation unit depends on motion: account (B2B), person (B2C), territory or geo (where units contaminate each other, for example local services or ads).
 - **Guardrails**: metrics that automatically stop the experiment if they degrade (spam complaints, unsubscribes, margin per order).
 
+## What a programme is measured on
+
+The metric a programme declares is the metric it is measured on. That sounds like a restatement and it was not true: every programme was counted on the same three outcome types, at any time after enrolment, whatever `experiment.primary_metric` said (D-51).
+
+A metric name carries two things and both change the answer:
+
+| | |
+|---|---|
+| **What counts** | `signed_contract_60d` counts a deal marked won. A positive reply is not one, and a programme that says it measures contracts measures contracts or it measures nothing |
+| **When it stops counting** | within sixty days of *that account* entering the programme. Without the window, a treatment arm enrolled in January is compared against a control arm still accumulating in June, and the comparison flatters whichever arm has been running longer |
+
+`zolts/metrics.py` is the registry. A name it does not carry is refused where the programme is stored (ADR-037), never measured as something else, and a programme that declares nothing falls back to a named default rather than an implicit one (decision 40).
+
+**Rate metrics and value metrics are not the same measurement.** The two-proportion test reported here asks whether a larger *share* of accounts converted. `net_revenue_28d` is a value metric: its event is counted and tested, and the amount is reported beside it and explicitly not tested — a mean-difference test on a heavy-tailed revenue distribution is different statistics, and claiming it here would be the failure this document exists to prevent.
+
 ## Metrics
 
 ```

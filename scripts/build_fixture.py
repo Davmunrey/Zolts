@@ -21,6 +21,7 @@ from pathlib import Path
 
 from zolts import dsl
 from zolts.blueprint import load_blueprints
+from zolts import metrics
 from zolts.catalog import load_catalog
 from zolts.experiment import (MIN_CONVERSIONS_PER_ARM, assign, is_resolvable, lift,
                               minimum_detectable_effect)
@@ -488,6 +489,14 @@ def build() -> dict:
             "status": STATUS.get(program.key, "draft"),
             "holdout": holdout,
             "metric": program.spec["experiment"]["primary_metric"],
+            # What that name counts, and for how long. The name was on screen
+            # and nothing measured by it (D-51).
+            "metricCounts": metrics.resolve(
+                program.spec["experiment"]["primary_metric"]).describes,
+            "metricWindowDays": metrics.resolve(
+                program.spec["experiment"]["primary_metric"]).window_days,
+            "metricTestsValue": metrics.resolve(
+                program.spec["experiment"]["primary_metric"]).kind == metrics.VALUE,
             "signals": [e["signal"] for e in program.spec["trigger"]["events"]],
             "tiers": [t["key"] for t in program.spec["route"]["tiers"]],
             "autoSend": {k: bool(v.get("auto_send")) for k, v in program.spec["plays"].items()},

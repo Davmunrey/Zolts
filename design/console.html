@@ -1132,7 +1132,13 @@ function renderDetail(){
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
       + '<dt>Status</dt><dd class="hi">' + p.status + '</dd>'
       + '<dt>Blueprint</dt><dd>' + p.blueprint + '</dd>'
-      + '<dt>Primary metric</dt><dd>' + p.metric + '</dd>'
+      + '<dt>Primary metric</dt><dd>' + p.metric
+        + (p.metricTestsValue
+             // A value metric's event is tested and its amount is not, and a
+             // screen that did not say so would let the reader assume it was.
+             ? ' <span style="color:var(--ink-tertiary)">· amount reported, not tested</span>'
+             : '') + '</dd>'
+      + '<dt>Counted as</dt><dd>' + (p.metricCounts || '—') + '</dd>'
       + '<dt>Holdout</dt><dd class="hi">' + p.holdout + '%</dd>'
       + '<dt>Enrolled</dt><dd>' + (p.enrolled ? nf(p.enrolled) : "—") + '</dd>'
       + '<dt>Signal → action p95</dt><dd>' + (p.p95 == null ? "—" : p.p95 + " min") + '</dd>'

@@ -96,6 +96,13 @@ class MeasurementOut(BaseModel):
     lift_pp: float
     minimum_detectable_effect_pp: float
     significant: bool
+    # What was counted, and for how long after each account entered. A rate
+    # with no metric beside it is a rate of something the reader has to guess,
+    # and every programme used to be measured on the same three outcome types
+    # whatever it declared (D-51).
+    primary_metric: str
+    metric_counts: str
+    metric_window_days: int
 
 
 class HealthOut(BaseModel):

@@ -21,6 +21,7 @@ from zolts.catalog import load_catalog
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, minimum_detectable_effect
 from zolts.report import BASELINE_RATE_FLOOR, SIGNIFICANT, Comparison
 from zolts import report as report_rules
+from zolts import metrics
 
 # Outcomes that count as the primary conversion: one definition, in
 # `zolts.report`, shared with the measurement endpoint and the frozen report so
@@ -33,21 +34,46 @@ CONVERSION_TYPES = list(report_rules.CONVERSION_TYPES)
 HOLDOUT_CURVE = range(5, 26)
 
 
-def _unverified(cur, program_id: str) -> tuple[int, int]:
+def _converted(cur, program_id: str, metric) -> dict[str, int]:
+    """Enrollments per arm that produced the declared metric's event in time.
+
+    Two clauses that were not here before (D-51): the event set comes from the
+    programme's own `primary_metric`, and the outcome has to fall inside that
+    metric's window from the moment the account entered. Without the second, a
+    treatment arm enrolled in January is compared against a control arm still
+    accumulating conversions in June.
+    """
+    cur.execute(
+        "select e.variant, count(distinct o.enrollment_id) as converted"
+        " from enrollment e join outcome o on o.enrollment_id = e.id"
+        " where e.program_id = %s and o.type = any(%s)"
+        "   and o.occurred_at < e.entered_at + make_interval(days => %s)"
+        " group by e.variant",
+        (program_id, list(metric.events), metric.window_days))
+    return {r["variant"]: int(r["converted"]) for r in cur.fetchall()}
+
+
+def _unverified(cur, program_id: str, metric) -> tuple[int, int]:
     """Conversions nobody read, and conversions in total.
 
     A reply that arrives without a body is a real event and tells us only that
     a human responded. It is still counted — flipping that would move every
     tenant's measured lift on a deploy, silently — so the share it represents
     is reported instead of hidden. See decision 16.
+
+    Counted over the metric this programme is measured on and inside its
+    window, because a share of a different denominator is not this figure's
+    share (D-51). A programme measured on signed contracts has no unread
+    conversions at all, which is the true answer rather than a flattering one.
     """
     cur.execute(
         "select count(distinct o.enrollment_id) filter (where o.verified_by is null"
         "   and o.type = 'reply_positive') as unread,"
         " count(distinct o.enrollment_id) as total"
         " from enrollment e join outcome o on o.enrollment_id = e.id"
-        " where e.program_id = %s and o.type = any(%s)",
-        (program_id, CONVERSION_TYPES))
+        " where e.program_id = %s and o.type = any(%s)"
+        "   and o.occurred_at < e.entered_at + make_interval(days => %s)",
+        (program_id, list(metric.events), metric.window_days))
     row = cur.fetchone()
     return int(row["unread"] or 0), int(row["total"] or 0)
 
@@ -101,19 +127,14 @@ def _reports(cur, program_id: str) -> list[dict[str, Any]]:
     return out
 
 
-def _rates(cur, program_id: str) -> tuple[int, int, int, int]:
+def _rates(cur, program_id: str, metric) -> tuple[int, int, int, int]:
     counts = enrollments.variant_counts(cur, program_id)
-    cur.execute(
-        "select e.variant, count(distinct o.enrollment_id) as converted"
-        " from enrollment e join outcome o on o.enrollment_id = e.id"
-        " where e.program_id = %s and o.type = any(%s) group by e.variant",
-        (program_id, CONVERSION_TYPES))
-    converted = {r["variant"]: int(r["converted"]) for r in cur.fetchall()}
+    converted = _converted(cur, program_id, metric)
     return (counts.get("treatment", 0), counts.get("control", 0),
             converted.get("treatment", 0), converted.get("control", 0))
 
 
-def _opportunity_conversions(cur, program_id: str) -> tuple[int, int]:
+def _opportunity_conversions(cur, program_id: str, window_days: int) -> tuple[int, int]:
     """Enrollments in each arm that produced an opportunity.
 
     Separate from `_rates` because euros come from deals: a lift measured over
@@ -123,8 +144,10 @@ def _opportunity_conversions(cur, program_id: str) -> tuple[int, int]:
     cur.execute(
         "select e.variant, count(distinct o.enrollment_id) as converted"
         " from enrollment e join outcome o on o.enrollment_id = e.id"
-        " where e.program_id = %s and o.type = 'opp_created' group by e.variant",
-        (program_id,))
+        " where e.program_id = %s and o.type = 'opp_created'"
+        "   and o.occurred_at < e.entered_at + make_interval(days => %s)"
+        " group by e.variant",
+        (program_id, window_days))
     converted = {r["variant"]: int(r["converted"]) for r in cur.fetchall()}
     return converted.get("treatment", 0), converted.get("control", 0)
 
@@ -201,11 +224,19 @@ def _mde_curve(baseline: float, enrolled: int) -> dict[str, float]:
 def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
     spec = program["spec"]
     program_id = str(program["id"])
-    n_treat, n_control, c_treat, c_control = _rates(cur, program_id)
+    experiment_spec = spec.get("experiment") or {}
+    # What this programme says it measures. Unknown names are refused at
+    # admission, so a stored programme always resolves; a spec that predates
+    # the registry falls back to the default set (D-51).
+    try:
+        metric = metrics.resolve(experiment_spec.get("primary_metric"))
+    except metrics.MetricError:
+        metric = metrics.DEFAULT
+    n_treat, n_control, c_treat, c_control = _rates(cur, program_id, metric)
     enrolled = n_treat + n_control
     treat_rate = c_treat / n_treat if n_treat else 0.0
     control_rate = c_control / n_control if n_control else 0.0
-    experiment = spec.get("experiment") or {}
+    experiment = experiment_spec
     holdout = float(experiment.get("holdout_pct", 0))
 
     # Enrolled in both arms is enough to show rates. Declaring an effect needs
@@ -222,7 +253,7 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
            else primary.minimum_detectable_effect * 100)
     abs_lift = round((primary.lift or 0.0) * 100, 2) if measurable else None
     spend, p95, detection_p95 = _spend_and_latency(cur, program_id)
-    unread, converted_total = _unverified(cur, program_id)
+    unread, converted_total = _unverified(cur, program_id, metric)
 
     # Pipeline is euros, and euros come from deals. It multiplied the lift in
     # *conversions* — a set that is mostly positive replies — by an assumed
@@ -230,7 +261,7 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
     # by the whole reply-to-opportunity ratio (D-49). It now rests on the
     # opportunity comparison and on the tenant's own average deal amount, and
     # says why when it rests on neither.
-    o_treat, o_control = _opportunity_conversions(cur, program_id)
+    o_treat, o_control = _opportunity_conversions(cur, program_id, metric.window_days)
     opportunities = Comparison(treatment_enrolled=n_treat, control_enrolled=n_control,
                                treatment_converted=o_treat, control_converted=o_control)
     average_micros, with_amount = _deal_value(cur)
@@ -261,6 +292,11 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
         "blueprint": metadata.get("blueprint"),
         "status": program["status"], "holdout": holdout,
         "metric": experiment.get("primary_metric"),
+        # What that name counts, in words, and how long it counts for. The
+        # name was on screen and nothing measured by it (D-51).
+        "metricCounts": metric.describes,
+        "metricWindowDays": metric.window_days,
+        "metricTestsValue": metric.kind == metrics.VALUE,
         "signals": [e.get("signal") for e in (spec.get("trigger") or {}).get("events", [])],
         "tiers": [t.get("key") for t in (spec.get("route") or {}).get("tiers", [])],
         "autoSend": {k: bool(v.get("auto_send")) for k, v in (spec.get("plays") or {}).items()},

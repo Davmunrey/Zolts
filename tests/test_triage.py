@@ -173,7 +173,7 @@ def test_an_unsubscribe_in_prose_suppresses(db, tenant):
 
 @requires_db
 def test_a_negative_reply_is_recorded_and_does_not_convert(db, tenant):
-    from runtime.api.console import CONVERSION_TYPES
+    from zolts.metrics import DEFAULT as METRIC
     from runtime.engine import inbound
 
     tid = str(tenant["id"])
@@ -190,7 +190,7 @@ def test_a_negative_reply_is_recorded_and_does_not_convert(db, tenant):
         types = [r["type"] for r in cur.fetchall()]
 
     assert types == ["reply_negative"]
-    assert "reply_negative" not in CONVERSION_TYPES
+    assert "reply_negative" not in METRIC.events
 
 
 @requires_db

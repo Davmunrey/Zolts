@@ -49,23 +49,29 @@ def check(spec: dict[str, Any], program_key: str) -> None:
     * **An enrichment field with no price.** Decision 33. A field the price
       list does not carry cannot be billed, so a runtime that bought it would
       pay for its customers.
+    * **A primary metric the runtime cannot measure.** D-51: the schema
+      requires one, the console displayed it, and every program was measured
+      on the same three outcome types with no window. A name nothing can
+      count is refused here rather than silently measured as something else.
     * **A policy override the pack cannot be reconciled with.** An override
       that cannot be read as stricter is refused rather than ignored;
       ignoring is the worst of the three, because it lets an operator believe
       they are protected by a rule nothing applies.
     """
     from runtime.engine import audience, enrich_step, enroll
-    from zolts import policy
+    from zolts import metrics, policy
 
     try:
         enroll.holdout_pct(spec, program_key)
         audience.check(spec, program_key)
         enrich_step.check(spec, program_key)
+        metrics.resolve((spec.get("experiment") or {}).get("primary_metric"))
         overrides = (spec.get("policy") or {}).get("overrides") or {}
         for rule in policy.PACK_V1.values():
             policy.tighten(rule, overrides)
     except (enroll.HoldoutMissing, audience.AudienceError,
-            enrich_step.EnrichmentNotPriced, policy.OverrideNotUnderstood) as exc:
+            enrich_step.EnrichmentNotPriced, metrics.MetricError,
+            policy.OverrideNotUnderstood) as exc:
         # One type at the boundary, the original message intact. Callers map
         # it to a 422; the point of the single type is that a caller cannot
         # catch three of the four and let the fourth through.

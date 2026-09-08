@@ -138,6 +138,16 @@ MUTATIONS = (
         find="float(raw) / _scale_of(lookup.field,\n                                                                         declared)",
         replace="float(raw)",
         tests="tests/test_provider_documents.py"),
+    Mutation(
+        id="a-conversion-outside-the-window-does-not-count",
+        claim="a programme's metric stops counting when its window closes",
+        path="runtime/api/console.py",
+        find='        "   and o.occurred_at < e.entered_at + make_interval(days => %s)"\n'
+             '        " group by e.variant",\n'
+             '        (program_id, list(metric.events), metric.window_days))',
+        replace='        " group by e.variant",\n'
+                '        (program_id, list(metric.events)))',
+        tests="tests/test_metrics.py"),
 )
 
 
