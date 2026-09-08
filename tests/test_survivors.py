@@ -372,3 +372,73 @@ def test_the_baseline_window_refuses_a_date_one_character_too_long():
             baseline(**{field: "2026-01-011"})   # eleven characters
         with pytest.raises(pydantic.ValidationError):
             baseline(**{field: "2026-01-0"})     # nine
+
+
+# -- console.py:663  `or ""` -> `and ""` ---------------------------------
+
+@requires_db
+def test_the_reviewer_can_read_the_draft_they_are_approving(db, tenant):
+    """`review_view` had no test, so `content.get("body") or ""` had nothing to
+    distinguish it from `and ""` — which returns "" whenever the body is
+    present, i.e. always.
+
+    The review queue exists so a person reads what an agent wrote before it
+    reaches a prospect (invariant 1: agents propose, the runtime disposes). A
+    queue that renders every draft empty does not fail; it presents a reviewer
+    with nothing and asks them to approve it, and the approvals it collects are
+    worthless. `droppedClaims` one line below is the same shape and carries the
+    other half of the reviewer's job — what provenance took out.
+    """
+    from runtime.api import console
+    from tests.test_console_session import _proposal
+
+    tid = str(tenant["id"])
+    body = "Congratulations on the round."
+    dropped = ["They are hiring 40 engineers."]
+    with db.tenant_tx(tid) as cur:
+        _proposal(cur, tid, content={"body": body, "dropped_claims": dropped,
+                                     "needs_human_reason": "one sentence cited no evidence"})
+        [item] = console.review_view(cur)
+
+    assert item["body"] == body, "the reviewer is shown an empty draft"
+    assert item["droppedClaims"] == dropped, (
+        "the reviewer cannot see what provenance removed")
+    assert item["needsHumanReason"], "and is not told why it needs them"
+
+
+@requires_db
+def test_a_draft_with_no_body_still_renders(db, tenant):
+    """The other side, and the reason the expression is `or ""` rather than a
+    bare lookup: a proposal that failed before it wrote anything must still
+    appear in the queue, as an empty string rather than a null the view has to
+    special-case."""
+    from runtime.api import console
+    from tests.test_console_session import _proposal
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        _proposal(cur, tid, content={"needs_human_reason": "the model returned nothing"})
+        [item] = console.review_view(cur)
+
+    assert item["body"] == "" and item["droppedClaims"] == []
+
+
+# -- cli.py:584  `return 2` -> `return 3` --------------------------------
+
+@requires_db
+def test_setting_terms_on_a_tenant_that_does_not_exist_exits_two(db, tenant, monkeypatch):
+    """The command line's exit codes are its contract with whatever script runs
+    it, and this repository already treats 2 as *the input was wrong* — three
+    other tests assert it. This path had none, so the code was free to move."""
+    import uuid as uuidlib
+
+    from runtime import cli
+
+    monkeypatch.setenv("ZOLTS_DATABASE_URL", OWNER_URL or "")
+    monkeypatch.setenv("ZOLTS_APP_DATABASE_URL", APP_URL or "")
+    monkeypatch.setenv("ZOLTS_SECRET_KEY", "cli-test-secret-key")
+
+    code = cli.main(["set-terms", "--tenant", str(uuidlib.uuid4()), "--plan", "starter"])
+    assert code == 2, (
+        "a tenant that does not exist must exit 2, the code this CLI already "
+        "uses for input it cannot act on")
