@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1195 | 384 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1202 | 386 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -46,7 +46,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **VER-1** | Mutation coverage across the runtime | **Done, and measured.** `zolts/` catches 39 of 40 sampled mutants — 97.5%, 95% CI 87-100%, from 512 possible. `runtime/` catches **22 of 30 — 73%, 95% CI 56-86%, from 1,467 possible**, each mutant costing a full Postgres suite run. Half the runtime's survivors were equivalent and are annotated where they live; of the four that were real, one is guarded and three are named in `docs/22` rather than quietly dropped. CI samples eight on every push to keep the sampler honest, and the measurement now runs against its own database so a suite and a mutation pass no longer contend | S |
+| **VER-1** | Mutation coverage across the runtime | **Done, and measured.** `zolts/` catches 39 of 40 sampled mutants — 97.5%, 95% CI 87-100%, from 512 possible. `runtime/` catches **22 of 30 — 73%, 95% CI 56-86%, from 1,467 possible**, each mutant costing a full Postgres suite run. Half the runtime's survivors were equivalent and are annotated where they live; **all four of the real ones are now guarded**, each verified by re-applying its own mutation. CI samples eight on every push to keep the sampler honest, and the measurement now runs against its own database so a suite and a mutation pass no longer contend | S |
 
 ### Product
 

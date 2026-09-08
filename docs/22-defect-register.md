@@ -10,7 +10,7 @@ Every defect this repository has found in itself, what it would have cost, and w
 |---|---|---|
 | **Executed** | 21 | Ran the thing against real infrastructure — real Postgres, real browser, real container |
 | **Read** | 22 | Compared a document against the code, looking for the caller that does not exist |
-| **Mutated** | 6 | Broke a guard on purpose to see whether it bites |
+| **Mutated** | 7 | Broke a guard on purpose to see whether it bites |
 | **Looked** | 5 | Rendered a screen and read the screenshot |
 | **CI** | 3 | An existing check fired |
 
@@ -27,8 +27,18 @@ against the whole Postgres-backed suite — measures **22 of 30 caught, 73%, 95%
 sampled from 1,467 possible mutants**, against `zolts/`'s 97.5%. The gap is real and is
 what one would expect: the pure core is reached by every test, and the runtime's behaviour
 needs a database, a tenant and a programme before most of it runs at all. Measured at
-`4361628`; the guard added in `e4f05da` kills one of the eight below, so the same sample at
-the current head is 23 of 30.
+`4361628`. The guards written since kill four of the eight below — `e4f05da` the heartbeat,
+`b8f5cf9` the command line's `authenticated` flag, and this change the lift's precision and
+the baseline date's ceiling — so the same sample at the current head is **26 of 30**, with
+only the four equivalent mutants left alive.
+
+**That 26 is not a coverage rate, and must never be quoted as one.** It is the same thirty
+mutants, re-scored after writing tests against the specific eight that survived them. A
+sample you have fitted to measures the fitting, not the suite: the honest number for the
+runtime is still 73% with a 56-86% interval, and the only thing that can replace it is a
+**fresh sample at a new seed**. What 26 of 30 does say — the whole of it — is that every
+survivor from that run was either killed or shown to be equivalent, which is the audit
+trail, not the metric.
 
 **Half the survivors were equivalent.** Four of the eight change nothing any test can
 reach — a strict float comparison whose equality case cannot be constructed, a
@@ -36,15 +46,29 @@ connection-pool cap, the last step of a retry backoff moved by one second, and t
 of characters a fallback identifier is truncated to. They are annotated where they live
 rather than answered with a test that asserts a no-op.
 
-**The other four were real, and three are still open.** `worker.py:413` is guarded:
-the heartbeat detail is everything the tick carries except its errors, and `docs/25` sends
-an operator to that row to read `claimed`. Left unguarded, named rather than quietly
-dropped: `cli.py:704` inverts the `authenticated` flag the command line prints for a data
-provider, so an operator checking whether a provider is connected is told the opposite;
-`console.py:110` rounds a frozen report's lift to three decimals instead of the two the
-rest of the panel is in, which is real and cosmetic and not worth a database round trip;
-`schemas.py:136` loosens a date field's length ceiling from ten to eleven, which nothing
-sends and so nothing catches.
+**The other four were real, and all four are guarded.** `worker.py:413`: the heartbeat
+detail is everything the tick carries except its errors, and `docs/25` sends an operator to
+that row to read `claimed`. `cli.py:704`: the command line printed the inverse of whether a
+data provider holds a credential, and the failure ran the expensive way — a provider
+reported as authenticated is one nobody goes and connects, and every lookup through it
+errors until somebody notices. Both sides of that one are asserted, because a one-sided
+check is exactly what let D-57 live.
+
+The last two were carried for one commit as declared debt, on the judgement that a decimal
+and an unreachable length ceiling were not worth the fixtures. That judgement was wrong,
+and cheaply so: both took one fixture each. `console.py:110` rounds a frozen report's lift
+to three decimals where the rest of the panel is in two. `schemas.py:136` loosens a
+baseline date's length ceiling from ten characters to eleven — the window the partner signs
+a letter against. Both are killed now, and re-applying each mutation fails exactly its own
+test and no other.
+
+**The lift figure is D-58, and it is the second shape again.** A test already asserted that
+figure. It asserted it as `shown["liftPp"] == round(frozen[...]["lift"] * 100, 2)` — the
+code's own expression, re-run — on a fixture whose lift was exactly 15.00pp, where two
+decimals and three agree. Self-referential *and* fed data that could not discriminate: the
+assertion would have survived any rounding change at all. The replacement expects a
+literal, on a lift of 23.333…pp, and asserts first that the fixture still discriminates, so
+that a later change to the counts fails loudly instead of going quiet.
 
 **That an equivalence rate of half is the interesting number.** A survivor list where
 every entry is real would mean the generator is too timid to reach the boundaries that
@@ -62,9 +86,9 @@ The worst of the seven: Pipedrive's pagination stopped after the first page, Sal
 
 ## The recurring shape
 
-Thirty-four of the fifty-seven are one defect wearing different clothes: **a complete specification with no caller.** A price in `docs/12` nothing charges. A column no code sets. A button labelled for a feature that does not exist. A process table CI never runs. A restore script that ends by telling you to test it.
+Thirty-four of the fifty-eight are one defect wearing different clothes: **a complete specification with no caller.** A price in `docs/12` nothing charges. A column no code sets. A button labelled for a feature that does not exist. A process table CI never runs. A restore script that ends by telling you to test it.
 
-The second shape, found only once the first was exhausted: **a guard that passes when you break the thing it guards.** Eight of those, and two of them were written in the same session that found them.
+The second shape, found only once the first was exhausted: **a guard that passes when you break the thing it guards.** Nine of those, and two of them were written in the same session that found them.
 
 The third is the second one's cheaper cousin and appears last, because you only see it after you stop asking whether a guard is correct and start asking who calls it: **a guard that is correct, tested, and not on the path.** D-34 is that — four checks, all of them right, installed in one of five callers, and the caller they were missing from was the one no operator watches.
 
@@ -113,6 +137,7 @@ Severity is the cost of the defect reaching a paying customer, not the cost of f
 | D-48 | `install_declared` registered a tenant's provider document under the document's own `metadata.provider`, and the waterfall asks `get_provider(row["key"])`. A row keyed `hunter-io` holding a document named `hunter` was accepted by the CLI, chosen by the optimiser, and then not found — and `LookupError` is not what the buy loop catches, so it left the enrichment step rather than skipping that provider | **Medium** — a registration the runtime accepts and cannot use, failing on the first real lookup rather than at registration | Read | One name: `provider_of()` is the single definition, the installer refuses the mismatch, and the CLI refuses it before the row exists | `test_provider_documents.py::test_a_document_and_its_registration_answer_to_one_name` |
 | D-55 | `zolts/expr.py` binds each path `names()` reports into the evaluation scope. `names()` reports an attribute chain *and its own prefixes*, so `payload.a.a` also yields `payload.a`, and both bind the name `a`. They were bound in the order a `set` iterated, so the shallower one could land last and overwrite the namespace with its raw dict — and the next segment raised `AttributeError: 'dict' object has no attribute 'a'` | **High** — set iteration over strings follows the process hash seed, so this was not a clause that failed but a clause that failed *on some workers*: a depth-three `where` enrolled correctly, then stopped enrolling after a restart, with no deploy in between. The error also escaped the `TypeError` guard D-37 put around trigger evaluation, so it surfaced as a 500 on `POST /v1/signals` | Mutated | A dotted path always wins over a bare one at the same name, and `_Namespace` collects a whole branch before assigning any of it. The namespace is the only binding under which every reported path resolves | `test_expr.py::test_a_clause_evaluates_the_same_under_every_hash_seed` runs the same clause on the same payload under eight `PYTHONHASHSEED` values in subprocesses and fails unless all eight agree |
 | D-56 | Three colour defects the brand work surfaced, all the same shape. `--live`, the live-latency semantic, was declared and rendered nowhere, while the runtime's own p95 wore `tone: "good"` — the verified-lift green — unconditionally, so a slow runtime and a fast one were the same colour and that colour already meant something else on the same screen. A running programme's status dot wore it too, inside the programmes table. And `--ink-secondary` and `--line` were referenced by three CSS rules and declared by none, so three declarations were dropped in silence: the evidence list lost its row separators and two labels fell back to inherited ink | **Medium** — a CFO reads colour before text, and the surface was telling them a latency figure was a verified lift. CSS fails quietly, so nothing rendered wrong enough to notice | Read | Latency takes its own semantic; lifecycle is drawn in ink because it is not a measurement; the two undeclared tokens are declared. ADR-045 makes the rule structural: inside a chart, table or figure, colour means a measurement and only a measurement | `test_brand.py` walks the stylesheet and fails if the accent paints a selector that renders a measured value, if a declared semantic has no caller, or if any `var()` names a token nothing declares |
+| D-58 | The console rounds a frozen report's lift to two decimals, the unit the rest of the measurement panel is in. A test asserted that figure — as `shown["liftPp"] == round(frozen[...]["lift"] * 100, 2)`, the code's own expression re-run, on a fixture whose lift was exactly 15.00pp. Two decimals and three agree on 15.00, so the assertion was both self-referential and fed data that could not tell them apart | **Low** in consequence — a third decimal on a CFO's screen, in a panel whose every other figure is in two — and **high** in what it says about the guard. An assertion that re-runs the code it checks certifies whatever the code does; this one would have survived any rounding change at all. `schemas.py:136`, fixed in the same commit, is the same class: a baseline date's ten-character ceiling loosened to eleven, on the window a partner signs a letter against, and no input anywhere was eleven characters long | Mutated | The expectation is a literal, on a lift of 23.333…pp, and the test asserts **first** that the fixture still discriminates — so counts changed later fail loudly instead of going quiet. The date ceiling is asserted at exactly eleven characters, the only length that separates the two | `test_survivors.py`; re-applying each mutation fails exactly its own test and no other |
 | D-57 | `test_the_budget_is_under_the_cron_interval` derived the cron interval from the minute field alone — `60 if "*" else 60 * int(field)`. It had only ever been fed `* * * * *`, so it had only ever computed 60. Moving the shipped schedule to a daily one (decision 43) made it compute `60 * int("0")` — zero seconds — and fail a schedule that is perfectly safe | **Medium**, and the failure is the harmless half. A daily schedule of `30 3 * * *` would have computed 1800 seconds and **passed**, having measured nothing about the real twenty-four-hour gap — a guard that is green because its arithmetic is wrong in the flattering direction. The budget it protects is what stops two ticks overlapping on the same leases | Executed | The reader covers the subset the repository ships — `*`, `*/N`, and a fixed minute or hour — and **refuses** anything else rather than returning a plausible number. A weekly or monthly expression raises rather than being silently read as daily | `test_serverless.py::test_the_interval_reader_refuses_what_it_cannot_read` asserts six readable expressions and four it must refuse |
 
 ### Product surface
