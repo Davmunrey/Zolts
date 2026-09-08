@@ -22,9 +22,39 @@ Every defect this repository has found in itself, what it would have cost, and w
 
 The runtime is a separate measurement and a slower one: its behaviour is only reachable with Postgres, so each mutant costs a full suite run. A target whose suite the script did not run is a target it refuses to report on — a coverage number produced by skipping the tests that would catch it is worse than no number.
 
-**And it is a different number.** A first pass over `runtime/` applied nineteen mutants before it was stopped, and **nine survived** — nowhere near the 97.5% the pure core measures, which is what one would expect of code whose behaviour needs a database to reach. Nineteen is below the floor `RATE_NEEDS` sets, so **no rate is quoted here**: the yield of that pass is the survivor list, not a percentage.
+**And it is a different number.** A full sample over `runtime/` — thirty mutants, each
+against the whole Postgres-backed suite — measures **22 of 30 caught, 73%, 95% CI 56-86%,
+sampled from 1,467 possible mutants**, against `zolts/`'s 97.5%. The gap is real and is
+what one would expect: the pure core is reached by every test, and the runtime's behaviour
+needs a database, a tenant and a programme before most of it runs at all. Measured at
+`4361628`; the guard added in `e4f05da` kills one of the eight below, so the same sample at
+the current head is 23 of 30.
 
-Seven of the nine were real and are now guarded (`tests/test_survivors.py`, plus one in `test_branching.py` where its fixture already lived). Two were equivalent and are annotated where they live rather than answered with a test that asserts a no-op — a float comparison whose equality case cannot be constructed, and a connection-pool cap no reachable behaviour distinguishes. **The split matters more than the rate.** A survivor list where every entry is real would mean the generator is too timid; one where most are equivalent would mean the measurement is theatre. Seven in nine is neither.
+**Half the survivors were equivalent.** Four of the eight change nothing any test can
+reach — a strict float comparison whose equality case cannot be constructed, a
+connection-pool cap, the last step of a retry backoff moved by one second, and the number
+of characters a fallback identifier is truncated to. They are annotated where they live
+rather than answered with a test that asserts a no-op.
+
+**The other four were real, and three are still open.** `worker.py:413` is guarded:
+the heartbeat detail is everything the tick carries except its errors, and `docs/25` sends
+an operator to that row to read `claimed`. Left unguarded, named rather than quietly
+dropped: `cli.py:704` inverts the `authenticated` flag the command line prints for a data
+provider, so an operator checking whether a provider is connected is told the opposite;
+`console.py:110` rounds a frozen report's lift to three decimals instead of the two the
+rest of the panel is in, which is real and cosmetic and not worth a database round trip;
+`schemas.py:136` loosens a date field's length ceiling from ten to eleven, which nothing
+sends and so nothing catches.
+
+**That an equivalence rate of half is the interesting number.** A survivor list where
+every entry is real would mean the generator is too timid to reach the boundaries that
+matter; one where nearly all are equivalent would mean the measurement is theatre. Four in
+eight, with the real ones landing on a runbook's own instructions and a connector's
+pagination, is a sampler working as intended.
+
+An earlier partial pass over the same seed, before the guards of the previous change, left
+nine alive in nineteen. The same seed produces the same mutant sequence, so that is a
+controlled before-and-after: four mutants that survived then are caught now.
 
 The worst of the seven: Pipedrive's pagination stopped after the first page, Salesforce contacts lost the mailing country the policy engine resolves jurisdiction from, and the planner counted every email open as zero — so a play branching on *opened but did not reply* would have stopped firing, silently, for everyone. None of the three is a wrong line anybody would spot by reading; each is a line no test distinguished from a different line.
 
