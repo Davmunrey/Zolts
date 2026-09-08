@@ -148,7 +148,12 @@ def test_an_outcome_outside_the_window_is_not_this_metrics_conversion(db, tenant
 
     [program] = view["programs"]
     assert program["nTreat"] == 10
-    assert program["conversions"] == 5, "a reply on day 40 is outside a fourteen-day metric"
+    # The arm's own rate, which is what `_rates` counts and what the verdict
+    # rests on. Asserting the total alone let a mutation that dropped the
+    # window clause from the arms survive: the unread-share query has its own
+    # copy of it, and one of the two passing is not the guard.
+    assert program["treat"] == 50.0, "a reply on day 40 is outside a fourteen-day metric"
+    assert program["conversions"] == 5
 
 
 @requires_db
