@@ -22,6 +22,12 @@ Every defect this repository has found in itself, what it would have cost, and w
 
 The runtime is a separate measurement and a slower one: its behaviour is only reachable with Postgres, so each mutant costs a full suite run. A target whose suite the script did not run is a target it refuses to report on — a coverage number produced by skipping the tests that would catch it is worse than no number.
 
+**And it is a different number.** A first pass over `runtime/` applied nineteen mutants before it was stopped, and **nine survived** — nowhere near the 97.5% the pure core measures, which is what one would expect of code whose behaviour needs a database to reach. Nineteen is below the floor `RATE_NEEDS` sets, so **no rate is quoted here**: the yield of that pass is the survivor list, not a percentage.
+
+Seven of the nine were real and are now guarded (`tests/test_survivors.py`, plus one in `test_branching.py` where its fixture already lived). Two were equivalent and are annotated where they live rather than answered with a test that asserts a no-op — a float comparison whose equality case cannot be constructed, and a connection-pool cap no reachable behaviour distinguishes. **The split matters more than the rate.** A survivor list where every entry is real would mean the generator is too timid; one where most are equivalent would mean the measurement is theatre. Seven in nine is neither.
+
+The worst of the seven: Pipedrive's pagination stopped after the first page, Salesforce contacts lost the mailing country the policy engine resolves jurisdiction from, and the planner counted every email open as zero — so a play branching on *opened but did not reply* would have stopped firing, silently, for everyone. None of the three is a wrong line anybody would spot by reading; each is a line no test distinguished from a different line.
+
 **What survives the correction is the sharper claim.** All twenty-two of the read defects were found by reading a *document* against the code — a price nothing charges, an ADR written in the present tense about a connector that does not exist, a script nobody had ever run. Not one was found by reviewing code for a wrong line. Reading works, and what it finds is the absent caller, never the incorrect one.
 
 ## The recurring shape

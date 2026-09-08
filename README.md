@@ -72,7 +72,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 1186 tests, each backing a specific claim made in `docs/`; 382 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
+- `tests/` — 1194 tests, each backing a specific claim made in `docs/`; 383 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -83,7 +83,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 1186 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 1194 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
