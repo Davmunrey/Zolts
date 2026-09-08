@@ -119,7 +119,7 @@ LAST = ("Cruz", "Weber", "Duarte", "Novak", "Rossi", "Bakker", "Moreau", "Lind")
 
 
 def _sized_for_the_demo(spec: dict) -> dict:
-    """Raise the tier capacities to cover the seeded population.
+    """Raise the tier capacities, and open the send window, for the demo run.
 
     The example program caps its tiers at 25, 200 and 2,000 contacts a week,
     which is a real sales team's throughput. Enrolling several thousand
@@ -138,6 +138,19 @@ def _sized_for_the_demo(spec: dict) -> dict:
     sized = copy.deepcopy(spec)
     for tier in sized.get("route", {}).get("tiers", []):
         tier["capacity_per_week"] = ACCOUNTS * 2
+
+    # And the send window, for the same reason and with a sharper edge. The
+    # program declares Mon-Fri 08:00-18:00 Europe/Madrid, which is right for a
+    # real sequence and means the planner moves every step of a demo run started
+    # outside those hours to the next open — so the demo reports zero touches,
+    # zero replies and no measurement, having done nothing wrong (D-68). Fifty
+    # hours in a hundred and sixty-eight: the demo, and the test that runs it,
+    # were red about seventy per cent of the week on correct code.
+    #
+    # `window_for` returns nothing when a program declares no window and
+    # `next_open` then leaves the moment alone, so removing it is how a demo
+    # says "land now". Disclosed in the output beside the capacity.
+    (sized.get("schedule") or {}).pop("send_window", None)
     return sized
 
 
@@ -301,7 +314,10 @@ def main() -> int:
             "note": "the population, these two rates and the tier capacity are "
                     "synthetic and chosen. Capacity is raised from the example "
                     "program's 25/200/2000 so every treatment enrollment is actually "
-                    "contacted; left as shipped, the measured lift goes negative "
+                    "contacted, and the Mon-Fri 08:00-18:00 Europe/Madrid send "
+                    "window is removed so a run started outside those hours lands "
+                    "now rather than tomorrow (D-68); left as shipped, the measured "
+                    "lift goes negative "
                     "because intent-to-treat counts enrollments capacity never "
                     "reached. Everything downstream — arm assignment, the conversion "
                     "path, and the measurement below — is the product's own code. The "

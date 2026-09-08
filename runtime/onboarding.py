@@ -134,6 +134,12 @@ def _unique_slug(cur, stem: str) -> str:
     if cur.fetchone() is None:
         return stem
     for _ in range(MAX_SLUG_ATTEMPTS):
+        # Three bytes is six hex characters. A mutation-coverage run flagged the
+        # 3 as unkilled, and it is: `slug` is `text not null unique` with no
+        # length ceiling, so any suffix length collides no more often than the
+        # loop can absorb, and no behaviour this suite can reach tells six hex
+        # characters from eight. An equivalent mutant, answered here rather than
+        # with a test that would assert the length of a random string.
         candidate = f"{stem[:32]}-{secrets.token_hex(3)}"
         cur.execute("select 1 from tenant where slug = %s", (candidate,))
         if cur.fetchone() is None:

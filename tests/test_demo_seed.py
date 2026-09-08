@@ -148,3 +148,68 @@ def test_the_demo_seeds_a_tenant_that_enrols_measures_and_leaves_deals_alone(db,
                     " where o.status = 'open' and o.crm_id like 'deal-o%'")
         assert cur.fetchone()["n"] == 0, (
             "an account already in an open deal was enrolled anyway")
+
+
+# -- the demo must not depend on what time it is (D-68) ----------------------
+
+def _seeder_module():
+    """Import `scripts/seed_demo.py` without running it."""
+    import importlib.util
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    spec = importlib.util.spec_from_file_location("seed_demo", SEEDER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_demo_lands_its_sends_now_whatever_hour_it_is_run_at():
+    """The example program declares Mon-Fri 08:00-18:00 Europe/Madrid, which is
+    right for a real sequence: `planner` moves each step to the next open rather
+    than cancelling it. A demo run started outside those hours therefore queued
+    every touch for tomorrow and reported zero sent, zero replies and no
+    measurement — correct behaviour producing a useless artifact.
+
+    Fifty hours in a hundred and sixty-eight. The demo and the test that runs it
+    were red about seventy per cent of the week on code that was never wrong,
+    which is the third time this repository has found a check that fails on the
+    environment rather than on the product (D-35, D-59).
+
+    Asserted on the sizing function rather than by moving the clock, so it holds
+    at whatever hour CI happens to run.
+    """
+    from datetime import datetime, timezone
+
+    import yaml
+
+    from zolts import schedule
+
+    module = _seeder_module()
+    shipped = yaml.safe_load(
+        (ROOT / "examples" / "programs" / "01-b2b-saas-sales-led.yaml").read_text())["spec"]
+
+    assert schedule.window_for(shipped) is not None, (
+        "the shipped program no longer declares a send window, so this test is "
+        "asserting nothing — point it at whichever program the demo now seeds")
+
+    sized = module._sized_for_the_demo(shipped)
+    assert schedule.window_for(sized) is None, (
+        "the demo keeps the program's send window, so a run outside 08:00-18:00 "
+        "Europe/Madrid sends nothing")
+
+    # The property that actually matters: a moment is not moved.
+    saturday_at_three_am = datetime(2026, 9, 12, 3, 0, tzinfo=timezone.utc)
+    assert schedule.next_open(
+        saturday_at_three_am, schedule.window_for(sized)) == saturday_at_three_am
+
+
+def test_the_demo_still_says_which_of_the_programs_settings_it_changed():
+    """Both overrides are disclosed in the output, because a demo that quietly
+    rewrites the program it is demonstrating is the thing this file exists to
+    prevent."""
+    source = SEEDER.read_text()
+    assert "capacity" in source and "send " in source
+    note_material = source[source.index('"note": "the population'):]
+    assert "window is removed" in note_material, (
+        "the send-window override is not disclosed in the demo's own output")
