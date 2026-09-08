@@ -156,6 +156,35 @@ from the noun instead of from the access pattern. It cannot be caught by reading
 because the index is well-formed; it can only be caught by reading the index *and* the query
 and noticing they are about disjoint sets of rows.
 
+**The fifth shape is the only one that costs nothing when it fires and everything when it is
+tolerated: a check that fails on its environment rather than on its subject.** Three of them,
+and the third is what named the class.
+
+* **D-35.** `smoke_runtime.py` failed about one run in ten because the account it enrolled was
+  assigned to the holdout by a hash of its id. Correct product behaviour, reported as a broken
+  smoke.
+* **D-59.** Two preflight tests asserted the no-TLS branches of a check while inheriting
+  whatever the ambient Postgres did. Green on CI's `postgres:16`, red on a Debian package that
+  ships `ssl = on`, against a product correct on both.
+* **D-68.** The demo seeds the example programme, whose send window closes at 18:00
+  Europe/Madrid. Outside it the planner correctly defers every touch to the next morning, the
+  seeder reports nothing sent, and the suite fails. Fifty green hours in a hundred and
+  sixty-eight — red about seventy per cent of the week, for months, on code that was never
+  wrong.
+
+None of the three was a product defect. All three were found the same way: something went red
+that had every hallmark of a flake — an unrelated file, passing an hour earlier, passing in CI
+on the same commit — and the rule that *"flake" is not a root cause* was followed anyway. D-68
+surfaced twenty-two minutes after a window closed, on a run CI had passed at 16:02.
+
+The cost is not the failure. It is that a suite which is red on correct code teaches the team
+to press re-run, and a team that presses re-run has no suite at all. **A test may not depend on
+ambient time, ambient configuration or ambient data.** Where it must touch one, it establishes
+the premise itself and asserts it first — `sslmode=disable` and a check that the connection
+really is plaintext; a programme with the window removed and a check that the shipped one still
+declares it. That assertion is the difference between a test and a coincidence.
+
+
 ## Register
 
 Severity is the cost of the defect reaching a paying customer, not the cost of fixing it.
