@@ -289,3 +289,86 @@ def test_the_command_line_reports_a_provider_as_authenticated_only_when_it_is(
     connected = show("--connection", connection_id)
     assert connected["authenticated"] is True, (
         "a provider holding a sealed credential is reported as unauthenticated")
+
+
+# -- console.py:110  `round(pp, 2)` -> `round(pp, 3)` --------------------
+
+@requires_db
+def test_the_lift_on_screen_is_rendered_to_the_panels_own_precision(db, tenant):
+    """The measurement panel is in percentage points to two decimals. A third
+    decimal survived every test, because the one fixture that asserted the
+    figure had a lift of exactly 15.00pp — where two decimals and three agree —
+    and asserted it by re-running the same `round` the code runs. A test of
+    itself, on data that could not tell the two apart.
+
+    This fixture's lift is 23.333...pp, and the expectation is a literal.
+    """
+    from runtime import reporting
+    from runtime.api import console
+    from tests.test_incrementality_report import _arm, _close, _program, _tenant_row
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        program_id = _program(cur, tid, key="three-decimals")
+        _arm(cur, tid, program_id, "treatment", 30, converted=10)   # 0.33333...
+        _arm(cur, tid, program_id, "control", 30, converted=3)      # 0.1
+        closed = _close(cur, tid)
+        [frozen] = reporting.freeze_all(cur, _tenant_row(cur, tid), closed,
+                                        frozen_by="operator")
+        view = console.build(cur, _tenant_row(cur, tid))
+
+    exact = frozen["body"]["primary"]["lift"] * 100
+    assert round(exact, 2) != round(exact, 3), (
+        "this fixture no longer discriminates: choose counts whose lift in "
+        "percentage points has a non-zero third decimal, or the test is a no-op")
+
+    [program] = [p for p in view["programs"] if p["key"] == "three-decimals"]
+    [shown] = program["reports"]
+    assert shown["liftPp"] == 23.33, "the screen is in percentage points to two decimals"
+    # `mdePp` one line below shares the shape. Assert the property rather than
+    # re-running the code's own expression against itself.
+    for field in ("liftPp", "mdePp"):
+        value = shown[field]
+        if value is not None:
+            assert round(value, 2) == value, f"{field} reached the screen with three decimals"
+
+
+# -- schemas.py:136  `max_length=10` -> `max_length=11` -------------------
+
+_BASELINE = {
+    "window_start": "2026-01-01",
+    "window_end": "2026-03-31",
+    "spend_tools_micros": 0,
+    "spend_data_micros": 0,
+    "spend_sending_micros": 0,
+    "spend_people_micros": 0,
+    "contacted": 0,
+    "replied": 0,
+    "meetings": 0,
+    "opportunities": 0,
+    "signed_by": "A Founder",
+}
+
+
+def test_the_baseline_window_refuses_a_date_one_character_too_long():
+    """`window_start` and `window_end` are ISO dates: exactly ten characters,
+    and the baseline is frozen once and quoted in a letter a partner signs.
+
+    The ceiling mutated from ten to eleven and survived, because no input
+    anywhere in the corpus was eleven characters long. The boundary the field
+    exists to hold was the one case nobody had written down.
+    """
+    import pydantic
+
+    from runtime.api.schemas import BaselineIn
+
+    def baseline(**overrides):
+        return BaselineIn(**{**_BASELINE, **overrides})
+
+    assert baseline().window_start == "2026-01-01", "the valid case must stay valid"
+
+    for field in ("window_start", "window_end"):
+        with pytest.raises(pydantic.ValidationError):
+            baseline(**{field: "2026-01-011"})   # eleven characters
+        with pytest.raises(pydantic.ValidationError):
+            baseline(**{field: "2026-01-0"})     # nine

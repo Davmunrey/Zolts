@@ -163,6 +163,22 @@ MUTATIONS = (
         find=".kpi .v.live{color:var(--live)}",
         replace=".kpi .v.live{color:var(--accent)}",
         tests="tests/test_brand.py"),
+    Mutation(
+        id="the-lift-is-rendered-in-the-panels-precision",
+        claim="a frozen report's lift reaches the screen in percentage points to "
+              "two decimals, the unit every other figure in the panel is in (D-58)",
+        path="runtime/api/console.py",
+        find='else round(primary["lift"] * 100, 2)),',
+        replace='else round(primary["lift"] * 100, 3)),',
+        tests="tests/test_survivors.py"),
+    Mutation(
+        id="a-baseline-date-is-exactly-ten-characters",
+        claim="the baseline window a partner signs a letter against holds ISO dates "
+              "and refuses one character more (D-58)",
+        path="runtime/api/schemas.py",
+        find="    window_start: str = Field(min_length=10, max_length=10)\n",
+        replace="    window_start: str = Field(min_length=10, max_length=11)\n",
+        tests="tests/test_survivors.py"),
 )
 
 def _dirty() -> bool:
