@@ -750,15 +750,18 @@ Four steps: create the role if absent, restore with `ON_ERROR_STOP=1`, re-grant 
 
 ## Changing a program without a deploy
 
-The console edits eleven parameters and emits a whole program document. Nothing else.
+The console edits ten parameters and emits a whole program document. Nothing else. It was eleven until `budget.on_exceed` was removed: three behaviours the runtime does not distinguish, offered as a control an operator could set and believe in (D-63).
 
 | What it edits | Bound | Where the bound comes from |
 |---|---|---|
 | `experiment.holdout_pct` | 0–50 | the schema |
 | `score.floor` | 0–100 | the schema |
 | `trigger.window`, `trigger.dedupe.cooldown` | `^\d+[hdw]$`, `^\d+[dw]$` | the schema |
-| `route.strategy`, `budget.on_exceed` | three choices each | the schema |
+| `route.strategy` | three choices | the schema |
 | `budget.monthly_credits` | ≥ 0 | the schema |
+
+What a dial *does* is not in that table, and one of them promised more than it holds: `budget.monthly_credits` bounds copy generation, not the program's spend on sends, enrichment, signals or dossiers. Those are bounded by the tenant's credit ceiling. `zolts/controls.py` is the list of every declared control and where — or whether — the runtime enforces it, and a test refuses any tunable that appears in its unenforced half.
+
 | `policy.overrides.max_touches_per_person_per_week` | ≥ 0 | the schema |
 | `enrich.account.max_cost_per_account`, `enrich.person.max_cost_per_contact` | ≥ 0 | the schema |
 | `enrich.person.accuracy_sla` | 0–1 | the schema |
@@ -792,7 +795,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1214 tests. 398 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1225 tests. 398 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

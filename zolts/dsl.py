@@ -147,9 +147,14 @@ TUNABLE: tuple[tuple[str, str], ...] = (
     ("spec.route.strategy",
      "Who receives the enrolled account."),
     ("spec.budget.monthly_credits",
-     "Ceiling on what this program may spend in a billing period."),
-    ("spec.budget.on_exceed",
-     "What the runtime does when the ceiling is reached."),
+     "Ceiling on what this program may spend generating copy. Sends, enrichment "
+     "and signals are bounded by the tenant's credit ceiling, not by this."),
+    # `spec.budget.on_exceed` was here, offering three behaviours — pause,
+    # throttle, continue — that nothing at runtime distinguishes (D-63). A dial
+    # an operator sets, that reports success and changes nothing, is worse than
+    # an absent one: it is a control they will believe they have. It returns
+    # when a program-level ceiling exists for it to act on; `zolts/controls.py`
+    # names it, and a test refuses any tunable the runtime does not honour.
     ("spec.policy.overrides.max_touches_per_person_per_week",
      "Contact pressure. Stricter than the tenant policy is allowed; looser is not."),
     ("spec.enrich.account.max_cost_per_account",

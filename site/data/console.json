@@ -1789,19 +1789,9 @@
     },
     {
       "path": "spec.budget.monthly_credits",
-      "note": "Ceiling on what this program may spend in a billing period.",
+      "note": "Ceiling on what this program may spend generating copy. Sends, enrichment and signals are bounded by the tenant's credit ceiling, not by this.",
       "type": "number",
       "minimum": 0
-    },
-    {
-      "path": "spec.budget.on_exceed",
-      "note": "What the runtime does when the ceiling is reached.",
-      "type": "string",
-      "enum": [
-        "pause_and_alert",
-        "throttle",
-        "continue_and_alert"
-      ]
     },
     {
       "path": "spec.policy.overrides.max_touches_per_person_per_week",

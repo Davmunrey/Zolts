@@ -1,0 +1,198 @@
+"""Which declared controls the runtime enforces, and which it does not.
+
+A program is a contract a customer writes. Most of its fields describe what the
+program *is* — an audience, a sequence, a metric. A handful are **controls**:
+the customer states a limit and expects the runtime to hold it. Money, contact
+pressure, capacity.
+
+A control the runtime does not read is the worst member of this repository's
+commonest defect family, because it fails in the flattering direction. A field
+nothing reads that describes a program is inert. A *limit* nothing reads is a
+promise kept only by luck, and the customer has no way to tell the two apart:
+they wrote a ceiling, nothing exceeded it this week, and the system looks
+correct.
+
+`spec.budget` was exactly that (D-63). Five fields; one honoured, and only for
+one of the eight priced actions. `docs/07` named per-program, per-tenant and
+daily ceilings as the control for spend leakage and only the per-tenant ceiling
+existed. Nothing failed, because the tenant ceiling does fire and defers actions
+with `budget: ...` — so an operator watching it work would reasonably conclude
+the program's own block was what worked.
+
+This module exists so that can never again be true silently. Every control the
+schema offers is named here with its status. `HONOURED` entries say where the
+enforcement lives, so the claim can be checked. `NOT_HONOURED` entries say what
+the customer loses, so nobody has to guess whether it matters. A test fails when
+the schema grows a control this file does not name, which is the only way a
+registry like this stays true.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Control:
+    """One limit a program may declare."""
+    path: str
+    what: str
+    #: Where the runtime enforces it, or None when it does not.
+    enforced_by: str | None
+    #: What a customer loses by declaring it today. Empty when it is enforced.
+    consequence: str = ""
+
+    @property
+    def honoured(self) -> bool:
+        return self.enforced_by is not None
+
+
+CONTROLS: tuple[Control, ...] = (
+    # -- honoured -------------------------------------------------------
+    Control(
+        "spec.policy.overrides.max_touches_per_person_per_week",
+        "contact pressure, per person per week",
+        enforced_by="runtime/engine/gate.py, read into policy.ActionContext"),
+    Control(
+        "spec.enrich.account.max_cost_per_account",
+        "ceiling the waterfall may spend resolving one account",
+        enforced_by="runtime/engine/enrich_step.py, passed as the waterfall cap"),
+    Control(
+        "spec.enrich.person.max_cost_per_contact",
+        "ceiling the waterfall may spend resolving one contact",
+        enforced_by="runtime/engine/enrich_step.py, passed as the waterfall cap"),
+    Control(
+        "spec.experiment.holdout_pct",
+        "share held back, so lift can be measured at all",
+        enforced_by="zolts/experiment.py; mandatory or waived in writing"),
+
+    # -- honoured, but narrower than it reads ---------------------------
+    Control(
+        "spec.budget.monthly_credits",
+        "ceiling on what this program may spend in a billing period",
+        enforced_by="runtime/engine/generate.py, as the SpendGuard ceiling",
+        consequence=(
+            "Narrower than the name promises, and this is the trap. It bounds "
+            "**model generation only** — one of the eight priced actions. Sends, "
+            "enrichment, signal checks and dossiers on this program are bounded by "
+            "the tenant's credit ceiling and by nothing program-specific. A customer "
+            "running two programs cannot cap one of them")),
+
+    # -- not honoured ---------------------------------------------------
+    Control(
+        "spec.budget.on_exceed",
+        "what the runtime does when the ceiling is reached",
+        enforced_by=None,
+        consequence=(
+            "Nothing at runtime branches on it, so `pause_and_alert`, `throttle` and "
+            "`continue_and_alert` are the same program. `docs/07` names "
+            "`on_exceed: pause_and_alert` as the control for spend leakage. It was "
+            "also a console dial an operator could set (ADR-029), which is a control "
+            "that reports success and does nothing — removed from the tunable set "
+            "until it is real")),
+    Control(
+        "spec.budget.max_cost_per_account",
+        "ceiling on what this program may spend resolving one account",
+        enforced_by=None,
+        consequence=(
+            "Read by one validation rule and enforced by nothing. The cap of this "
+            "name that *is* enforced is `spec.enrich.account.max_cost_per_account`, "
+            "a different field in a different block — so a customer who sets the "
+            "budget one and watches the enrich one fire has every reason to believe "
+            "theirs is working")),
+    Control(
+        "spec.budget.max_cost_per_person",
+        "ceiling on what this program may spend on one person",
+        enforced_by=None,
+        consequence="Spend on a person is bounded only by the tenant's credit ceiling"),
+    Control(
+        "spec.budget.max_cost_per_meeting",
+        "ceiling on acquisition cost per meeting booked",
+        enforced_by=None,
+        consequence=(
+            "A derived ceiling — cost divided by an outcome — so honouring it needs a "
+            "decision about what happens when it is breached mid-period, not only an "
+            "implementation. Registered in `docs/18`")),
+    Control(
+        "spec.route.tiers.capacity_per_week",
+        "how many accounts a tier may take in a week",
+        enforced_by=None,
+        consequence=(
+            "Routing admits without counting. Sending is still bounded by the "
+            "mailbox fleet's own daily caps (ADR-020), so this over-enrolls rather "
+            "than over-sends: the queue grows and the work arrives late")),
+    Control(
+        "spec.route.tiers.capacity_per_week_per_rep",
+        "how many accounts one representative may take in a week",
+        enforced_by=None,
+        consequence="A human's queue can be filled past what they can work"),
+    Control(
+        "spec.plays.*.steps.sla_hours",
+        "how long a step may wait before it is late",
+        enforced_by=None,
+        consequence="Nothing measures step latency against it, and nothing reports a breach"),
+    Control(
+        "spec.enrich.*.skip_if_known",
+        "do not buy a field the record already has",
+        enforced_by=None,
+        consequence=(
+            "The command-line sweep selects only records missing the field, so the "
+            "waste it prevents does not arise on that path. It is unread rather than "
+            "violated — but a second caller would not inherit that protection")),
+    Control(
+        "spec.experiment.guardrail_metrics",
+        "metrics that must not degrade while the experiment runs",
+        enforced_by=None,
+        consequence=(
+            "Declared and never evaluated, so a program that wins on its primary "
+            "metric while damaging a guardrail reports an unqualified win")),
+)
+
+HONOURED = tuple(c for c in CONTROLS if c.honoured)
+NOT_HONOURED = tuple(c for c in CONTROLS if not c.honoured)
+BY_PATH = {c.path: c for c in CONTROLS}
+
+
+def _matches(path: str, declared: str) -> bool:
+    """Whether a concrete dotted path matches a registry path with `*` segments.
+
+    Paths are shaped by `declared_paths`, which does not index list elements: a
+    field inside a list of tiers is `spec.route.tiers.capacity_per_week`, not
+    `spec.route.tiers.0.capacity_per_week`. Writing the patterns as though lists
+    were indexed produced a registry that matched nothing and reported every
+    program clean — the same defect it exists to catch, one level up. The test
+    that resolves every path against the schema is what keeps that honest.
+    """
+    want, got = path.split("."), declared.split(".")
+    if len(want) != len(got):
+        return False
+    return all(w == "*" or w == g for w, g in zip(want, got))
+
+
+def declared_paths(spec: dict) -> list[str]:
+    """Every dotted path present in a program spec, one per leaf and branch."""
+    out: list[str] = []
+
+    def walk(node, prefix: str) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                here = f"{prefix}.{key}"
+                out.append(here)
+                walk(value, here)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, prefix)
+
+    walk(spec, "spec")
+    return out
+
+
+def unenforced(spec: dict) -> list[Control]:
+    """The controls this program declares that the runtime does not hold.
+
+    Publishing a program says which of its own limits are decoration. Silence
+    here was the defect; a list is the correction.
+    """
+    declared = declared_paths(spec)
+    return [c for c in NOT_HONOURED
+            if any(_matches(c.path, d) for d in declared)]
