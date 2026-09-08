@@ -21,6 +21,7 @@ from runtime.connectors.crm import Consent
 from runtime.connectors.declarative_provider import DeclarativeDataProvider
 from runtime.connectors.pipedrive import PipedriveConnector
 from runtime.connectors.salesforce import SalesforceConnector
+from tests.conftest import requires_db
 from tests.test_crm_contract import SALESFORCE_INSTANCE, _salesforce_handler
 
 
@@ -208,3 +209,34 @@ def test_a_provider_that_declares_no_price_costs_nothing_on_a_miss():
     assert missed.hit is False
     assert missed.cost_micros == 0, (
         "a provider with no declared unit cost invented one")
+
+
+# -- worker.py:413  `!=` -> `==` -----------------------------------------
+
+@requires_db
+def test_the_heartbeat_carries_the_tick_and_not_its_errors(db):
+    """`if k != "errors"` became `== "errors"`, so the heartbeat detail would
+    have carried the errors and nothing else.
+
+    `docs/25` sends an operator to that row and tells them what to read: *a
+    fresh row every tick with `claimed: 0`*. Under the mutation the field the
+    runbook names is simply absent, and the page that exists for three in the
+    morning answers a different question than the one it was written for. The
+    exclusion is deliberate — an error list is unbounded and this column is
+    read by a human, not parsed.
+    """
+    from runtime.engine.worker import Worker
+
+    with db.admin_tx() as cur:
+        cur.execute("delete from worker_heartbeat")
+    Worker(db, secret_key="k", dry_run=True, name="worker-detail").tick()
+
+    with db.admin_tx() as cur:
+        cur.execute("select detail from worker_heartbeat where name = 'worker-detail'")
+        detail = (cur.fetchone() or {}).get("detail") or {}
+
+    assert "claimed" in detail, (
+        f"the runbook reads `claimed` from this row and it is not there: {sorted(detail)}")
+    assert detail["claimed"] == 0, "an idle tick claimed nothing"
+    assert "errors" not in detail, (
+        "the error list is deliberately kept out of a column a human reads")
