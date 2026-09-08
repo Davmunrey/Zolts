@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1232 | 398 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1235 | 398 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -74,7 +74,7 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Deals** | Accounts already in a live sales conversation are excluded from outbound, and a CRM that cannot say which asks the program to refuse rather than assuming none | ADR-038, `test_opportunity.py` |
 | **Deliverability** | Per-domain capacity, warmup, circuit breakers, mailbox fleet with reputation kept where it was earned | ADR-020 |
 | **Enrichment** | Waterfall bought in the declared order with measured hit rates; a miss is absorbed, not billed | ADR-021 |
-| **Signals** | Nine definitions; the runtime goes and looks rather than waiting to be told; priced per account-day | ADR-022 |
+| **Signals** | The engine that goes and looks: nine definitions, refresh clocks, decay, dedupe, latency split and per-account-day billing, all executed. **No source ships.** Every definition names a connector — `jobs_feed`, `press_feed`, `product_events` — that no shipped code registers, so `zolts watch` reports `no signal source …` per signal on a real deployment and the engine is verified against a fake (D-67). The machinery is the hard part and it is real; the first partner integration is what makes it produce anything | ADR-022 |
 | **Console** | Eight views, no dead links, operable on a phone, and it emits DSL | ADR-023, ADR-028, ADR-029 |
 | **Deploy** | Image built, migrated, seeded, preflighted and booted in CI — on the same two commands `fly.toml` runs. On Vercel the same app is one function and the same worker a cron; production is released only by the job that migrates and preflights first, and the function refuses to serve unconfigured with a 503 that says which variable is missing. A probe deployment to the real project built the function with every runtime dependency and proved the rewrite delivers the original path; the minute cron is refused below Pro, as designed | ADR-032, ADR-041, `test_serverless.py` |
 | **Restore** | `restore.sh` executed end to end against a real dump, with the failure it guards against reproduced | ADR-033 |

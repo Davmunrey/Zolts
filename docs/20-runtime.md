@@ -634,7 +634,7 @@ Experiments, Policy and Audit log were removed from the rail rather than left as
 |---|---|
 | Define | `examples/signals/*.yaml` carry the strength, half-life, legal basis, freshness SLA, refresh interval and dedupe window `docs/06` specifies. `scripts/validate.py` refuses a definition missing any of them, and fails a program that triggers on a signal nobody defined |
 | Want | Only signals a **live program** declares are watched. The catalogue is the menu; the live programs are the order |
-| Check | `zolts watch --tenant …` asks each source about the accounts due a look. Billed once per account **per day**, however many signals asked — which is what makes a one-hour refresh on a Tier A signal affordable |
+| Check | `zolts watch --tenant …` asks each source about the accounts due a look — and, on a deployment as shipped, reports `no signal source '<connector>'` for each definition, because none is registered (D-67). The source is resolved before anything is due, so that answer arrives on the first pass rather than on the day the first account does. Billed once per account **per day**, however many signals asked — which is what makes a one-hour refresh on a Tier A signal affordable |
 | Refuse | A detection older than its freshness SLA is not ingested, and is counted as stale. A source that keeps finding things too late is one to replace, and that only shows up if the staleness is recorded |
 | Report | `zolts latency --tenant …` splits time-to-touch into detection (how long the source took) and execution (how long we took). A bad total is one or the other, and they need opposite fixes |
 
@@ -795,7 +795,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1232 tests. 398 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1235 tests. 398 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 
