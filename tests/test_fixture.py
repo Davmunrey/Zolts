@@ -218,7 +218,15 @@ def test_the_rendering_contract_the_surface_relies_on(key):
         assert p["significant"] is False and p["pipeline"] is None
     if p["significant"]:
         assert p["mde"] is not None and p["absLift"] > p["mde"]
-        assert p["pipeline"] and p["pipeline"] > 0
+    # A significant *conversion* lift does not buy a euro figure: pipeline
+    # rests on the opportunity comparison and on the tenant's own deals
+    # (decision 39), so the two move independently and the absent one always
+    # carries its reason.
+    if p["pipeline"] is None:
+        assert p["pipelineWithheld"], "no pipeline figure and no reason for it"
+    else:
+        assert p["pipeline"] > 0 and p["incrementalOpportunities"] > 0
+        assert p["avgOpportunityEur"] > 0
 
 
 # -- the sending fleet the demo shows ------------------------------------

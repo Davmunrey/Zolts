@@ -1023,6 +1023,42 @@ function wireEditor(p){
   renderEditor(p);
 }
 
+// The signed artefact, beside the live figure it was frozen from. Written
+// once at each period close (ADR-043): what this panel shows in month nine is
+// what the partner read in month three, which is the whole point of freezing
+// it rather than recomputing it here.
+function frozenReports(p){
+  var rows = p.reports || [];
+  if (!rows.length){
+    return '<div class="block"><div class="blabel">Frozen reports</div>'
+      + '<p style="margin:0;font-size:12px;color:var(--ink-tertiary);line-height:1.5">'
+      + 'None yet. One is frozen for this programme at every billing period close, '
+      + 'and it is the document the pilot letter is read against.</p></div>';
+  }
+  var body = rows.map(function(r){
+    var tone = r.verdict === "significant" ? "lift" : "deny";
+    return '<div class="act">'
+      + '<span class="g" style="background:var(--' + tone + ')"></span>'
+      + '<span>' + r.periodStart + ' → ' + r.periodEnd + ' · <b style="color:var(--ink)">'
+      + r.verdict + '</b>'
+      + (r.liftPp == null ? "" : ' · ' + (r.liftPp > 0 ? "+" : "") + r.liftPp.toFixed(2)
+         + ' pp vs ' + (r.mdePp == null ? "—" : r.mdePp.toFixed(2) + ' pp'))
+      + ' · ' + (r.pipelineEur != null ? '€' + nf(r.pipelineEur) : "no pipeline figure")
+      + ' · ' + nf(r.credits) + ' credits'
+      + '<br><span class="mono" style="font-size:10.5px;color:var(--ink-tertiary)">'
+      + r.digest.slice(0, 32) + '…</span></span>'
+      + '<time>' + (r.frozenAt || "").slice(0, 10) + '</time></div>';
+  }).join("");
+  var first = rows[0];
+  return '<div class="block"><div class="blabel">Frozen reports</div>' + body
+    + '<p style="margin:10px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
+    + 'Written once and never restated. The digest covers the figures and what they were '
+    + 'computed from, so this row and a signed copy can be checked against each other'
+    + (first.baselineDigest
+        ? '; it quotes the baseline frozen at onboarding.' : '.')
+    + '</p></div>';
+}
+
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
@@ -1048,17 +1084,30 @@ function renderDetail(){
       + '<dt>Minimum detectable effect</dt><dd class="hi">' + p.mde.toFixed(2) + ' pp</dd>'
       + '<dt>Treatment · control</dt><dd>' + nf(p.nTreat) + ' · ' + nf(p.nControl) + '</dd>'
       + unverifiedRow(p)
+      + '<dt>Opportunities (t · c)</dt><dd>' + nf(p.oppTreat) + ' · ' + nf(p.oppControl) + '</dd>'
       + '<dt>Incremental pipeline</dt><dd>'
-        + (ok ? "€" + nf(p.pipeline) : "not reported") + '</dd>'
+        + (p.pipeline != null ? "€" + nf(p.pipeline) : "not reported") + '</dd>'
     + '</dl>'
     + '<div class="note ' + (ok ? "pass" : "fail") + '">'
       + (ok ? ICON_SIG : ICON_UND)
       + '<span>' + (ok
-          ? 'Lift clears the detectable effect. <b style="color:var(--ink)">€' + nf(p.pipeline)
-            + '</b> reported as incremental against a concurrent control.'
+          ? 'Lift clears the detectable effect against a concurrent control.'
           : 'Lift sits below what this design can resolve, so it is not reported as '
             + 'incremental. A <b style="color:var(--ink)">' + (p.neededHoldout || "larger")
             + '%</b> holdout would resolve it at this sample size.')
+      + '</span></div>'
+    // Euros come from deals. The pipeline figure rests on the opportunity
+    // comparison and on the tenant's own average deal, so it is reported and
+    // withheld on its own terms rather than on the reply rate's.
+    + '<div class="note ' + (p.pipeline != null ? "pass" : "fail") + '">'
+      + (p.pipeline != null ? ICON_SIG : ICON_UND)
+      + '<span>' + (p.pipeline != null
+          ? '<b style="color:var(--ink)">€' + nf(p.pipeline) + '</b> of pipeline, from '
+            + nf(p.incrementalOpportunities) + ' opportunities the holdout says would not '
+            + 'exist, at your own average of €' + nf(p.avgOpportunityEur) + ' over '
+            + nf(p.opportunitiesWithAmount) + ' deals.'
+          : 'No pipeline figure: ' + (p.pipelineWithheld || "nothing to report yet")
+            + '. A reply is not a deal, so replies are never priced as one.')
       + '</span></div>';
 
   var trace = (D.decisions[state.jur] || []).map(function(r){
@@ -1079,6 +1128,7 @@ function renderDetail(){
     + '</div>'
     + activationNote(p)
     + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
+    + frozenReports(p)
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
       + '<dt>Status</dt><dd class="hi">' + p.status + '</dd>'
       + '<dt>Blueprint</dt><dd>' + p.blueprint + '</dd>'

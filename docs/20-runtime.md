@@ -20,6 +20,7 @@ The reference core in `zolts/` decides. The runtime in `runtime/` remembers, act
 | The worker as a cron-invoked function, for a host with no processes | `runtime/serverless.py`, `api/index.py` | Executed in tests; the production release waits on the founder's secrets (ADR-041) |
 | The baseline: what a tenant cost and produced before Zolts, frozen once | `zolts/baseline.py`, `runtime/repo/baseline.py`, `POST /v1/baseline` | Running; the letter in `docs/26` quotes its digest (ADR-042) |
 | The incrementality report: what a program did against its holdout, frozen at every period close | `zolts/report.py`, `runtime/reporting.py`, `GET /v1/programs/{program_id}/reports` | Running; written once, verdict never *met* (ADR-043) |
+| The report on screen, beside the live figure it was frozen from | `runtime/api/console.py`, the programme detail's *Frozen reports* panel | Running; derived from what the operator already produced, with no input of its own (`docs/17`) |
 | Console served from the API with live tenant data | `runtime/api/console.py`, `runtime/surface.py` | Running |
 | Signed inbound webhooks: replies, bounces, opt-outs, deals | `runtime/api/webhooks.py`, `runtime/engine/inbound.py` | Running |
 | Agent layer: propose-only, provenance-checked, eval-gated | `runtime/agents/`, `runtime/engine/generate.py` | Running |
@@ -778,7 +779,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1116 tests. 364 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1120 tests. 368 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

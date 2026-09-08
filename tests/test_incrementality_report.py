@@ -515,3 +515,77 @@ def test_closing_from_the_command_line_freezes_and_prints_the_reports(
     [body] = json.loads(capsys.readouterr().out)
     assert body["digest"] == closed["reports"][0]["digest"]
     assert from_mapping(body["body"]).digest() == body["digest"]
+
+
+# -- the screen the report is read on ----------------------------------------
+
+@requires_db
+def test_the_console_shows_the_frozen_report_beside_the_live_figure(db, tenant):
+    """`docs/17` asks for a CFO surface derived from what the operator already
+    produced, with no input of its own. The report existed in the API and the
+    command line and had no screen at all."""
+    from runtime.api import console
+    from runtime import reporting
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        program_id = _program(cur, tid, key="flagship")
+        _arm(cur, tid, program_id, "treatment", 40, converted=12, opportunities=8)
+        _arm(cur, tid, program_id, "control", 40, converted=6, opportunities=5)
+        closed = _close(cur, tid)
+        [frozen] = reporting.freeze_all(cur, _tenant_row(cur, tid), closed, frozen_by="operator")
+        view = console.build(cur, _tenant_row(cur, tid))
+
+    [program] = [p for p in view["programs"] if p["key"] == "flagship"]
+    [shown] = program["reports"]
+    assert shown["digest"] == frozen["digest"]
+    assert shown["verdict"] == frozen["verdict"]
+    assert shown["periodEnd"] == frozen["period_end"].isoformat()
+    # Percentage points on screen, rates in the document.
+    assert shown["liftPp"] == round(frozen["body"]["primary"]["lift"] * 100, 2)
+    assert "tenant_id" not in shown
+
+
+@requires_db
+def test_a_reply_is_never_priced_as_a_deal(db, tenant):
+    """D-49. The pipeline figure multiplied the lift in conversions — mostly
+    positive replies — by a constant deal size. It rests on the opportunity
+    comparison and on the tenant's own deals, and says why when it rests on
+    neither (decision 39)."""
+    from runtime.api import console
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        program_id = _program(cur, tid, key="replies-only")
+        # A large, clearly significant lift in replies, and no opportunity at all.
+        _arm(cur, tid, program_id, "treatment", 400, converted=90)
+        _arm(cur, tid, program_id, "control", 400, converted=20)
+        view = console.build(cur, _tenant_row(cur, tid))
+    [program] = view["programs"]
+    assert program["significant"] is True, "the reply comparison itself is significant"
+    assert program["pipeline"] is None
+    assert "opportunity comparison" in program["pipelineWithheld"]
+    assert program["avgOpportunityEur"] is None
+
+
+@requires_db
+def test_the_pipeline_figure_is_the_tenants_own_deals(db, tenant):
+    from runtime.api import console
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        program_id = _program(cur, tid, key="deals")
+        _arm(cur, tid, program_id, "treatment", 400, converted=90, opportunities=60)
+        _arm(cur, tid, program_id, "control", 400, converted=20, opportunities=10)
+        # Two deals in the CRM, averaging 30k. Nothing in the runtime supplies
+        # a deal size any more.
+        cur.execute("insert into opportunity (tenant_id, provider, crm_id, status,"
+                    " amount_micros) values (%s,'hubspot','d1','won',20000000000),"
+                    " (%s,'hubspot','d2','open',40000000000)", (tid, tid))
+        view = console.build(cur, _tenant_row(cur, tid))
+    [program] = view["programs"]
+    assert program["avgOpportunityEur"] == 30_000
+    assert program["opportunitiesWithAmount"] == 2
+    assert program["incrementalOpportunities"] == 50, "60/400 against 10/400 over 400 treated"
+    assert program["pipeline"] == 50 * 30_000
+    assert program["pipelineWithheld"] is None

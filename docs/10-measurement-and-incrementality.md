@@ -38,6 +38,7 @@ Every program reports a real income statement. What ships is the **incrementalit
 | Arms, lift and the minimum detectable effect | the experiment, on the primary conversion | yes |
 | Incremental conversions | lift × treatment arm, only when significant | yes |
 | Incremental pipeline | the *opportunity* comparison's increment × the CRM's own average deal amount, only when that comparison is significant and the CRM holds an amount | yes, or the reason it is withheld |
+| — the same figure on screen | the console computes it through the same `zolts.report` rules, so the panel and the frozen document cannot disagree (decision 39) | yes |
 | Incremental closed revenue | won deals over the cycle window | **no** — returns when a tenant has held a cycle |
 | **Cost per incremental meeting** | credits ÷ incremental meetings | **no** — derivable from the fields above; not stated until a partner has a significant read to divide by |
 
