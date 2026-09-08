@@ -21,7 +21,7 @@ from runtime.connectors.crm import Consent
 from runtime.connectors.declarative_provider import DeclarativeDataProvider
 from runtime.connectors.pipedrive import PipedriveConnector
 from runtime.connectors.salesforce import SalesforceConnector
-from tests.conftest import requires_db
+from tests.conftest import APP_URL, OWNER_URL, requires_db
 from tests.test_crm_contract import SALESFORCE_INSTANCE, _salesforce_handler
 
 
@@ -240,3 +240,52 @@ def test_the_heartbeat_carries_the_tick_and_not_its_errors(db):
     assert detail["claimed"] == 0, "an idle tick claimed nothing"
     assert "errors" not in detail, (
         "the error list is deliberately kept out of a column a human reads")
+
+
+# -- cli.py:704  `is not` -> `is` ----------------------------------------
+
+@requires_db
+def test_the_command_line_reports_a_provider_as_authenticated_only_when_it_is(
+        db, tenant, monkeypatch, capsys):
+    """`row["connection_id"] is not None` became `is None`, so the command line
+    printed the opposite of the truth.
+
+    An operator running `zolts data-provider` to find out whether a supplier is
+    connected is told it is when it is not, and told it is not when it is. The
+    failure mode is the expensive direction: a provider reported as
+    authenticated is one nobody goes and connects, and every lookup through it
+    errors until somebody notices.
+
+    Both sides are asserted. A one-sided check is what let a mutation live in
+    the interval reader (D-57), and the same shape would let this one live.
+    """
+    import json as jsonlib
+
+    from runtime import cli
+
+    tid = str(tenant["id"])
+    monkeypatch.setenv("ZOLTS_DATABASE_URL", OWNER_URL or "")
+    monkeypatch.setenv("ZOLTS_APP_DATABASE_URL", APP_URL or "")
+    monkeypatch.setenv("ZOLTS_SECRET_KEY", "cli-test-secret-key")
+
+    def show(*extra: str) -> dict:
+        capsys.readouterr()
+        code = cli.main(["data-provider", "--tenant", tid, "--key", "probe-provider",
+                         "--fields", "email", "--cost-micros", "1000", *extra])
+        assert code == 0
+        return jsonlib.loads(capsys.readouterr().out)
+
+    unconnected = show()
+    assert unconnected["authenticated"] is False, (
+        "a provider with no stored credential is reported as authenticated")
+
+    with db.tenant_tx(tid) as cur:
+        cur.execute(
+            "insert into connection (tenant_id, provider, display_name, secret_enc)"
+            " values (%s,'probe-provider','probe',%s) returning id",
+            (tid, b"not-a-real-credential"))
+        connection_id = str(cur.fetchone()["id"])
+
+    connected = show("--connection", connection_id)
+    assert connected["authenticated"] is True, (
+        "a provider holding a sealed credential is reported as unauthenticated")

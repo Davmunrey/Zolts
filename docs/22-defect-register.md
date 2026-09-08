@@ -36,15 +36,20 @@ connection-pool cap, the last step of a retry backoff moved by one second, and t
 of characters a fallback identifier is truncated to. They are annotated where they live
 rather than answered with a test that asserts a no-op.
 
-**The other four were real, and three are still open.** `worker.py:413` is guarded:
-the heartbeat detail is everything the tick carries except its errors, and `docs/25` sends
-an operator to that row to read `claimed`. Left unguarded, named rather than quietly
-dropped: `cli.py:704` inverts the `authenticated` flag the command line prints for a data
-provider, so an operator checking whether a provider is connected is told the opposite;
-`console.py:110` rounds a frozen report's lift to three decimals instead of the two the
-rest of the panel is in, which is real and cosmetic and not worth a database round trip;
-`schemas.py:136` loosens a date field's length ceiling from ten to eleven, which nothing
-sends and so nothing catches.
+**The other four were real, and two are guarded.** `worker.py:413`: the heartbeat detail
+is everything the tick carries except its errors, and `docs/25` sends an operator to that
+row to read `claimed`. `cli.py:704`: the command line printed the inverse of whether a data
+provider holds a credential, and the failure ran the expensive way — a provider reported as
+authenticated is one nobody goes and connects, and every lookup through it errors until
+somebody notices. Both sides of that one are asserted, because a one-sided check is exactly
+what let D-57 live.
+
+Two are left unguarded and named rather than quietly dropped. `console.py:110` rounds a
+frozen report's lift to three decimals instead of the two the rest of the panel is in:
+real, cosmetic, and not worth a database round trip for a decimal. `schemas.py:136`
+loosens a date field's length ceiling from ten to eleven, which nothing sends and so
+nothing catches. Neither is equivalent, and calling them so would be the comfortable lie;
+they are debt, written down with what they would cost a reader.
 
 **That an equivalence rate of half is the interesting number.** A survivor list where
 every entry is real would mean the generator is too timid to reach the boundaries that
