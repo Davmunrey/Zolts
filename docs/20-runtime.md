@@ -327,7 +327,7 @@ The three container targets run the API and the worker from the same image, beca
 
 ### Vercel plus Neon, end to end
 
-The worker has no process to be. `Worker.tick()` is one bounded pass, so Vercel Cron invokes `/api/tick` once a minute and the function drains until the outbox is empty or fifty seconds are spent; an invocation the platform kills leaves actions leased, and the lease expiring is the recovery. The route refuses any caller without the cron's bearer, and refuses to run at all when no bearer is configured.
+The worker has no process to be. `Worker.tick()` is one bounded pass, so Vercel Cron invokes `/api/tick` — daily on the Hobby plan the project is on, once a minute under `ZOLTS_VERCEL_PLAN=pro` (decision 43) — and the function drains until the outbox is empty or fifty seconds are spent; an invocation the platform kills leaves actions leased, and the lease expiring is the recovery. The route refuses any caller without the cron's bearer, and refuses to run at all when no bearer is configured.
 
 ```sh
 # 1. The database. Create the Neon project in eu-central-1: the function runs
@@ -780,7 +780,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1183 tests. 382 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1186 tests. 382 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

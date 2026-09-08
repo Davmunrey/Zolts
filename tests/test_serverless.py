@@ -1,7 +1,9 @@
 """The worker as an invocation: the routes a cron calls, and what they refuse.
 
-On Vercel there is no worker process. `vercel.json` schedules `/api/tick`
-once a minute and the function drains the outbox in bounded passes (ADR-041).
+On Vercel there is no worker process. `vercel.json` schedules `/api/tick` —
+daily on the Hobby plan, once a minute under `ZOLTS_VERCEL_PLAN=pro`
+(decision 43) — and the function drains the outbox in bounded passes
+(ADR-041).
 Two things have to be true for that to be a worker rather than a hole:
 
 * the routes run nothing for a caller without the cron's bearer, and answer
@@ -106,13 +108,63 @@ def test_errors_are_summed_across_passes():
     assert drained.failed == 1 and drained.dead == 1
 
 
+def _cron_interval_seconds(schedule: str) -> int:
+    """How often a five-field schedule fires, for the subset this repo ships.
+
+    This used to read the minute field alone: `60 if "*" else 60 * int(field)`.
+    Under a daily schedule that is `60 * int("0")` — zero seconds — so the
+    guard below failed on a schedule that is perfectly safe. The dangerous
+    half is the other one: `30 3 * * *` would have computed 1800 seconds and
+    *passed*, having measured nothing about the real twenty-four-hour gap. A
+    parser that accepts a field it cannot interpret and returns a plausible
+    number is worse than one that refuses, so this refuses. D-57.
+    """
+    fields = schedule.split()
+    assert len(fields) == 5, f"'{schedule}' is not a five-field cron expression"
+    minute, hour, day, month, weekday = fields
+
+    def step(field: str, unit: int, whole: int) -> int | None:
+        if field == "*":
+            return unit
+        if field.startswith("*/"):
+            return unit * int(field.removeprefix("*/"))
+        if field.isdigit():
+            return whole          # fires once per the enclosing period
+        return None
+
+    per_minute = step(minute, 60, 3600)
+    assert per_minute is not None, f"cannot read the minute field of '{schedule}'"
+    if minute == "*" or minute.startswith("*/"):
+        return per_minute         # sub-hourly; the hour field cannot widen it
+
+    per_hour = step(hour, 3600, 86400)
+    assert per_hour is not None, f"cannot read the hour field of '{schedule}'"
+    if hour == "*" or hour.startswith("*/"):
+        return per_hour
+    assert (day, month, weekday) == ("*", "*", "*"), (
+        f"'{schedule}' fires less often than daily; this reader does not cover it")
+    return 86400
+
+
+def test_the_interval_reader_refuses_what_it_cannot_read():
+    """The guard below is only as good as this arithmetic."""
+    assert _cron_interval_seconds("* * * * *") == 60
+    assert _cron_interval_seconds("*/15 * * * *") == 900
+    assert _cron_interval_seconds("0 * * * *") == 3600
+    assert _cron_interval_seconds("0 */4 * * *") == 14400
+    assert _cron_interval_seconds("0 3 * * *") == 86400
+    assert _cron_interval_seconds("30 3 * * *") == 86400
+    for unreadable in ("0 3 * * 1", "0 3 1 * *", "bad * * * *", "* * * *"):
+        with pytest.raises(AssertionError):
+            _cron_interval_seconds(unreadable)
+
+
 def test_the_budget_is_under_the_cron_interval():
     """An invocation must be over before the next one starts, and the
     function's own limit must leave a pass room to finish."""
     config = json.loads((ROOT / "vercel.json").read_text())
     tick = next(c for c in config["crons"] if c["path"] == "/api/tick")
-    minute = tick["schedule"].split()[0]
-    interval = 60 if minute == "*" else 60 * int(minute.removeprefix("*/"))
+    interval = _cron_interval_seconds(tick["schedule"])
     assert serverless.TICK_BUDGET_SECONDS < interval, (
         f"the tick budget ({serverless.TICK_BUDGET_SECONDS}s) is not under the cron "
         f"interval ({interval}s); invocations would overlap")
