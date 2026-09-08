@@ -127,6 +127,11 @@ def run_case(program: Program, case: dict[str, Any]) -> CaseResult:
         contact = _build_contact(given)
         context = ActionContext(
             channel=given.get("channel", "email"),
+            # Fixed so a case is reproducible. The hour here decides nothing:
+            # the policy engine reads `local_hour` below, which a case sets
+            # itself. A mutation-coverage run flagged this as an unkillable
+            # mutant, which is the honest reading of a constant that looks
+            # significant and is not.
             now=datetime(2026, 9, 4, 12),
             local_hour=int(given.get("local_hour", 12)),
             max_touches_per_week=int(
