@@ -90,12 +90,8 @@ def _outcome(monkeypatch, *, returncode: int, stdout: str) -> str:
 
 
 def test_a_target_whose_tests_all_skipped_is_not_a_surviving_guard(monkeypatch):
-    """D-71. Eight of these guards live in `requires_db` tests, and a skip
-    exits zero exactly like a pass. Run without a database the script called
-    them survivors and printed `10/18 guards bite` — a red result about code
-    that was never wrong, which is the third shape this register has named of a
-    check that fails on its environment rather than its subject.
-    """
+    """D-71, the cheap half. A file of skips exits zero exactly like a file of
+    passes, so the classifier reads pytest's summary rather than its code."""
     assert _outcome(monkeypatch, returncode=0,
                     stdout=_summary(skipped=17)) == CHECK.NOTHING_RAN
     assert _outcome(monkeypatch, returncode=5, stdout="no tests ran in 0.01s\n") \
@@ -114,10 +110,35 @@ def test_a_real_pass_and_a_real_failure_are_still_told_apart(monkeypatch):
                     stdout=_summary(failed=1)) == CHECK.FAILED
 
 
-def test_the_script_says_what_it_could_not_check_rather_than_counting_it():
-    """A count over guards nothing ran is the number that misleads. The
-    denominator is what was checked, and the rest is named."""
-    source = (ROOT / "scripts" / "mutation_check.py").read_text()
-    assert "guards nothing checked, because their tests all skipped" in source
-    assert "not checked" in source
-    assert "checked = len(chosen) - len(unchecked)" in source
+def test_a_partial_run_is_refused_rather_than_reported(monkeypatch):
+    """D-71, and the reason reading the summary was not enough on its own.
+
+    `tests/test_metrics.py` holds five tests that need no database and five
+    that do. Break a guard held by one of the five that skip, and the five that
+    run still pass: the file reports `5 passed, 5 skipped`, exit zero, and the
+    guard reads as a survivor. The script printed `10/18 guards bite` in red on
+    a clean checkout. A partial run is not a smaller result, it is a different
+    one, so the premise is established before any verdict is reported.
+    """
+    monkeypatch.delenv("ZOLTS_TEST_DATABASE_URL", raising=False)
+    monkeypatch.setattr(CHECK, "_dirty", lambda: False)
+    ran = []
+    monkeypatch.setattr(CHECK, "_run_tests", lambda target: ran.append(target))
+    assert CHECK.check("a-conversion-outside-the-window-does-not-count") == 2
+    assert not ran, "no mutation may be applied before the premise is established"
+
+
+def test_a_guard_needing_no_database_still_runs_without_one(monkeypatch):
+    """Otherwise the refusal above is a blanket one, and the pure core's guards
+    stop being checkable on a laptop."""
+    monkeypatch.delenv("ZOLTS_TEST_DATABASE_URL", raising=False)
+    monkeypatch.setattr(CHECK, "_dirty", lambda: False)
+    monkeypatch.setattr(CHECK, "_run_tests", lambda target: CHECK.FAILED)
+    assert CHECK.check("the-accent-never-enters-a-data-region") == 0
+
+
+def test_the_probe_reads_the_marker_rather_than_the_file_name():
+    """A grep for `requires_db` would miss a module-level `pytestmark`, and a
+    guard nobody can check is exactly what this is guarding against."""
+    assert CHECK._needs_a_database("tests/test_metrics.py") is True
+    assert CHECK._needs_a_database("tests/test_dsl.py") is False

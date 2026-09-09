@@ -18,11 +18,15 @@ Two rules make it worth running:
 * A mutation whose target string is no longer in the file is an **error**, not
   a skip. Code moving under a mutation is exactly when the check stops being
   applied, and skipping quietly is how a suite of guards becomes decoration.
-* A mutation whose tests all *skipped* is the same error wearing a different
+* A mutation whose guard could not run is the same error wearing a different
   coat. Eight of these guards live in `requires_db` tests, and a skip exits
   zero — so run without a database this script reported eight survivors on
-  code that was never wrong (D-71). It now says what it could not check, and
-  never counts an unrun test as a guard that failed to bite.
+  code that was never wrong (D-71). It now refuses to report on a target whose
+  tests need a database it has not got, and never counts an unrun test as a
+  guard that failed to bite. Note that a *file-level* pass is not enough
+  evidence either: `tests/test_metrics.py` holds five tests that need no
+  database and five that do, so five passes beside five skips looked exactly
+  like a guard surviving.
 * It refuses to run against a dirty working tree. It edits source files and
   restores them; doing that on top of uncommitted work risks losing it.
 
@@ -203,6 +207,21 @@ PASSED, FAILED, NOTHING_RAN = "passed", "failed", "nothing ran"
 _OUTCOME = re.compile(r"(\d+) (passed|failed|error)")
 
 
+def _needs_a_database(target: str) -> bool:
+    """Whether this target holds tests marked `db`.
+
+    Asked by collecting, not by reading the file: the marker travels through
+    `requires_db` and through `pytestmark`, and a grep for either would miss
+    the third way somebody adds it next year.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", target, "--collect-only", "-q",
+         "-m", "db", "-p", "no:cacheprovider", "-p", "no:randomly"],
+        cwd=ROOT, capture_output=True, text=True, env={**os.environ, "PYTHONPATH": "."})
+    return bool(re.search(r"(\d+)/\d+ tests collected", result.stdout)
+                or re.search(r"^\d+ tests? collected", result.stdout, re.M))
+
+
 def _run_tests(target: str) -> str:
     """`passed`, `failed`, or `nothing ran`.
 
@@ -235,6 +254,21 @@ def check(selection: str | None = None) -> int:
     if not chosen:
         print(f"::error::no mutation matches '{selection}'", file=sys.stderr)
         return 2
+
+    # Establish the premise before reporting a verdict about the code. Eight of
+    # these guards are held by tests that need Postgres, and without one the
+    # script used to break the guard, watch the *other* tests in the file pass,
+    # and call it a survivor (D-71). A partial run is not a smaller result; it
+    # is a different one, so it is refused rather than reported.
+    if not os.environ.get("ZOLTS_TEST_DATABASE_URL"):
+        needs = [m for m in chosen if _needs_a_database(m.tests)]
+        if needs:
+            print("::error::ZOLTS_TEST_DATABASE_URL is not set, and these guards are held "
+                  "by tests that need Postgres: " + ", ".join(m.id for m in needs)
+                  + ". Breaking them and watching the rest of their file pass is not a "
+                  "result about the code. Set it, or select mutations that do not need it.",
+                  file=sys.stderr)
+            return 2
 
     survived: list[Mutation] = []
     stale: list[Mutation] = []
