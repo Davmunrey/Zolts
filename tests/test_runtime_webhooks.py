@@ -24,7 +24,7 @@ from runtime.engine import enroll
 from runtime.engine.worker import Worker
 from runtime.provision import create_webhook_endpoint, store_connection
 from runtime.repo import actions, enrollments, entities, ledger, programs
-from tests.conftest import SECRET
+from tests.conftest import requires_app_role, SECRET
 from tests.test_runtime_engine import DISPATCH_SPEC, _account_with_contact, _ingest, _publish
 
 
@@ -202,7 +202,8 @@ def test_a_batch_is_the_same_work_as_a_single_event(db, tenant, fake, client, en
     assert len(response.json()["applied"]) == 2
 
 
-def test_events_do_not_leak_between_tenants(db, tenant, other_tenant, client):
+@requires_app_role
+def test_events_do_not_leak_between_tenants(db, tenant, other_tenant, client, app_role_is_restricted):
     mine = create_webhook_endpoint(db, str(tenant["id"]), provider="smartlead",
                                    secret_key=SECRET)
     _post(client, mine, {"event_type": "open", "id": f"evt-{uuid.uuid4().hex}"})

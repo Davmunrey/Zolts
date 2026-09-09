@@ -16,7 +16,7 @@ import pytest
 from runtime import preflight
 from runtime.config import Settings
 from runtime.db import Database
-from tests.conftest import APP_URL, OWNER_URL, requires_db
+from tests.conftest import requires_app_role, APP_URL, OWNER_URL, requires_db
 
 
 def _plaintext(url: str) -> str:
@@ -70,8 +70,8 @@ def _named(report: preflight.Report, name: str) -> preflight.Check:
     return match[0]
 
 
-@requires_db
-def test_a_correct_deployment_is_ready(db):
+@requires_app_role
+def test_a_correct_deployment_is_ready(db, app_role_is_restricted):
     report = preflight.run(_settings(), db)
     assert not report.blocking, [c.detail for c in report.blocking]
     assert _named(report, "forced row-level security").ok
@@ -89,8 +89,8 @@ def test_a_published_secret_blocks_production(db):
     assert report.blocking
 
 
-@requires_db
-def test_a_published_secret_is_only_a_warning_outside_production(db):
+@requires_app_role
+def test_a_published_secret_is_only_a_warning_outside_production(db, app_role_is_restricted):
     report = preflight.run(_settings(secret_key="dev-secret",
                                      environment="development"), db)
     check = _named(report, "secret key")

@@ -72,7 +72,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 1328 tests, each backing a specific claim made in `docs/`; 409 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
+- `tests/` — 1337 tests, each backing a specific claim made in `docs/`; 409 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -80,10 +80,11 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `scripts/validate.py` — validates programs against the schema
 - `scripts/benchmark_waterfall.py` — measures optimiser savings against a static waterfall
 - `scripts/mutation_check.py`, `scripts/mutation_coverage.py` — sixteen named guards broken on every push, and a sampled measurement of what share of mutations the tests catch at all
+- `scripts/ambient_check.py` — runs the suite under named ambient conditions (a shifted clock, an operator's exported variables, a database role that is not restricted) and reports the tests whose verdict moves. Five defects in the register were checks that failed on their environment rather than their subject; this is that probe, made repeatable. Hand-run: each condition is a full suite, so the default pair takes about six minutes
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 1328 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 1337 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```

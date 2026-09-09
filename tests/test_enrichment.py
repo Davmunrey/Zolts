@@ -22,7 +22,7 @@ from runtime import enrichment
 from runtime.connectors import dataprovider
 from runtime.connectors.dataprovider import Lookup, cohort_of, unresolved
 from runtime.connectors.fake import FakeDataProvider
-from tests.conftest import SECRET, requires_db
+from tests.conftest import requires_app_role, SECRET, requires_db
 from tests.test_runtime_engine import _account_with_contact
 
 
@@ -400,8 +400,8 @@ def test_nothing_is_bought_when_no_provider_is_registered(db, tenant):
     assert "no provider is registered" in result.reason
 
 
-@requires_db
-def test_attempts_are_tenant_scoped(db, tenant, other_tenant):
+@requires_app_role
+def test_attempts_are_tenant_scoped(db, tenant, other_tenant, app_role_is_restricted):
     """One tenant's measured matrix must not order another tenant's waterfall:
     the segments are theirs and so are the provider contracts."""
     tid, other = str(tenant["id"]), str(other_tenant["id"])

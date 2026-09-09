@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from runtime.api.app import create_app
 from runtime.provision import issue_api_key
-from tests.conftest import SECRET
+from tests.conftest import requires_app_role, SECRET
 
 SPEC = {
     "trigger": {"events": [{"signal": "funding.round",
@@ -72,7 +72,8 @@ def test_an_invalid_key_is_rejected(client):
     assert client.get("/v1/enrollments", headers=_auth("zk_nope")).status_code == 401
 
 
-def test_a_key_reaches_only_its_own_tenants_data(client, db, tenant, other_tenant, key):
+@requires_app_role
+def test_a_key_reaches_only_its_own_tenants_data(client, db, tenant, other_tenant, key, app_role_is_restricted):
     other_key = issue_api_key(db, str(other_tenant["id"]), "other", []).token
     made = client.post("/v1/accounts", headers=_auth(key),
                        json={"name": "Mine", "domain": f"{uuid.uuid4().hex[:8]}.com"})
@@ -255,7 +256,8 @@ def test_the_console_reports_no_lift_it_cannot_resolve(client, key):
     assert program["pipeline"] is None, "pipeline is withheld until the lift clears the MDE"
 
 
-def test_the_console_shows_only_its_own_tenants_programs(client, db, tenant, other_tenant, key):
+@requires_app_role
+def test_the_console_shows_only_its_own_tenants_programs(client, db, tenant, other_tenant, key, app_role_is_restricted):
     other_key = issue_api_key(db, str(other_tenant["id"]), "other", []).token
     client.post("/v1/programs", headers=_auth(key),
                 json={"key": "mine", "version": "1.0.0", "spec": SPEC, "name": "Mine",
@@ -383,7 +385,8 @@ def test_quickstart_does_not_connect_a_provider_for_you(db):
 
 # -- the review queue ----------------------------------------------------
 
-def test_the_review_queue_is_reachable_and_tenant_scoped(client, db, tenant, other_tenant, key):
+@requires_app_role
+def test_the_review_queue_is_reachable_and_tenant_scoped(client, db, tenant, other_tenant, key, app_role_is_restricted):
     from runtime.repo import proposals
 
     with db.tenant_tx(str(tenant["id"])) as cur:

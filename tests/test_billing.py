@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from runtime.api.app import create_app
 from runtime.provision import issue_api_key
-from tests.conftest import SECRET, requires_db
+from tests.conftest import requires_app_role, SECRET, requires_db
 from zolts.billing import (CREDIT_TIERS, CREDITS, EUR_PER_SEAT, PLANS, BillingError,
                            check_tiers, credits_for, plan_for, price_credits, statement)
 
@@ -469,8 +469,8 @@ def test_a_tenant_reads_its_own_consumption(db, client, key, tenant):
     assert body["byKind"] == [{"kind": "agent.generate", "credits": 30.0, "events": 1}]
 
 
-@requires_db
-def test_statements_are_tenant_scoped(db, client, key, tenant, other_tenant):
+@requires_app_role
+def test_statements_are_tenant_scoped(db, client, key, tenant, other_tenant, app_role_is_restricted):
     from runtime import metering
 
     for scoped in (other_tenant,):

@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from runtime.api.app import create_app
 from runtime.provision import issue_api_key
 from runtime.repo import baseline as baseline_repo
-from tests.conftest import requires_db
+from tests.conftest import requires_app_role, requires_db
 from zolts.baseline import Baseline, BaselineError, from_mapping
 
 DECLARED = {
@@ -102,8 +102,8 @@ def test_a_baseline_is_frozen_once(db, tenant):
         assert baseline_repo.get(cur)["meetings"] == 9, "the second capture changed the row"
 
 
-@requires_db
-def test_a_baseline_is_the_tenants_own(db, tenant, other_tenant):
+@requires_app_role
+def test_a_baseline_is_the_tenants_own(db, tenant, other_tenant, app_role_is_restricted):
     with db.tenant_tx(str(tenant["id"])) as cur:
         baseline_repo.freeze(cur, str(tenant["id"]), from_mapping(DECLARED),
                              signed_by="R. Ortega", captured_by="operator")

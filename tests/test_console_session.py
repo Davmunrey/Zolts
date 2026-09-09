@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from runtime.api import session as console_session
 from runtime.api.app import create_app
 from runtime.provision import issue_api_key, revoke_api_key
-from tests.conftest import SECRET, requires_db
+from tests.conftest import requires_app_role, SECRET, requires_db
 
 
 @pytest.fixture
@@ -183,8 +183,8 @@ def test_a_session_carries_only_the_scopes_of_the_key_that_opened_it(db, client,
     assert "scope" in refused.json()["detail"]
 
 
-@requires_db
-def test_sessions_are_tenant_scoped(db, client, key, other_tenant):
+@requires_app_role
+def test_sessions_are_tenant_scoped(db, client, key, other_tenant, app_role_is_restricted):
     client.post("/v1/console/session", json={"api_key": key.token})
     with db.tenant_tx(str(other_tenant["id"])) as cur:
         cur.execute("select count(*) as n from console_session")
@@ -324,8 +324,8 @@ def test_the_rail_count_and_the_queue_agree(db, tenant):
     assert view["queue"]["review"] == 3
 
 
-@requires_db
-def test_the_queue_is_tenant_scoped(db, tenant, other_tenant):
+@requires_app_role
+def test_the_queue_is_tenant_scoped(db, tenant, other_tenant, app_role_is_restricted):
     from runtime.api import console
 
     with db.tenant_tx(str(other_tenant["id"])) as cur:
