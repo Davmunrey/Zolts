@@ -20,7 +20,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _load_mutations():
+def _load_module():
     """Loaded by path, so `scripts/` stays a directory of scripts rather than
     becoming an importable package for one test's convenience."""
     spec = importlib.util.spec_from_file_location(
@@ -31,10 +31,11 @@ def _load_mutations():
     # fails on the decorator rather than on anything to do with this test.
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module.MUTATIONS
+    return module
 
 
-MUTATIONS = _load_mutations()
+CHECK = _load_module()
+MUTATIONS = CHECK.MUTATIONS
 
 
 @pytest.mark.parametrize("mutation", MUTATIONS, ids=[m.id for m in MUTATIONS])
@@ -64,3 +65,59 @@ def test_every_mutation_states_the_claim_it_defends():
     for mutation in MUTATIONS:
         assert len(mutation.claim.split()) >= 6, (
             f"'{mutation.id}' does not say what it defends")
+
+
+# -- a skipped test is not a result about the code ------------------------
+
+def _summary(passed: int = 0, failed: int = 0, skipped: int = 0) -> str:
+    """A pytest terse summary line, the way the script reads one."""
+    parts = ([f"{failed} failed"] if failed else []) \
+        + ([f"{passed} passed"] if passed else []) \
+        + ([f"{skipped} skipped"] if skipped else [])
+    return f"{', '.join(parts)} in 1.23s\n"
+
+
+def _outcome(monkeypatch, *, returncode: int, stdout: str) -> str:
+    """Run the classifier against a stubbed pytest, so the premise the test
+    asserts about is the one it established."""
+    class _Result:
+        pass
+
+    result = _Result()
+    result.returncode, result.stdout = returncode, stdout
+    monkeypatch.setattr(CHECK.subprocess, "run", lambda *a, **k: result)
+    return CHECK._run_tests("tests/whatever.py")
+
+
+def test_a_target_whose_tests_all_skipped_is_not_a_surviving_guard(monkeypatch):
+    """D-71. Eight of these guards live in `requires_db` tests, and a skip
+    exits zero exactly like a pass. Run without a database the script called
+    them survivors and printed `10/18 guards bite` — a red result about code
+    that was never wrong, which is the third shape this register has named of a
+    check that fails on its environment rather than its subject.
+    """
+    assert _outcome(monkeypatch, returncode=0,
+                    stdout=_summary(skipped=17)) == CHECK.NOTHING_RAN
+    assert _outcome(monkeypatch, returncode=5, stdout="no tests ran in 0.01s\n") \
+        == CHECK.NOTHING_RAN
+
+
+def test_a_real_pass_and_a_real_failure_are_still_told_apart(monkeypatch):
+    """Otherwise the fix above turns every guard into `not checked`."""
+    assert _outcome(monkeypatch, returncode=0,
+                    stdout=_summary(passed=12, skipped=3)) == CHECK.PASSED
+    assert _outcome(monkeypatch, returncode=1,
+                    stdout=_summary(failed=1, skipped=3)) == CHECK.FAILED
+    # `-x` stops at the first failure, so a biting mutation reports one failure
+    # and a pile of tests that never ran. Still a bite.
+    assert _outcome(monkeypatch, returncode=2,
+                    stdout=_summary(failed=1)) == CHECK.FAILED
+
+
+def test_the_script_says_what_it_could_not_check_rather_than_counting_it():
+    """A count over guards nothing ran is the number that misleads. The
+    denominator is what was checked, and the rest is named."""
+    source = (ROOT / "scripts" / "mutation_check.py").read_text()
+    assert "guards nothing checked, because their tests all skipped" in source
+    assert "not checked" in source
+    assert "checked = len(chosen) - len(unchecked)" in source

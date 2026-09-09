@@ -18,6 +18,11 @@ Two rules make it worth running:
 * A mutation whose target string is no longer in the file is an **error**, not
   a skip. Code moving under a mutation is exactly when the check stops being
   applied, and skipping quietly is how a suite of guards becomes decoration.
+* A mutation whose tests all *skipped* is the same error wearing a different
+  coat. Eight of these guards live in `requires_db` tests, and a skip exits
+  zero — so run without a database this script reported eight survivors on
+  code that was never wrong (D-71). It now says what it could not check, and
+  never counts an unrun test as a guard that failed to bite.
 * It refuses to run against a dirty working tree. It edits source files and
   restores them; doing that on top of uncommitted work risks losing it.
 
@@ -28,6 +33,7 @@ Two rules make it worth running:
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -193,15 +199,29 @@ def _dirty() -> bool:
     return any(not line.startswith("??") for line in out)
 
 
-def _run_tests(target: str) -> bool:
-    """True when the tests pass — which, under a mutation, is the failure."""
+PASSED, FAILED, NOTHING_RAN = "passed", "failed", "nothing ran"
+_OUTCOME = re.compile(r"(\d+) (passed|failed|error)")
+
+
+def _run_tests(target: str) -> str:
+    """`passed`, `failed`, or `nothing ran`.
+
+    Passing under a mutation is the failure this script looks for. A target
+    whose tests all skipped is neither: nothing was checked, and reporting it
+    as a survivor blames the code for the absence of a database. Read from
+    pytest's own summary rather than its exit code, because a file of skips
+    exits zero exactly like a file of passes.
+    """
     env = {**os.environ, "PYTHONPATH": "."}
     env.setdefault("ZOLTS_SECRET_KEY", "mutation-check-secret")
     result = subprocess.run(
         [sys.executable, "-m", "pytest", target, "-x", "-q", "-p", "no:cacheprovider",
          "-p", "no:randomly"],
         cwd=ROOT, capture_output=True, text=True, env=env)
-    return result.returncode == 0
+    ran = sum(int(n) for n, _ in _OUTCOME.findall(result.stdout))
+    if not ran:
+        return NOTHING_RAN
+    return PASSED if result.returncode == 0 else FAILED
 
 
 def check(selection: str | None = None) -> int:
@@ -218,6 +238,7 @@ def check(selection: str | None = None) -> int:
 
     survived: list[Mutation] = []
     stale: list[Mutation] = []
+    unchecked: list[Mutation] = []
     for mutation in chosen:
         path = ROOT / mutation.path
         original = path.read_text()
@@ -230,24 +251,37 @@ def check(selection: str | None = None) -> int:
             continue
         path.write_text(original.replace(mutation.find, mutation.replace, 1))
         try:
-            noticed = not _run_tests(mutation.tests)
+            outcome = _run_tests(mutation.tests)
         finally:
             path.write_text(original)
-        if noticed:
+        if outcome == FAILED:
             print(f"BITES   {mutation.id}: {mutation.claim}")
+        elif outcome == NOTHING_RAN:
+            unchecked.append(mutation)
+            print(f"UNCHECKED {mutation.id}: {mutation.claim}")
+            print(f"         every test in {mutation.tests} skipped, so nothing was "
+                  f"checked. Set ZOLTS_TEST_DATABASE_URL to run this one")
         else:
             survived.append(mutation)
             print(f"SURVIVED {mutation.id}: {mutation.claim}")
             print(f"         broke {mutation.path} and {mutation.tests} still passed")
 
-    print(f"\n{len(chosen) - len(survived) - len(stale)}/{len(chosen)} guards bite")
+    checked = len(chosen) - len(unchecked)
+    bite = checked - len(survived) - len(stale)
+    print(f"\n{bite}/{checked} guards bite"
+          + (f", {len(unchecked)} of {len(chosen)} not checked" if unchecked else ""))
     if stale:
         print("::error::stale mutations (the code moved): "
               + ", ".join(m.id for m in stale), file=sys.stderr)
     if survived:
         print("::error::guards that did not bite: "
               + ", ".join(m.id for m in survived), file=sys.stderr)
-    return 1 if (survived or stale) else 0
+    if unchecked:
+        print("::error::guards nothing checked, because their tests all skipped: "
+              + ", ".join(m.id for m in unchecked)
+              + ". This is not a result about the code; set ZOLTS_TEST_DATABASE_URL",
+              file=sys.stderr)
+    return 1 if (survived or stale or unchecked) else 0
 
 
 if __name__ == "__main__":
