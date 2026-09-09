@@ -53,6 +53,13 @@ def check(spec: dict[str, Any], program_key: str) -> None:
       requires one, the console displayed it, and every program was measured
       on the same three outcome types with no window. A name nothing can
       count is refused here rather than silently measured as something else.
+    * **A guardrail metric the holdout cannot exhibit.** D-76. A guardrail is
+      answered by the holdout the same way the primary metric is, so it has to
+      be something the control arm can also do. It cannot unsubscribe from an
+      email it was never sent — and a comparison whose control arm is
+      structurally zero reports *not resolvable* forever while reading like a
+      measurement still gathering data. Refused here, with the reason, rather
+      than measured to nothing.
     * **A policy override the pack cannot be reconciled with.** An override
       that cannot be read as stricter is refused rather than ignored;
       ignoring is the worst of the three, because it lets an operator believe
@@ -65,7 +72,9 @@ def check(spec: dict[str, Any], program_key: str) -> None:
         enroll.holdout_pct(spec, program_key)
         audience.check(spec, program_key)
         enrich_step.check(spec, program_key)
-        metrics.resolve((spec.get("experiment") or {}).get("primary_metric"))
+        experiment = spec.get("experiment") or {}
+        primary = metrics.resolve(experiment.get("primary_metric"))
+        _guardrails(experiment, primary)
         overrides = (spec.get("policy") or {}).get("overrides") or {}
         for rule in policy.PACK_V1.values():
             policy.tighten(rule, overrides)
@@ -76,3 +85,32 @@ def check(spec: dict[str, Any], program_key: str) -> None:
         # it to a 422; the point of the single type is that a caller cannot
         # catch three of the four and let the fourth through.
         raise NotAdmissible(str(exc)) from exc
+
+
+def _guardrails(experiment: dict[str, Any], primary: Any) -> None:
+    """Every declared guardrail resolves, differs from the primary, and is unique.
+
+    `metrics.resolve_guardrail` refuses the two names that cannot work at all —
+    one the runtime cannot count, and one only a contacted person can produce.
+    Two more failures need the primary metric in hand, so they live here:
+
+    * **A guardrail that is the primary metric.** The same comparison twice,
+      reported as two findings. It cannot disagree with itself, so it can never
+      fire, which is a guard that passes when you break what it guards.
+    * **The same guardrail declared twice.** Harmless to measure and confusing
+      to read: two rows, one number, and a reader who counts breaches gets two.
+    """
+    from zolts import metrics
+
+    seen: set[str] = set()
+    for name in experiment.get("guardrail_metrics") or []:
+        metrics.resolve_guardrail(name)
+        if name == primary.name:
+            raise metrics.MetricError(
+                f"'{name}' is already this programme's primary metric, so it cannot "
+                f"also guard it. A guardrail asks whether winning the primary metric "
+                f"cost something else; declaring the same name asks whether it cost "
+                f"itself")
+        if name in seen:
+            raise metrics.MetricError(f"guardrail metric '{name}' is declared twice")
+        seen.add(name)

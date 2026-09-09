@@ -9,7 +9,7 @@ Multi-touch attribution answers "who gets the credit?" — a political question.
 - **Every program declares a holdout** (minimum 5%; anything lower requires a recorded written justification).
 - Deterministic assignment: `variant = hash(entity_id + program_key + salt) % 100 < holdout_pct → control`. Stable across re-runs and auditable.
 - Randomisation unit depends on motion: account (B2B), person (B2C), territory or geo (where units contaminate each other, for example local services or ads).
-- **Guardrails**: metrics that automatically stop the experiment if they degrade (spam complaints, unsubscribes, margin per order).
+- **Guardrails**: metrics the programme promised not to damage, measured against the same holdout and reported, never enforced (decision 47). This bullet used to say *metrics that automatically stop the experiment if they degrade (spam complaints, unsubscribes, margin per order)* and every clause of it was wrong: nothing stops, and all three examples are outcomes a holdout cannot exhibit. See below.
 
 ## What a programme is measured on
 
@@ -25,6 +25,28 @@ A metric name carries two things and both change the answer:
 `zolts/metrics.py` is the registry. A name it does not carry is refused where the programme is stored (ADR-037), never measured as something else, and a programme that declares nothing falls back to a named default rather than an implicit one (decision 40).
 
 **Rate metrics and value metrics are not the same measurement.** The two-proportion test reported here asks whether a larger *share* of accounts converted. `net_revenue_28d` is a value metric: its event is counted and tested, and the amount is reported beside it and explicitly not tested — a mean-difference test on a heavy-tailed revenue distribution is different statistics, and claiming it here would be the failure this document exists to prevent.
+
+## Guardrails
+
+A guardrail asks whether winning cost something else, and a holdout answers it the same way it answers the primary metric: both arms are watched, and a difference is a difference. **So a guardrail has to be something the holdout can also exhibit** — a churn, a repeat purchase, a margin. It cannot unsubscribe from an email it was never sent.
+
+That is not a technicality. All four shipped archetypes declared guardrails and the runtime evaluated none of them; when the wiring was written, none of the six names they used existed in the metric registry and four of them could never (D-76, ADR-047). An unsubscribe, a complaint and a bounce are recorded on the **touch**, and the holdout is never touched — that is product invariant 4, not an implementation detail. The control arm of such a comparison is structurally zero, so the verdict is *not resolvable* for ever, and a reader cannot tell that from a programme still gathering data.
+
+Those are real limits and they are already enforced, per mailbox and per domain, by the deliverability rules in `docs/09` and ADR-020: 0.3% complaints pauses a domain, 2% unsubscribes triggers a review. A guardrail is the wrong instrument for them, not a redundant one.
+
+| Refused at admission | Why |
+|---|---|
+| A name the registry does not carry | Nothing counts it, so it would be a guard that never runs |
+| A name the holdout cannot exhibit | Its control arm is zero by construction; the verdict never resolves |
+| A value metric | Its amount is reported and explicitly not tested, so a breach in it has no verdict |
+| The programme's own primary metric | It cannot disagree with itself |
+| The same name twice | One number, two rows, and a reader who counts breaches gets two |
+
+What survives is measured over its own events inside its own window and reported in three words of its own: **held**, **degraded**, **not resolvable**. *Degraded* means the treatment arm did worse by more than the same detectable effect a gain has to clear — a guardrail that fires on noise is one an operator learns to ignore. The primary metric's *significant* is not reused, because it can only ever mean the treatment arm did better, and a reader who saw it beside a guardrail would read it as good news.
+
+**Nothing is paused by this.** The report states what the holdout says and the operator decides, exactly as with the cost ceiling (decision 45). What changed is that a programme winning its primary metric while damaging a guardrail no longer reports an unqualified win: the qualification sits in the verdict paragraph, where a reader who stops after one paragraph will see it.
+
+**Three of the four shipped archetypes declare none.** The guardrails they want are churn, margin and rep time, and none is an outcome this runtime records. Declaring one anyway would be a specification with no caller, which is this repository's commonest defect — so they say what they cannot measure, and why, in the programme file.
 
 ## Metrics
 
@@ -58,6 +80,7 @@ Every program reports a real income statement. What ships is the **incrementalit
 | **Cost per incremental meeting** | the tenant's declared monthly go-to-market spend, prorated over the period from the frozen baseline, plus the credits Zolts billed — divided by the *meeting* comparison's increment, only when that comparison is significant | yes, or the reason it is withheld |
 | — against the ceiling the programme declared | `spec.budget.max_cost_per_meeting`, carried in the report so a reader holding the signed document does not also need the programme. Reported and never enforced (decision 45) | yes, when one is declared |
 | — on the same basis as the baseline | credits alone would be €0.42 a meeting beside a baseline of €1,297 a meeting and a ceiling a shipped programme declares at €180: three figures in one document that are not the same measurement (decision 46) | yes |
+| **Guardrails** | each declared guardrail against the same concurrent holdout, over its own events inside its own window; a breach qualifies the verdict paragraph (decision 47) | yes, or that none was declared |
 | — declared for the period, or prorated from onboarding | a declaration for the period (`zolts period-spend`) when there is one; otherwise the onboarding run-rate prorated by days, which nothing re-measures. `own_spend_basis` names which, and the document disclaims the assumption and does not disclaim the measurement. No figure exists without one of the two (ADR-046) | yes |
 
 The report also carries what the number rests on — the unread share of conversions (decision 16), the policy decisions and touches behind it — and quotes the baseline's digest, so the "before" of `docs/17` and this "after" can be laid side by side.

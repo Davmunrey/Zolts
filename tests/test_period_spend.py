@@ -179,7 +179,10 @@ def test_the_basis_is_covered_by_the_digest():
 
 
 def test_the_new_keys_belong_to_version_three_and_the_older_shapes_are_intact():
-    assert SCHEMA_VERSION == 3
+    # `== 3` here, and the form has grown since: the claim is that these three
+    # keys are version three's, not that three is the current shape. Pinning
+    # the latter made a legitimate version-four change fail a test about spend.
+    assert SCHEMA_VERSION >= 3
     assert set(KEYS_ADDED_IN[3]) == {
         "period_spend_micros", "own_spend_micros", "own_spend_basis"}
     older = _report(schema_version=2).canonical()

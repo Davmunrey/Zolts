@@ -90,7 +90,11 @@ spec:
     holdout_pct: 10
     unit: account
     primary_metric: signed_contract_60d
-    guardrail_metrics: [complaint_rate, rep_time_per_lead]
+    # None declared, deliberately. `signed_contract_60d` is the last outcome
+    # this runtime records, so nothing sits downstream of it to be damaged,
+    # and rep time per lead is not something a holdout account exhibits at
+    # all (D-76).
+    guardrail_metrics: []
 
   budget: {monthly_credits: 6000, max_cost_per_account: 1.10, on_exceed: pause_and_alert}
 

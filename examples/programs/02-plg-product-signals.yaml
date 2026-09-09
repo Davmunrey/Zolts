@@ -86,7 +86,10 @@ spec:
     holdout_pct: 15                 # high holdout: PLG converts on its own, the lift must be proven
     unit: account
     primary_metric: paid_conversion_30d
-    guardrail_metrics: [product_churn_30d, unsubscribe_rate]
+    # None declared, deliberately. Product churn is the guardrail this
+    # programme wants and the runtime records no churn outcome, so declaring
+    # it would be a guard that passes because nothing ever runs it (D-76).
+    guardrail_metrics: []
 
   budget: {monthly_credits: 12000, max_cost_per_account: 1.20, on_exceed: pause_and_alert}
 

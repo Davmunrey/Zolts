@@ -134,7 +134,12 @@ spec:
     unit: account
     salt: series-a-2026q1
     primary_metric: opportunity_created_90d
-    guardrail_metrics: [spam_complaint_rate, unsubscribe_rate]
+    # A guardrail is answered by the holdout the same way the primary metric
+    # is, so it has to name something the holdout can also do (D-76), and it
+    # has to sit downstream of the primary metric or winning cannot damage
+    # it. Opening more opportunities while closing fewer deals is the failure
+    # this programme can actually have, and both arms can exhibit it.
+    guardrail_metrics: [signed_contract_60d]
 
   budget:
     monthly_credits: 40000

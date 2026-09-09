@@ -22,8 +22,8 @@ from runtime.repo import baseline as baseline_repo
 from runtime.repo import period_spend as period_spend_repo
 from runtime.repo import ledger, reports
 from zolts import metrics
-from zolts.report import (BaselineQuote, Comparison, IncrementalityReport,
-                          ReportError, ceiling_micros)
+from zolts.report import (BaselineQuote, Comparison, Guardrail,
+                          IncrementalityReport, ReportError, ceiling_micros)
 
 # The statuses a touch has once a provider accepted it. `queued` and `failed`
 # are attempts, not touches a person received.
@@ -132,6 +132,8 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
         " group by e.variant",
         (program_id, end, end, metric.window_days))
     opps = {r["variant"]: int(r["n"]) for r in cur.fetchall()}
+
+    guardrails, unmeasurable = _guardrails(cur, experiment, program_id, end, enrolled)
     # What the tenant declared they spent on go-to-market this period, if
     # anybody did. Preferred over the baseline's prorated run-rate, which is
     # what the figure rested on when nothing re-measured it (decision 46).
@@ -164,12 +166,55 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
             control_enrolled=enrolled.get("control", 0),
             treatment_converted=opps.get("treatment", 0),
             control_converted=opps.get("control", 0)),
+        guardrails=guardrails, guardrails_not_measured=unmeasurable,
         converted_by_type=by_type, unread_conversions=unread, touches_sent=touches,
         decisions=decisions, credits_by_kind=credits,
         average_opportunity_micros=average, opportunities_with_amount=with_amount,
         max_cost_per_meeting_micros=ceiling_micros(program.get("spec") or {}),
         period_spend_micros=None if declared is None else int(declared["total_micros"]),
         baseline=quote)
+
+
+def _guardrails(cur, experiment: dict[str, Any], program_id: str, end: datetime,
+                enrolled: dict[str, int]
+                ) -> tuple[tuple[Guardrail, ...], tuple[tuple[str, str], ...]]:
+    """Each declared guardrail, measured exactly as the primary metric is.
+
+    Same arms, same concurrent holdout, the guardrail's own events inside the
+    guardrail's own window. That symmetry is the point: a guardrail read on a
+    different span from the primary number is two measurements sharing a
+    document, which is the mistake the meeting arm already made once.
+
+    A name this runtime cannot measure is dropped from the measurement and
+    carried into the report with its reason. Admission refuses those now, so
+    only a programme published before D-76 can hold one — and raising here
+    would stop the whole tenant's period close over one stale programme.
+    """
+    measured: list[Guardrail] = []
+    unmeasurable: list[tuple[str, str]] = []
+    for name in experiment.get("guardrail_metrics") or []:
+        try:
+            metric = metrics.resolve_guardrail(name)
+        except metrics.MetricError as exc:
+            unmeasurable.append((name, str(exc)))
+            continue
+        cur.execute(
+            "select e.variant, count(distinct o.enrollment_id) as n"
+            " from enrollment e join outcome o on o.enrollment_id = e.id"
+            " where e.program_id = %s and e.entered_at < %s and o.occurred_at < %s"
+            "   and o.type = any(%s)"
+            "   and o.occurred_at < e.entered_at + make_interval(days => %s)"
+            " group by e.variant",
+            (program_id, end, end, list(metric.events), metric.window_days))
+        hit = {r["variant"]: int(r["n"]) for r in cur.fetchall()}
+        measured.append(Guardrail(
+            name=metric.name, window_days=metric.window_days,
+            comparison=Comparison(
+                treatment_enrolled=enrolled.get("treatment", 0),
+                control_enrolled=enrolled.get("control", 0),
+                treatment_converted=hit.get("treatment", 0),
+                control_converted=hit.get("control", 0))))
+    return tuple(measured), tuple(unmeasurable)
 
 
 def freeze(cur, tenant_id: str, program: dict[str, Any], period: dict[str, Any], *,
