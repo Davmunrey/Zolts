@@ -52,6 +52,24 @@ BASELINE_RATE_FLOOR = 0.01
 # declared year instead of eleven and a half of it.
 DAYS_PER_MONTH = 365.2425 / 12
 
+# The shape of `canonical()`. A frozen report is verified two ways: hash the
+# JSON you hold, which never depended on this code, and rebuild it through
+# `from_mapping` to recompute both the figures and the hash. The second is what
+# `docs/10` sells, and it broke silently the first time the key set grew — a
+# report frozen in one month, rebuilt the next, produced a digest its own letter
+# did not carry (D-72). Every change to the key set is a new version, the old
+# key sets stay here, and a rebuild recomputes the shape the document declares
+# rather than the shape this code happens to be at.
+SCHEMA_VERSION = 2
+
+# Keys introduced after version 1. A body that declares no version *is* version
+# 1: every report frozen before the form was versioned at all.
+KEYS_ADDED_IN: dict[int, tuple[str, ...]] = {
+    2: ("schema_version", "max_cost_per_meeting_micros", "run_rate_spend_micros",
+        "acquisition_spend_micros", "cost_per_incremental_meeting_micros",
+        "cost_per_meeting_withheld_because", "over_cost_per_meeting_ceiling"),
+}
+
 
 class ReportError(ValueError):
     """A report that cannot be composed as given."""
@@ -249,6 +267,11 @@ class IncrementalityReport:
     # measured against without also holding the programme (decision 45).
     max_cost_per_meeting_micros: int | None = None
     baseline: BaselineQuote | None = None
+    # The canonical shape this report was written in. Defaults to the current
+    # one for a report being composed now, and is read back from the body for
+    # one being rebuilt, so verifying an older document does not require an
+    # older checkout (D-72).
+    schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         if self.period_end <= self.period_start:
@@ -414,8 +437,11 @@ class IncrementalityReport:
         return "the CRM holds no opportunity with an amount"
 
     def canonical(self) -> dict[str, object]:
-        """Every field the digest covers, inputs and derived alike."""
-        return {
+        """Every field the digest covers, inputs and derived alike — in the
+        shape this report's version declares, never the shape the current code
+        would emit. That is what makes a document signed against an older
+        version verifiable against a newer checkout (D-72)."""
+        fields: dict[str, object] = {
             "program_key": self.program_key,
             "program_version": self.program_version,
             "spec_hash": self.spec_hash,
@@ -446,13 +472,50 @@ class IncrementalityReport:
             "over_cost_per_meeting_ceiling": self.over_cost_per_meeting_ceiling,
             "verdict": self.verdict,
             "baseline": self.baseline.canonical() if self.baseline else None,
+            "schema_version": self.schema_version,
         }
+        for version, keys in KEYS_ADDED_IN.items():
+            if version > self.schema_version:
+                for key in keys:
+                    fields.pop(key, None)
+        return fields
 
     def digest(self) -> str:
         """sha256 over the canonical form. Quoted by whoever signs the report,
         so the document and the row can be checked against each other."""
         blob = json.dumps(self.canonical(), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode()).hexdigest()
+
+    def _cost_per_meeting_lines(self, lines: list[str]) -> None:
+        """The acquisition-cost section, against the ceiling the programme
+        declared. Reported, never acted on: decision 45."""
+        figure = self.cost_per_incremental_meeting_micros
+        ceiling = self.max_cost_per_meeting_micros
+        lines.extend(["", "## Cost per meeting", ""])
+        if figure is None:
+            lines.append(f"Not reported: {self.cost_per_meeting_withheld_because}.")
+        else:
+            m = self.meetings
+            lines.append(
+                f"{_eur(self.acquisition_spend_micros)} over "
+                f"{m.incremental_conversions} incremental meetings "
+                f"({m.treatment_converted} against {m.control_converted} in the control "
+                f"arm): **{_eur(figure)}** per meeting this programme caused.")
+            lines.append(
+                f"All in, on the same basis as the baseline above: "
+                f"{_eur(self.run_rate_spend_micros)} of your own go-to-market spend over "
+                f"{self.period_days} days, at the monthly run-rate declared at onboarding, "
+                f"plus {_credits(self.credits_total)} credits billed by Zolts "
+                f"({_eur(round(self.credits_total * 10_000))}). The run-rate is the "
+                f"figure you declared and nothing re-measures it; if your team or tooling "
+                f"has changed, this figure changes with it.")
+        if ceiling is not None:
+            verdict = ("above" if self.over_cost_per_meeting_ceiling else "within") \
+                if figure is not None else "not measured against"
+            lines.append(
+                f"The programme declares a ceiling of {_eur(ceiling)}; this period is "
+                f"{verdict} it. The ceiling is reported and never enforced — a programme "
+                f"is over it every day until the first meeting lands (decision 45).")
 
     def render_markdown(self) -> str:
         """The document a person reads. Stored verbatim when frozen, so a
@@ -509,34 +572,11 @@ class IncrementalityReport:
             lines.append(f"Not reported: {self.pipeline_withheld_because}.")
 
         # Acquisition cost, against the ceiling the programme declared.
-        # Reported, never acted on: decision 45.
-        figure = self.cost_per_incremental_meeting_micros
-        ceiling = self.max_cost_per_meeting_micros
-        lines.extend(["", "## Cost per meeting", ""])
-        if figure is None:
-            lines.append(f"Not reported: {self.cost_per_meeting_withheld_because}.")
-        else:
-            m = self.meetings
-            lines.append(
-                f"{_eur(self.acquisition_spend_micros)} over "
-                f"{m.incremental_conversions} incremental meetings "
-                f"({m.treatment_converted} against {m.control_converted} in the control "
-                f"arm): **{_eur(figure)}** per meeting this programme caused.")
-            lines.append(
-                f"All in, on the same basis as the baseline above: "
-                f"{_eur(self.run_rate_spend_micros)} of your own go-to-market spend over "
-                f"{self.period_days} days, at the monthly run-rate declared at onboarding, "
-                f"plus {_credits(self.credits_total)} credits billed by Zolts "
-                f"({_eur(round(self.credits_total * 10_000))}). The run-rate is the "
-                f"figure you declared and nothing re-measures it; if your team or tooling "
-                f"has changed, this figure changes with it.")
-        if ceiling is not None:
-            verdict = ("above" if self.over_cost_per_meeting_ceiling else "within") \
-                if figure is not None else "not measured against"
-            lines.append(
-                f"The programme declares a ceiling of {_eur(ceiling)}; this period is "
-                f"{verdict} it. The ceiling is reported and never enforced — a programme "
-                f"is over it every day until the first meeting lands (decision 45).")
+        # Reported, never acted on: decision 45. Absent from a version that
+        # never carried the figures, so re-rendering an older document produces
+        # the document that was signed rather than a longer one (D-72).
+        if self.schema_version >= 2:
+            self._cost_per_meeting_lines(lines)
         lines += [
             "",
             "## What it rests on",
@@ -629,7 +669,12 @@ def _credits(value: float) -> str:
 
 def from_mapping(data: dict[str, object]) -> IncrementalityReport:
     """A report rebuilt from its canonical form, so the digest can be
-    recomputed by anybody holding the JSON and nothing else."""
+    recomputed by anybody holding the JSON and nothing else.
+
+    Including a document older than this code: the rebuild takes the shape from
+    the body's own `schema_version` and recomputes that shape, so a letter
+    signed against version 1 still verifies after the form has grown (D-72).
+    """
     try:
         primary = data["primary"]
         opps = data["opportunities"]
@@ -662,6 +707,10 @@ def from_mapping(data: dict[str, object]) -> IncrementalityReport:
             max_cost_per_meeting_micros=(
                 None if data.get("max_cost_per_meeting_micros") is None
                 else int(data["max_cost_per_meeting_micros"])),
+            # A body with no version is version 1, not the current one: every
+            # report frozen before the form was versioned carries no such key,
+            # and reading it as today's shape is the defect (D-72).
+            schema_version=int(data.get("schema_version") or 1),
             baseline=None if not baseline else BaselineQuote(
                 digest=str(baseline["digest"]),
                 window_start=date.fromisoformat(str(baseline["window_start"])),
