@@ -24,6 +24,10 @@ OWNER_URL = os.environ.get("ZOLTS_TEST_DATABASE_URL")
 # that asserts what the restricted role cannot do — see `requires_app_role`.
 _DECLARED_APP_URL = os.environ.get("ZOLTS_TEST_APP_DATABASE_URL")
 APP_URL = _DECLARED_APP_URL or OWNER_URL
+#: Whether the app pool is a role of its own. Exported because CI asserts it:
+#: a run where it is false skips the twenty-four tests that observe what the
+#: serving role cannot do, and reports green having checked nothing (D-75).
+APP_IS_DISTINCT = bool(_DECLARED_APP_URL and _DECLARED_APP_URL != OWNER_URL)
 SECRET = "test-secret-key"
 
 _skip_without_db = pytest.mark.skipif(
