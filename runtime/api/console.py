@@ -78,6 +78,15 @@ def _unverified(cur, program_id: str, metric) -> tuple[int, int]:
     return int(row["unread"] or 0), int(row["total"] or 0)
 
 
+def _eur(micros: Any) -> float | None:
+    """Micros to euros, to two decimals — the unit the panel is in.
+
+    Rounded like the lift beside it (D-58): every figure on this panel reads
+    to the same precision, or the reader has to work out which is which.
+    """
+    return None if micros is None else round(micros / 1_000_000, 2)
+
+
 def _reports(cur, program_id: str) -> list[dict[str, Any]]:
     """The frozen incrementality reports for a program, newest period first.
 
@@ -115,6 +124,14 @@ def _reports(cur, program_id: str) -> list[dict[str, Any]]:
             "incremental": primary.get("incremental_conversions"),
             # Euros, because the report holds micros and no screen reads micros.
             "pipelineEur": None if pipeline is None else round(pipeline / 1_000_000),
+            # Acquisition cost against the ceiling the programme declared
+            # (decision 45). Reported beside lift and never acted on: a
+            # programme is over its cost per meeting every day until the first
+            # one lands, so a stop here would kill programmes that are working.
+            "costPerMeetingEur": _eur(body.get("cost_per_incremental_meeting_micros")),
+            "costPerMeetingCeilingEur": _eur(body.get("max_cost_per_meeting_micros")),
+            "costPerMeetingWithheld": body.get("cost_per_meeting_withheld_because"),
+            "overCostCeiling": body.get("over_cost_per_meeting_ceiling"),
             # Why there is no figure, in the report's own words. A dash with no
             # reason is what made the live console's first measurement panel
             # unreadable (D-28).

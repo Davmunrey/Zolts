@@ -55,7 +55,9 @@ Every program reports a real income statement. What ships is the **incrementalit
 | Incremental pipeline | the *opportunity* comparison's increment × the CRM's own average deal amount, only when that comparison is significant and the CRM holds an amount | yes, or the reason it is withheld |
 | — the same figure on screen | the console computes it through the same `zolts.report` rules, so the panel and the frozen document cannot disagree (decision 39) | yes |
 | Incremental closed revenue | won deals over the cycle window | **no** — returns when a tenant has held a cycle |
-| **Cost per incremental meeting** | credits ÷ incremental meetings | **no** — derivable from the fields above; not stated until a partner has a significant read to divide by |
+| **Cost per incremental meeting** | the tenant's declared monthly go-to-market spend, prorated over the period from the frozen baseline, plus the credits Zolts billed — divided by the *meeting* comparison's increment, only when that comparison is significant | yes, or the reason it is withheld |
+| — against the ceiling the programme declared | `spec.budget.max_cost_per_meeting`, carried in the report so a reader holding the signed document does not also need the programme. Reported and never enforced (decision 45) | yes, when one is declared |
+| — on the same basis as the baseline | credits alone would be €0.42 a meeting beside a baseline of €1,297 a meeting and a ceiling a shipped programme declares at €180: three figures in one document that are not the same measurement (decision 46). The run-rate is what the tenant declared at onboarding and nothing re-measures it, so the document says so and no figure exists without a baseline | yes |
 
 The report also carries what the number rests on — the unread share of conversions (decision 16), the policy decisions and touches behind it — and quotes the baseline's digest, so the "before" of `docs/17` and this "after" can be laid side by side. It never compares them as a lift: the lift is against the concurrent control, and the baseline says what the same money bought before.
 

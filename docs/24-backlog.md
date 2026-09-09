@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1240 | 401 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1291 | 403 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -91,9 +91,10 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **The CFO's half of the console** | The frozen report is read on the programme it belongs to: verdict, lift beside the detectable effect, digest, credits, and the baseline it quotes. A tenant with none is told when one appears rather than shown an empty panel | ADR-043, decision 39, `browser_console.py` |
 | **The metric a programme declares** | What `primary_metric` names is what the measurement counts, inside the window the name carries. A metric the runtime cannot count is refused where the programme is stored; a value metric's amount is reported and never tested | decision 40, D-51, `test_metrics.py` |
 | **Published policy packs** | A jurisdiction's rules are a document an operator publishes, one active at a time, and every policy decision cites the version and digest of the pack that produced it — so a decision can be reproduced rather than inferred from today's release | ADR-044, decision 41, D-53, `test_policy_packs.py` |
+| **Acquisition cost against the declared ceiling** | The frozen report and the console carry what a meeting this programme caused actually cost — the tenant's own go-to-market run-rate for the period plus the credits Zolts billed, over the *meeting* comparison's increment — beside the ceiling `spec.budget.max_cost_per_meeting` declares. Reported and never enforced: a programme is above it every day until the first meeting lands, so a stop would kill programmes that are working. The ceiling was read by nothing at all (D-63) | decisions 45 and 46, `docs/10` |
 
 ## How an item earns its place
 
-The register in `docs/22` is the evidence for this ordering. Thirty-three of fifty-four defects were a specification with no caller. Reading found twenty-one of them and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
+The register in `docs/22` is the evidence for this ordering. Forty-two of seventy-one defects were a specification with no caller. Reading found more of them than any other method — thirty-one of the seventy-one — and every one of those was a *document* read against the code — a price nothing charges, an ADR about a connector that does not exist. Not one defect in the register was found by reviewing code for a wrong line.
 
 So an item is only "done" when something runs it and that run can fail. A specification, a document, a column, a button and a process table have each been the whole of a feature in this repository, and each was found by an execution nobody had performed.

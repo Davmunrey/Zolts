@@ -61,8 +61,13 @@ def _report_unenforced(document: object, surface: str) -> None:
     if not isinstance(spec, dict):
         return
     for control in controls.unenforced(spec, surface):
-        print(f"      declares {control.path}, which the runtime does not enforce"
-              f" — {control.what}")
+        # A reported control is still unenforced, and the two must not read the
+        # same: an operator told only "not enforced" would not learn that the
+        # figure now exists on the report, and one told only "reported" would
+        # believe the engine holds it (decision 45).
+        held = (f"reported and not enforced — see {control.reported_by}"
+                if control.reported else "which the runtime does not enforce")
+        print(f"      declares {control.path}, {held} — {control.what}")
 
 
 def validate_mappings() -> int:

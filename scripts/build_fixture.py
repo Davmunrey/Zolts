@@ -88,6 +88,22 @@ OPPORTUNITIES = {
     "new-site-and-reputation":     {"treatment": 21, "control": 1},
 }
 
+# Meetings booked, per arm. Upstream of an opportunity and downstream of a
+# positive reply, so each is above this program's opportunity count and below
+# its replies. Same shape as the opportunity arms above: invented for the demo,
+# consistent with them, and the verdict on screen is whatever `zolts.report`
+# makes of them rather than whatever reads well.
+MEETINGS = {
+    # Two arms and one control below the five-per-arm floor: nothing may be
+    # declared, so the program that declares a ceiling shows the ceiling and no
+    # figure. That is the honest state of a program in its first period, and it
+    # is the state the demo should not hide.
+    "series-a-hiring-surge":       {"treatment": 58, "control": 3},
+    "workspace-expansion-trigger": {"treatment": 176, "control": 10},
+    "replenishment-winback":       {"treatment": 1450, "control": 145},
+    "new-site-and-reputation":     {"treatment": 36, "control": 2},
+}
+
 # How many synced deals carry an amount, which is what a live tenant's average
 # is taken over. Counted from the split above rather than typed beside it.
 DEMO_DEALS_WITH_AMOUNT = sum(sum(o.values()) for o in OPPORTUNITIES.values())
@@ -386,6 +402,11 @@ def _pipeline(key: str, n_treat: int, n_control: int,
     }
 
 
+def _eur(micros: object) -> float | None:
+    """Micros to euros, to two decimals — the unit every panel is in."""
+    return None if micros is None else round(micros / 1_000_000, 2)
+
+
 def _frozen_reports(program, holdout: float, seen: dict | None) -> list[dict[str, object]]:
     """The frozen reports for one program, as the console's panel reads them.
 
@@ -393,7 +414,8 @@ def _frozen_reports(program, holdout: float, seen: dict | None) -> list[dict[str
     runtime would freeze — including the one that resolves nothing.
     """
     from zolts.baseline import from_mapping as baseline_from_mapping
-    from zolts.report import BaselineQuote, Comparison, IncrementalityReport
+    from zolts.report import (BaselineQuote, Comparison, IncrementalityReport,
+                              ceiling_micros)
 
     frozen = FROZEN.get(program.key)
     opps = OPPORTUNITIES.get(program.key, {"treatment": 0, "control": 0})
@@ -415,11 +437,14 @@ def _frozen_reports(program, holdout: float, seen: dict | None) -> list[dict[str
             treatment_enrolled=n_treat, control_enrolled=n_control,
             treatment_converted=opps["treatment"],
             control_converted=opps["control"]),
-        converted_by_type={"opp_created": opps},
+        converted_by_type={"opp_created": opps,
+                           "meeting": MEETINGS.get(program.key,
+                                                   {"treatment": 0, "control": 0})},
         unread_conversions=round(seen["treat"] * n_treat * seen["unread"]),
         touches_sent=frozen["touches"], decisions=frozen["decisions"],
         credits_by_kind=frozen["credits"],
         average_opportunity_micros=DEAL_EUR[program.key] * 1_000_000,
+        max_cost_per_meeting_micros=ceiling_micros(program.spec),
         opportunities_with_amount=DEMO_DEALS_WITH_AMOUNT,
         baseline=BaselineQuote(
             digest=before.digest(), window_start=before.window_start,
@@ -443,6 +468,12 @@ def _frozen_reports(program, holdout: float, seen: dict | None) -> list[dict[str
         "nTreat": primary["treatment_enrolled"], "nControl": primary["control_enrolled"],
         "incremental": primary["incremental_conversions"],
         "pipelineEur": None if pipeline is None else round(pipeline / 1_000_000),
+        # Acquisition cost against the ceiling the program declared, reported
+        # and never acted on (decision 45).
+        "costPerMeetingEur": _eur(body["cost_per_incremental_meeting_micros"]),
+        "costPerMeetingCeilingEur": _eur(body["max_cost_per_meeting_micros"]),
+        "costPerMeetingWithheld": body["cost_per_meeting_withheld_because"],
+        "overCostCeiling": body["over_cost_per_meeting_ceiling"],
         "withheld": body["pipeline_withheld_because"],
         "credits": body["credits_total"],
         "unreadShare": body["unread_share"],

@@ -270,3 +270,51 @@ def test_the_demo_fleet_shows_the_mechanism_and_not_a_happy_path():
     assert any(b["health"] != "ok" for b in boxes), "every mailbox is healthy"
     assert {b["provider"] for b in boxes} >= {"google", "microsoft"}, (
         "the panel does not show per-provider segregation")
+
+
+# -- the acquisition cost the demo shows ----------------------------------
+
+def test_every_frozen_report_in_the_demo_prices_a_meeting_or_says_why():
+    """Decision 45's figure, on the demo's own numbers. Neither state is
+    hidden: one program declares a ceiling and has no figure to measure against
+    it yet, the other has a figure and declares no ceiling. A demo that showed
+    only the flattering half would be a demo of a different product.
+    """
+    seen = set()
+    for program in FIXTURE["programs"]:
+        for report in program.get("reports") or []:
+            seen.add(report["costPerMeetingEur"] is None)
+            if report["costPerMeetingEur"] is None:
+                assert report["costPerMeetingWithheld"], (
+                    f"{program['key']}: no cost per meeting and no reason for it")
+                assert report["overCostCeiling"] is None, (
+                    "no figure may not read as within budget")
+            else:
+                assert report["costPerMeetingEur"] > 0
+                assert report["costPerMeetingWithheld"] is None
+                ceiling = report["costPerMeetingCeilingEur"]
+                assert report["overCostCeiling"] is (
+                    None if ceiling is None
+                    else report["costPerMeetingEur"] > ceiling)
+    assert seen == {True, False}, (
+        "the demo must show both the reported figure and the withheld one")
+
+
+def test_the_demo_s_declared_ceiling_is_the_one_in_the_shipped_program():
+    """The panel's ceiling is the program's, converted, and not a number typed
+    into the fixture."""
+    import yaml
+
+    from zolts.report import ceiling_micros
+
+    root = Path(__file__).resolve().parent.parent
+    declared = {}
+    for path in sorted((root / "examples" / "programs").glob("*.yaml")):
+        document = yaml.safe_load(path.read_text())
+        declared[document["metadata"]["key"]] = ceiling_micros(document["spec"])
+
+    for program in FIXTURE["programs"]:
+        for report in program.get("reports") or []:
+            micros = declared[program["key"]]
+            assert report["costPerMeetingCeilingEur"] == (
+                None if micros is None else round(micros / 1_000_000, 2))
