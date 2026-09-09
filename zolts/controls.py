@@ -152,6 +152,25 @@ CONTROLS: tuple[Control, ...] = (
         enforced_by=None,
         consequence="Nothing measures step latency against it, and nothing reports a breach"),
     Control(
+        "spec.enrich.*.accuracy_sla",
+        "the measured accuracy a provider must reach before it may be asked",
+        enforced_by="runtime/enrichment.py, passed into zolts.waterfall.optimise",
+        consequence=""),
+    Control(
+        "spec.route.strategy",
+        "who receives the enrolled account",
+        enforced_by=None,
+        consequence=(
+            "Read by nothing at all, so `score_desc`, `territory_round_robin` and "
+            "`owner_of_record` are the same programme: every enrolment is routed by "
+            "the tier predicates alone and no account is assigned to anybody. It was "
+            "offered as a console dial and escaped the guard that refuses one, because "
+            "that guard compared the dial list against this file and this file did not "
+            "name it (D-80). Taken out of the dial list on the same terms as "
+            "`budget.on_exceed`: it returns when a rep exists on an enrolment for it "
+            "to assign to"),
+    ),
+    Control(
         "spec.enrich.*.skip_if_known",
         "do not buy a field the record already has",
         enforced_by=None,

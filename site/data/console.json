@@ -1776,16 +1776,6 @@
       "pattern": "^\\d+[dw]$"
     },
     {
-      "path": "spec.route.strategy",
-      "note": "Who receives the enrolled account.",
-      "type": "string",
-      "enum": [
-        "score_desc",
-        "territory_round_robin",
-        "owner_of_record"
-      ]
-    },
-    {
       "path": "spec.budget.monthly_credits",
       "note": "Ceiling on what this program may spend generating copy. Sends, enrichment and signals are bounded by the tenant's credit ceiling, not by this.",
       "type": "number",
