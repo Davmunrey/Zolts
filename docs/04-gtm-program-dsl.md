@@ -47,7 +47,7 @@ spec:
 | `plays` | Channel step sequence with waits and branching | Every step emits a `proposed_action`; it never executes directly |
 | `policy` | Overrides on tenant policy (stricter only) | A program **cannot** relax global policy |
 | `experiment` | Mandatory `holdout_pct` ≥ 5% (a waiver requires justification) | Without it, `zolts apply` refuses |
-| `budget` | Credits per month, max cost per account, max cost per meeting | Execution stops automatically at the ceiling |
+| `budget` | Credits per month, max cost per account, max cost per meeting | The tenant's credit ceiling stops execution; the per-programme fields do not yet, and `zolts validate` names the ones that are decoration (D-63). `max_cost_per_meeting` is **reported and never enforced** — it appears on the frozen report beside the cost the period achieved, because a programme is above it every day until the first meeting lands (decision 45) |
 | `exit` | Reply, meeting, opportunity created, unsubscribe, exhaustion | Prevents the classic "we kept emailing an existing customer" |
 
 ## Lifecycle and testing

@@ -39,6 +39,12 @@ class Control:
     what: str
     #: Where the runtime enforces it, or None when it does not.
     enforced_by: str | None
+    #: Where the runtime *measures and prints* it without holding it. A ceiling
+    #: that appears on a report is not a ceiling the engine keeps, and treating
+    #: the two as one is the exact confusion this module exists to prevent. A
+    #: reported control stays in `NOT_HONOURED`; it simply stops being invisible
+    #: (decision 45).
+    reported_by: str | None = None
     #: What a customer loses by declaring it today. Empty when it is enforced.
     consequence: str = ""
     #: Which document declares it. A program's `spec.policy` and a blueprint's
@@ -49,6 +55,11 @@ class Control:
     @property
     def honoured(self) -> bool:
         return self.enforced_by is not None
+
+    @property
+    def reported(self) -> bool:
+        """Measured and shown, but not held. Never a substitute for honoured."""
+        return self.reported_by is not None
 
 
 CONTROLS: tuple[Control, ...] = (
@@ -113,10 +124,15 @@ CONTROLS: tuple[Control, ...] = (
         "spec.budget.max_cost_per_meeting",
         "ceiling on acquisition cost per meeting booked",
         enforced_by=None,
+        reported_by="zolts/report.py, on the frozen incrementality report",
         consequence=(
-            "A derived ceiling — cost divided by an outcome — so honouring it needs a "
-            "decision about what happens when it is breached mid-period, not only an "
-            "implementation. Registered in `docs/18`")),
+            "Reported and never acted on (decision 45). The signed report carries the "
+            "cost per *incremental* meeting, the declared ceiling, and whether the "
+            "period finished above it — so a partner quoting the ceiling in a letter "
+            "now quotes a number the document holds. Nothing stops or throttles on a "
+            "breach: a programme is above its cost per meeting every day until the "
+            "first one lands, so a stop here would kill programmes that are working. "
+            "The breach is a whole reporting period, and the operator decides")),
     Control(
         "spec.route.tiers.capacity_per_week",
         "how many accounts a tier may take in a week",
@@ -190,6 +206,10 @@ CONTROLS: tuple[Control, ...] = (
 
 HONOURED = tuple(c for c in CONTROLS if c.honoured)
 NOT_HONOURED = tuple(c for c in CONTROLS if not c.honoured)
+#: Held by nobody, but measured and shown. A separate tuple rather than a third
+#: value of `honoured`, so no caller can widen "the runtime enforces this" by
+#: accident: every reported control is still an unenforced one.
+REPORTED = tuple(c for c in CONTROLS if c.reported)
 BY_PATH = {c.path: c for c in CONTROLS}
 
 

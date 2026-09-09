@@ -47,6 +47,11 @@ VERDICTS = (SIGNIFICANT, NOT_SIGNIFICANT, NOT_RESOLVABLE)
 # make the detectable effect zero, and then any lift at all "clears" it.
 BASELINE_RATE_FLOOR = 0.01
 
+# A month, for prorating a monthly run-rate across a period that is not one.
+# The Gregorian mean rather than 30, so twelve consecutive periods sum to the
+# declared year instead of eleven and a half of it.
+DAYS_PER_MONTH = 365.2425 / 12
+
 
 class ReportError(ValueError):
     """A report that cannot be composed as given."""
@@ -155,6 +160,24 @@ def _round(value: float | None, places: int = 6) -> float | None:
     return None if value is None else round(value, places)
 
 
+def ceiling_micros(spec: dict) -> int | None:
+    """A program's declared acquisition-cost ceiling, in micros.
+
+    Budgets are typed in euros, because that is what a person writing a
+    program types; every money field the runtime holds is in micros. The
+    conversion lives here, in the core, so the runtime that freezes a report
+    and the builder that renders the demo cannot disagree about what a
+    customer's number meant.
+
+    A ceiling of zero is a ceiling, not an absence, so the test is against
+    None rather than falsiness (decision 45).
+    """
+    declared = ((spec or {}).get("budget") or {}).get("max_cost_per_meeting")
+    if declared is None:
+        return None
+    return round(float(declared) * 1_000_000)
+
+
 @dataclass(frozen=True)
 class BaselineQuote:
     """What the report quotes from the frozen baseline. The digest is the
@@ -220,6 +243,11 @@ class IncrementalityReport:
     # as a measurement.
     average_opportunity_micros: int | None = None
     opportunities_with_amount: int = 0
+    # The acquisition-cost ceiling the programme declared, in micros. Carried
+    # in the report rather than fetched from the spec, because a reader holding
+    # the signed document must be able to see the figure and the ceiling it was
+    # measured against without also holding the programme (decision 45).
+    max_cost_per_meeting_micros: int | None = None
     baseline: BaselineQuote | None = None
 
     def __post_init__(self) -> None:
@@ -264,6 +292,118 @@ class IncrementalityReport:
         return increment * self.average_opportunity_micros
 
     @property
+    def meetings(self) -> Comparison:
+        """The meeting arm, assembled from counts the digest already covers.
+
+        `converted_by_type` holds meetings per arm and `primary` holds the
+        enrolment, so this costs no query and introduces no number a reader
+        cannot re-derive from the document in front of them.
+        """
+        booked = self.converted_by_type.get("meeting", {})
+        return Comparison(
+            treatment_enrolled=self.primary.treatment_enrolled,
+            control_enrolled=self.primary.control_enrolled,
+            treatment_converted=int(booked.get("treatment", 0)),
+            control_converted=int(booked.get("control", 0)))
+
+    @property
+    def period_days(self) -> int:
+        return (self.period_end - self.period_start).days
+
+    @property
+    def run_rate_spend_micros(self) -> int | None:
+        """What the customer's own go-to-market cost over this period, at the
+        run-rate they declared at onboarding, prorated by days.
+
+        An assumption, and the document says so: nothing re-measures a
+        customer's salaries and tooling after the baseline is frozen. It is
+        carried because the alternative is worse — a cost per meeting made of
+        Zolts credits alone reads as €0.42 on the demo's own numbers, beside a
+        baseline of €1,297 a meeting in the same document and a ceiling a
+        shipped programme declares at €180: three figures that are not the same
+        measurement (decision 46).
+
+        None when no baseline was declared. A run-rate of zero would put the
+        whole cost of a meeting on the platform fee.
+        """
+        if self.baseline is None:
+            return None
+        return round(self.baseline.monthly_spend_micros * self.period_days
+                     / DAYS_PER_MONTH)
+
+    @property
+    def acquisition_spend_micros(self) -> int | None:
+        """Everything acquiring cost this period: the customer's own run-rate
+        plus what Zolts billed.
+
+        A credit is a cent, which is ten thousand micros. Stated here rather
+        than inferred, because a wrong conversion is a hundredfold error in a
+        number a CFO reads.
+        """
+        run_rate = self.run_rate_spend_micros
+        if run_rate is None:
+            return None
+        return run_rate + round(self.credits_total * 10_000)
+
+    @property
+    def cost_per_incremental_meeting_micros(self) -> int | None:
+        """What a meeting this programme caused actually cost, all in.
+
+        Per *incremental* meeting, not per meeting observed: the holdout books
+        meetings this programme did not pay for, and dividing spend by all of
+        them would flatter the figure by exactly the amount the holdout exists
+        to measure. Same rule as the pipeline figure — only when the comparison
+        clears its own detectable effect (`docs/10`).
+
+        The same scope as the baseline quoted beside it, so the two are a
+        before and an after rather than two different measurements sharing a
+        name.
+        """
+        increment = self.meetings.incremental_conversions
+        spend = self.acquisition_spend_micros
+        if not increment or spend is None:  # zero increment is unreachable, see below
+            return None
+        return round(spend / increment)
+
+    @property
+    def cost_per_meeting_withheld_because(self) -> str | None:
+        """Why there is no figure, in the reader's own document.
+
+        Two reasons, and never a zero increment: a significant meeting
+        comparison always caused at least one meeting, because the
+        five-conversion floor keeps the detectable effect above 0.5 divided by
+        the treatment arm, so a lift that clears it cannot round to nothing.
+        A third sentence for that case would be a branch no input can reach,
+        which is the second half of this repository's commonest defect: code
+        that is written, correct and never on the path. Proved by a sweep in
+        `test_cost_per_meeting.py` rather than asserted here.
+        """
+        if self.cost_per_incremental_meeting_micros is not None:
+            return None
+        if self.meetings.verdict != SIGNIFICANT:
+            reason = self.meetings.why_not_resolvable
+            return (f"the meeting comparison is {self.meetings.verdict}"
+                    + (f" ({reason})" if reason else ""))
+        return ("no baseline was declared, so the customer's own go-to-market "
+                "spend for this period is unknown")
+
+    @property
+    def over_cost_per_meeting_ceiling(self) -> bool | None:
+        """Whether the period finished above the declared ceiling.
+
+        None when there is no ceiling or no figure — never False, which would
+        read as *within budget* on a programme that has not yet produced a
+        number to judge. Decision 45: this is reported and never acted on, and
+        it is a whole reporting period rather than a day, because a programme
+        is over its cost per meeting every day until the first one lands.
+        """
+        ceiling, figure = self.max_cost_per_meeting_micros, \
+            self.cost_per_incremental_meeting_micros
+        if ceiling is None or figure is None:
+            return None
+        return figure > ceiling
+
+    @property
     def pipeline_withheld_because(self) -> str | None:
         if self.incremental_pipeline_micros is not None:
             return None
@@ -298,6 +438,12 @@ class IncrementalityReport:
             "opportunities_with_amount": self.opportunities_with_amount,
             "incremental_pipeline_micros": self.incremental_pipeline_micros,
             "pipeline_withheld_because": self.pipeline_withheld_because,
+            "max_cost_per_meeting_micros": self.max_cost_per_meeting_micros,
+            "run_rate_spend_micros": self.run_rate_spend_micros,
+            "acquisition_spend_micros": self.acquisition_spend_micros,
+            "cost_per_incremental_meeting_micros": self.cost_per_incremental_meeting_micros,
+            "cost_per_meeting_withheld_because": self.cost_per_meeting_withheld_because,
+            "over_cost_per_meeting_ceiling": self.over_cost_per_meeting_ceiling,
             "verdict": self.verdict,
             "baseline": self.baseline.canonical() if self.baseline else None,
         }
@@ -361,6 +507,36 @@ class IncrementalityReport:
                 f"**{_eur(self.incremental_pipeline_micros)}** of incremental pipeline.")
         else:
             lines.append(f"Not reported: {self.pipeline_withheld_because}.")
+
+        # Acquisition cost, against the ceiling the programme declared.
+        # Reported, never acted on: decision 45.
+        figure = self.cost_per_incremental_meeting_micros
+        ceiling = self.max_cost_per_meeting_micros
+        lines.extend(["", "## Cost per meeting", ""])
+        if figure is None:
+            lines.append(f"Not reported: {self.cost_per_meeting_withheld_because}.")
+        else:
+            m = self.meetings
+            lines.append(
+                f"{_eur(self.acquisition_spend_micros)} over "
+                f"{m.incremental_conversions} incremental meetings "
+                f"({m.treatment_converted} against {m.control_converted} in the control "
+                f"arm): **{_eur(figure)}** per meeting this programme caused.")
+            lines.append(
+                f"All in, on the same basis as the baseline above: "
+                f"{_eur(self.run_rate_spend_micros)} of your own go-to-market spend over "
+                f"{self.period_days} days, at the monthly run-rate declared at onboarding, "
+                f"plus {_credits(self.credits_total)} credits billed by Zolts "
+                f"({_eur(round(self.credits_total * 10_000))}). The run-rate is the "
+                f"figure you declared and nothing re-measures it; if your team or tooling "
+                f"has changed, this figure changes with it.")
+        if ceiling is not None:
+            verdict = ("above" if self.over_cost_per_meeting_ceiling else "within") \
+                if figure is not None else "not measured against"
+            lines.append(
+                f"The programme declares a ceiling of {_eur(ceiling)}; this period is "
+                f"{verdict} it. The ceiling is reported and never enforced — a programme "
+                f"is over it every day until the first meeting lands (decision 45).")
         lines += [
             "",
             "## What it rests on",
@@ -376,8 +552,8 @@ class IncrementalityReport:
         if self.credits_by_kind:
             lines += ["| Kind | Credits |", "|---|---|"]
             for kind, credits in sorted(self.credits_by_kind.items()):
-                lines.append(f"| {kind} | {credits:g} |")
-            lines.append(f"| **Total** | **{self.credits_total:g}** |")
+                lines.append(f"| {kind} | {_credits(credits)} |")
+            lines.append(f"| **Total** | **{_credits(self.credits_total)}** |")
         else:
             lines.append("No credits were consumed by this program in the period.")
         lines += ["", "## Before", ""]
@@ -439,6 +615,18 @@ def _eur(micros: int | None) -> str:
     return "—" if micros is None else f"€{micros / 1_000_000:,.0f}"
 
 
+def _credits(value: float) -> str:
+    """Credits, for a document a person reads.
+
+    `:g` switches to exponential above six significant digits, so a programme
+    that billed 1,200,000 credits printed `1.2e+06` in a signed report (D-70).
+    This keeps what `:g` was there for — no trailing zeros on a whole number —
+    and adds the separator, because the figure is money at a hundred to the
+    euro and nobody reads seven digits unbroken.
+    """
+    return f"{value:,.4f}".rstrip("0").rstrip(".")
+
+
 def from_mapping(data: dict[str, object]) -> IncrementalityReport:
     """A report rebuilt from its canonical form, so the digest can be
     recomputed by anybody holding the JSON and nothing else."""
@@ -468,6 +656,12 @@ def from_mapping(data: dict[str, object]) -> IncrementalityReport:
             average_opportunity_micros=(None if data.get("average_opportunity_micros") is None
                                         else int(data["average_opportunity_micros"])),
             opportunities_with_amount=int(data.get("opportunities_with_amount") or 0),
+            # `or 0` would turn a declared ceiling of zero into no ceiling, and
+            # a missing one into a ceiling of zero. Both change the digest of a
+            # report somebody has already signed.
+            max_cost_per_meeting_micros=(
+                None if data.get("max_cost_per_meeting_micros") is None
+                else int(data["max_cost_per_meeting_micros"])),
             baseline=None if not baseline else BaselineQuote(
                 digest=str(baseline["digest"]),
                 window_start=date.fromisoformat(str(baseline["window_start"])),

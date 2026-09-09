@@ -307,6 +307,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .note svg{width:13px;height:13px;flex:none;margin-top:2px}
 .note.fail{background:var(--deny-dim);color:var(--ink-muted)} .note.fail svg{color:var(--deny)}
 .note.pass{background:var(--lift-dim);color:var(--ink-muted)} .note.pass svg{color:var(--lift)}
+.note.open{background:var(--surface-2);color:var(--ink-muted)} .note.open svg{color:var(--ink-tertiary)}
 .act{display:grid;grid-template-columns:14px 1fr auto;gap:9px;align-items:baseline;font-size:12px;padding:5px 0;color:var(--ink-subtle)}
 .act time{font-family:var(--mono);font-size:11px;color:var(--ink-tertiary)}
 .act .g{width:6px;height:6px;border-radius:50%;justify-self:center;margin-top:5px}
@@ -1100,18 +1101,44 @@ function frozenReports(p){
       + (r.liftPp == null ? "" : ' · ' + (r.liftPp > 0 ? "+" : "") + r.liftPp.toFixed(2)
          + ' pp vs ' + (r.mdePp == null ? "—" : r.mdePp.toFixed(2) + ' pp'))
       + ' · ' + (r.pipelineEur != null ? '€' + nf(r.pipelineEur) : "no pipeline figure")
+      // Acquisition cost against the ceiling the program declared. All in —
+      // the customer's own run-rate plus what Zolts billed — so it sits on the
+      // same basis as the baseline cost per meeting it is read against.
+      + ' · ' + (r.costPerMeetingEur != null
+          ? '€' + nf(r.costPerMeetingEur) + '/meeting' : "no cost per meeting")
       + ' · ' + nf(r.credits) + ' credits'
       + '<br><span class="mono" style="font-size:10.5px;color:var(--ink-tertiary)">'
       + r.digest.slice(0, 32) + '…</span></span>'
       + '<time>' + (r.frozenAt || "").slice(0, 10) + '</time></div>';
   }).join("");
   var first = rows[0];
-  return '<div class="block"><div class="blabel">Frozen reports</div>' + body
+  // The declared ceiling, drawn beside the figure and never acted on
+  // (decision 45): a program is above its cost per meeting every day until the
+  // first one lands, so a stop here would kill programs that are working. The
+  // period, not the day, is the unit — and the operator decides.
+  // Three states, not two: a null is *no figure yet*, and painting it green
+  // would tell an operator they are within a budget nothing has measured.
+  var breach = first.overCostCeiling;
+  var ceiling = first.costPerMeetingCeilingEur == null ? '' :
+    '<div class="note ' + (breach == null ? "open" : breach ? "fail" : "pass") + '">'
+    + (breach ? ICON_UND : ICON_SIG)
+    + '<span>Declared ceiling <b style="color:var(--ink)">€'
+    + nf(first.costPerMeetingCeilingEur) + '</b> per meeting. '
+    + (breach == null
+        ? 'This period has no figure to measure against it: '
+          + (first.costPerMeetingWithheld || "nothing to report yet") + '.'
+        : 'The period ' + first.periodStart + ' → ' + first.periodEnd + ' finished <b '
+          + 'style="color:var(--ink)">' + (breach ? "above" : "within")
+          + '</b> it.')
+    + ' Reported, never enforced.</span></div>';
+  return '<div class="block"><div class="blabel">Frozen reports</div>' + body + ceiling
     + '<p style="margin:10px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
     + 'Written once and never restated. The digest covers the figures and what they were '
     + 'computed from, so this row and a signed copy can be checked against each other'
     + (first.baselineDigest
         ? '; it quotes the baseline frozen at onboarding.' : '.')
+    + ' Cost per meeting is all in: your own go-to-market run-rate for the period plus '
+    + 'what Zolts billed, on the same basis as that baseline.'
     + '</p></div>';
 }
 

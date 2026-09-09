@@ -22,7 +22,7 @@ from runtime.repo import baseline as baseline_repo
 from runtime.repo import ledger, reports
 from zolts import metrics
 from zolts.report import (BaselineQuote, Comparison, IncrementalityReport,
-                          ReportError)
+                          ReportError, ceiling_micros)
 
 # The statuses a touch has once a provider accepted it. `queued` and `failed`
 # are attempts, not touches a person received.
@@ -61,12 +61,20 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
                 (program_id, end))
     enrolled = {r["variant"]: int(r["n"]) for r in cur.fetchall()}
 
+    # Inside the metric window, like the primary number this composes and like
+    # the opportunity arms below. It was not, and that was tolerable while the
+    # breakdown only disclosed what the primary number was made of. The meeting
+    # arm is now divided into money (decision 45), and a comparison counted over
+    # a different span from the one it is set beside is two measurements sharing
+    # a document.
     cur.execute(
         "select e.variant, o.type, count(distinct o.enrollment_id) as n"
         " from enrollment e join outcome o on o.enrollment_id = e.id"
         " where e.program_id = %s and e.entered_at < %s and o.occurred_at < %s"
-        "   and o.type = any(%s) group by e.variant, o.type",
-        (program_id, end, end, list(metrics.OUTCOME_TYPES)))
+        "   and o.type = any(%s)"
+        "   and o.occurred_at < e.entered_at + make_interval(days => %s)"
+        " group by e.variant, o.type",
+        (program_id, end, end, list(metrics.OUTCOME_TYPES), metric.window_days))
     by_type: dict[str, dict[str, int]] = {}
     for r in cur.fetchall():
         by_type.setdefault(r["type"], {})[r["variant"]] = int(r["n"])
@@ -153,6 +161,7 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
         converted_by_type=by_type, unread_conversions=unread, touches_sent=touches,
         decisions=decisions, credits_by_kind=credits,
         average_opportunity_micros=average, opportunities_with_amount=with_amount,
+        max_cost_per_meeting_micros=ceiling_micros(program.get("spec") or {}),
         baseline=quote)
 
 
