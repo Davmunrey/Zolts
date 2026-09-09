@@ -417,3 +417,38 @@ def test_the_premise_is_asserted_and_not_merely_declared():
     assert "def app_role_is_restricted" in conftest
     assert "db.isolation_enforced" in conftest
     assert "select current_user" in conftest
+
+
+@requires_db
+def test_the_runbook_s_query_runs_and_its_keys_resolve(db, tenant):
+    """`docs/26` tells an operator to read the basis with a SQL query. A query
+    in a document nobody executes is the shape this register carries most of,
+    and the report body's keys have changed twice this month — so the query is
+    taken from the document itself and run against a real frozen report.
+    """
+    import re
+    from pathlib import Path
+
+    from runtime import metering, reporting
+    from runtime.repo import period_spend as repo
+
+    runbook = (Path(__file__).resolve().parents[1] / "docs"
+               / "26-partner-onboarding.md").read_text()
+    [sql] = [block for block in re.findall(r"```sql\n(.*?)```", runbook, re.S)
+             if "own_spend_basis" in block]
+
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        _program_with_meetings(cur, tid, booked=(90, 20), enrolled=400)
+        row = _tenant_row(cur, tid)
+        period = metering.open_period(cur, row)
+        repo.declare(cur, tid, str(period["id"]), _spend(), declared_by="operator")
+        closed = metering.close_period(cur, row, str(period["id"]))
+        reporting.freeze_all(cur, row, closed, frozen_by="operator")
+
+        cur.execute(sql.replace("limit 3", "").rstrip().rstrip(";"))
+        [read] = cur.fetchall()
+
+    assert read["basis"] == DECLARED, "the query reads the key the report writes"
+    assert read["own_spend_eur"] == 14_700, "and the figure the operator declared"
+    assert read["per_meeting_eur"] is not None
