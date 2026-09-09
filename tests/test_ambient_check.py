@@ -109,3 +109,18 @@ def test_the_command_refuses_a_run_that_could_not_report_a_difference(argv, expe
                                                                      monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["ambient_check.py", *argv])
     assert CHECK.main() == expected
+
+
+def test_the_error_message_names_the_defects_the_script_exists_for():
+    """A count in a message drifts the same way a count in a document does,
+    and this one is the first thing somebody reads when the script fires."""
+    from pathlib import Path
+
+    source = (ROOT / "scripts" / "ambient_check.py").read_text()
+    register = (ROOT / "docs" / "22-defect-register.md").read_text()
+    shape = next(ln for ln in register.splitlines()
+                 if "check that fails on its environment rather than on its subject" in ln)
+    assert "Six of them" in shape or "six of them" in shape, (
+        "the register's count of this shape moved; the script's message quotes it")
+    for defect in ("D-35", "D-59", "D-68", "D-71", "D-73", "D-74"):
+        assert defect in source, f"{defect} is of this shape and the message omits it"

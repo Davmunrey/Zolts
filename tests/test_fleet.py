@@ -42,6 +42,15 @@ def _domain(cur, name="send.example", *, authenticated=True, paused=False):
     return cur.fetchone()
 
 
+# The day the runtime counts warm-up from. `fleet.load` takes `moment` in UTC
+# and reads its date there; a test that seeded from `date.today()` measured
+# against the machine's *local* day instead, and a mailbox thirteen days old in
+# Auckland is fourteen days old in UTC (D-74). The product was right both
+# times; the test moved with the clock.
+def _utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
 def _mailbox(cur, address="ae@send.example", *, provider="other",
              started: date | None = None, paused=False):
     cur.execute(
@@ -49,7 +58,7 @@ def _mailbox(cur, address="ae@send.example", *, provider="other",
         " warmup_started_on, paused) values"
         " (zolts_internal.current_tenant(), %s,%s,%s,%s,%s) returning *",
         (address, address.split("@")[1], provider,
-         started or (date.today() - timedelta(days=60)), paused))
+         started or (_utc_today() - timedelta(days=60)), paused))
     return cur.fetchone()
 
 
@@ -110,14 +119,42 @@ def test_a_send_outside_the_window_does_not_count(db, tenant):
 def test_warmup_is_a_date_and_not_a_counter(db, tenant):
     """`warmed_days` had to be incremented by something every day. One missed
     run and a mailbox is permanently younger than it is, sending under its real
-    capacity forever."""
+    capacity forever.
+
+    The premise is the UTC day, established here and asserted, because that is
+    the day `fleet.load` counts from. Seeding from `date.today()` measured
+    against the machine's local day and failed east of UTC on a product that
+    was correct (D-74).
+    """
     tid = str(tenant["id"])
+    started = _utc_today() - timedelta(days=13)
     with db.tenant_tx(tid) as cur:
         _domain(cur)
-        _mailbox(cur, started=date.today() - timedelta(days=13))
+        row = _mailbox(cur, started=started)
+        assert row["warmup_started_on"] == started, "the premise, as the row holds it"
         loaded = fleet.load(cur)
 
     assert loaded.domains[0].mailboxes[0].warmup_day == 14
+
+
+def test_the_warmup_day_is_counted_in_utc_and_not_in_local_time(db, tenant):
+    """D-74, stated as the difference. A mailbox is the same age everywhere;
+    an operator in Auckland and one in Honolulu reading the same fleet must be
+    told the same capacity, because the mailbox's provider is counting in one
+    timezone and it is not theirs."""
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        _domain(cur)
+        _mailbox(cur, started=_utc_today() - timedelta(days=13))
+        # `load` takes the instant explicitly, so the same fleet is read at
+        # two moments that share a UTC date and differ by local date almost
+        # everywhere else.
+        east = fleet.load(cur, now=datetime(2026, 9, 9, 23, 30, tzinfo=timezone.utc))
+        west = fleet.load(cur, now=datetime(2026, 9, 9, 0, 30, tzinfo=timezone.utc))
+
+    assert east.domains[0].mailboxes[0].warmup_day == \
+        west.domains[0].mailboxes[0].warmup_day, (
+            "the same UTC day is the same warm-up day, whatever hour it is read at")
 
 
 # -- fail closed ---------------------------------------------------------

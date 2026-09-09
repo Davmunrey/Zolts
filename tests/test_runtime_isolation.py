@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from tests.conftest import OWNER_URL, SECRET, requires_app_role
+from tests.conftest import (APP_IS_DISTINCT, OWNER_URL, SECRET,
+                            requires_app_role)
 from runtime.provision import issue_api_key, store_connection
 
 
@@ -107,12 +108,24 @@ def test_ci_never_reports_green_having_skipped_these():
 
     A suite that skips its isolation tests and reports 332 passed is worse than
     one that fails: it says the property holds when nothing checked it.
+
+    **Both variables, not one.** This asserted only the owner URL, while
+    `docs/23` named it as the guard for *CI fails a run that skipped the
+    isolation tests*. Twenty-four of those tests need a separate app role to
+    observe anything at all (D-73), and without it they skip — so CI could
+    have reported green having checked no isolation property, past a guard the
+    security register said covered exactly that (D-75).
     """
     import os
 
     if os.environ.get("CI", "").lower() not in {"true", "1"}:
         pytest.skip("only enforced in CI")
     assert OWNER_URL, "ZOLTS_TEST_DATABASE_URL must be set in CI"
+    assert APP_IS_DISTINCT, (
+        "ZOLTS_TEST_APP_DATABASE_URL must be set in CI and must differ from the "
+        "owner: without it the pool connects as a role that bypasses every grant, "
+        "and the twenty-four tests that assert what the serving role cannot do "
+        "skip rather than run")
 
 
 @requires_app_role
