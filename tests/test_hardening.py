@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from runtime.api.app import create_app
 from runtime.api.throttle import Throttle, caller_of
 from runtime.provision import issue_api_key
-from tests.conftest import requires_db
+from tests.conftest import requires_app_role, requires_db
 
 
 @pytest.fixture
@@ -99,8 +99,8 @@ def test_a_token_is_never_listed(client, key):
         assert row["prefix"].startswith("zk_")
 
 
-@requires_db
-def test_keys_are_tenant_scoped(db, client, key, other_tenant):
+@requires_app_role
+def test_keys_are_tenant_scoped(db, client, key, other_tenant, app_role_is_restricted):
     theirs = issue_api_key(db, str(other_tenant["id"]), "theirs", [])
     assert theirs.key_id not in {k["id"] for k in
                                  client.get("/v1/keys", headers=_auth(key)).json()}

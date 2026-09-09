@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import pytest
 
 from runtime.engine import audience, enroll
-from tests.conftest import requires_db
+from tests.conftest import requires_app_role, requires_db
 
 SOFTWARE_ONLY = (
     "select a.id as account_id from account a where a.industry_code = 'software'")
@@ -135,8 +135,8 @@ def test_an_audience_naming_a_table_this_tenant_does_not_have_fails_closed(db, t
             audience.includes(cur, _spec(sql), "demo", str(account["id"]))
 
 
-@requires_db
-def test_the_audience_cannot_see_another_tenants_rows(db, tenant, other_tenant):
+@requires_app_role
+def test_the_audience_cannot_see_another_tenants_rows(db, tenant, other_tenant, app_role_is_restricted):
     """Row level security is the boundary, and it applies to tenant-authored
     SQL exactly as it applies to the runtime's own."""
     from runtime.repo import entities

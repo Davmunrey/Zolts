@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1328 | 409 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1337 | 409 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -93,6 +93,7 @@ Delivered and verified against real infrastructure. Grouped by what a buyer woul
 | **Published policy packs** | A jurisdiction's rules are a document an operator publishes, one active at a time, and every policy decision cites the version and digest of the pack that produced it — so a decision can be reproduced rather than inferred from today's release | ADR-044, decision 41, D-53, `test_policy_packs.py` |
 | **Acquisition cost against the declared ceiling** | The frozen report and the console carry what a meeting this programme caused actually cost — the tenant's own go-to-market run-rate for the period plus the credits Zolts billed, over the *meeting* comparison's increment — beside the ceiling `spec.budget.max_cost_per_meeting` declares. Reported and never enforced: a programme is above it every day until the first meeting lands, so a stop would kill programmes that are working. The ceiling was read by nothing at all (D-63) | decisions 45 and 46, `docs/10` |
 | **A period's own spend, declared rather than assumed** | The cost per meeting rested on a monthly figure declared at onboarding and prorated by days, which nothing re-measured: a tenant who grew their team read a figure wrong in a direction nobody could see. `zolts period-spend` records one declaration per billing period, written once and refused once that period's reports are frozen; the report divides by it and names the basis it used. Optional, so a month's close never waits on data entry | decision 46, ADR-046 |
+| **The ambient-condition probe, repeatable** | `scripts/ambient_check.py` runs the suite under named ambient conditions and reports the tests whose verdict moves rather than the tests that skip. It found fifteen instances of D-73 that a hand probe over three files had missed. **Not gated**: a condition is a full suite run, so the default pair costs six minutes and the full set fifteen — too slow for every push, and a check that doubles CI is a check somebody deletes. CI covers the highest-value condition another way, by refusing a green run that skipped the isolation tests | `docs/22`, the fifth shape |
 
 ## How an item earns its place
 

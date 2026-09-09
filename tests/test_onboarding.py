@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from runtime import onboarding
 from runtime.api.app import create_app
-from tests.conftest import requires_db
+from tests.conftest import requires_app_role, requires_db
 
 
 @pytest.fixture
@@ -206,8 +206,8 @@ def test_slugify_is_lossy_and_safe():
     assert len(onboarding.slugify("x" * 200)) == 40
 
 
-@requires_db
-def test_a_signed_up_tenant_sees_only_its_own_programs(db, client):
+@requires_app_role
+def test_a_signed_up_tenant_sees_only_its_own_programs(db, client, app_role_is_restricted):
     one = onboarding.mint(db, company_name="Tenant One")
     two = onboarding.mint(db, company_name="Tenant Two")
     key_one = client.post("/v1/signup", json={"token": one.token}).json()["api_key"]

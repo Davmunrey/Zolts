@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from runtime.api.app import create_app
 from runtime.provision import issue_api_key
-from tests.conftest import requires_db
+from tests.conftest import requires_app_role, requires_db
 
 PUSH_MAPPING = {
     "apiVersion": "zolts/v1",
@@ -155,8 +155,8 @@ def test_republishing_a_provider_replaces_it_in_place(client, key):
     assert [m["provider"] for m in listing] == ["acme-push"]
 
 
-@requires_db
-def test_a_mapping_belongs_to_one_tenant(client, key, other_key):
+@requires_app_role
+def test_a_mapping_belongs_to_one_tenant(client, key, other_key, app_role_is_restricted):
     client.post("/v1/crm/mappings", json=PUSH_MAPPING, headers=_auth(key))
 
     assert client.get("/v1/crm/mappings", headers=_auth(other_key)).json() == []
