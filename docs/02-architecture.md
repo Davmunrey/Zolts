@@ -748,6 +748,22 @@ Vercel has functions and a cron, and no processes and no release hook. Each abse
 **What this constrains.** A report is read (`GET /v1/programs/{program_id}/reports`, `zolts report`) and never requested: an endpoint that froze one on demand would freeze it on a favourable read. Adding a figure is a new field in the canonical form and a new digest, never a silent recalculation of stored rows. The console's projection of pipeline from a declared €24,000 per opportunity (`docs/21`) stays a projection; the frozen report carries only what the tenant's own CRM holds.
 
 
+**ADR-046 · A period's go-to-market spend is declared for that period, written once, and optional.**
+The cost per incremental meeting is all in (decision 46): the tenant's own spend plus what Zolts billed. Their own spend came from the baseline frozen at onboarding, prorated by days, and nothing re-measured it. A tenant who hires two more people or drops a tool keeps being priced at the figure they gave on their first day, and the error is invisible — the report has no second number to disagree with. The document disclosed the assumption, which is honest and is not the same as being right.
+
+**One declaration per billing period.** `tenant_period_spend` is keyed on the period, carries the same four fields as the baseline in the same units, and `zolts period-spend --tenant --period --file` records it. The four fields are `zolts.baseline.SPEND_FIELDS` itself rather than a copy: two lists that must agree and are written twice are two lists that will disagree, and the point of the change is that the before and each after are one measurement.
+
+**Written once, and the serving role cannot restate it.** The same reasoning as ADR-042 and ADR-043, now applied to the third document a signed report rests on: a figure a report divides by must not be one somebody chose after reading the result. `on conflict do nothing`, and `update` and `delete` revoked from the app role.
+
+**Optional, and too late once the reports are frozen.** A period with no declaration falls back to the prorated run-rate, because making a month's close wait on a data-entry step would block billing for a figure that is reported and never enforced. A declaration *after* the period's reports are frozen is refused with different words from a duplicate: the operator has not repeated themselves, they have missed the window, and a row written then would disagree with every document of that period while changing none of them.
+
+**A declaration is never prorated.** The figures are for the period, whatever its length. Prorating them would put back the assumption they exist to remove.
+
+**The report names which basis it used.** `own_spend_basis` is `declared` or `run rate`, it is covered by the digest, and the rendered document disclaims the assumption and does not disclaim the measurement. The same figure means different things and a reader cannot tell by looking at it, so two reports with identical euros and different bases hash differently — they are two claims, not one.
+
+**What this constrains.** A tenant never types this: it is operator work on the operator's surface, like the baseline and for the same reason (`docs/17`'s guardrail — the CFO document takes no input of its own from the customer). Adding a fifth spend field is a change to the baseline's vocabulary first, and to this second.
+
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 

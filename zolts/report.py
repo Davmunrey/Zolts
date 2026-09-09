@@ -60,7 +60,7 @@ DAYS_PER_MONTH = 365.2425 / 12
 # did not carry (D-72). Every change to the key set is a new version, the old
 # key sets stay here, and a rebuild recomputes the shape the document declares
 # rather than the shape this code happens to be at.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Keys introduced after version 1. A body that declares no version *is* version
 # 1: every report frozen before the form was versioned at all.
@@ -68,7 +68,15 @@ KEYS_ADDED_IN: dict[int, tuple[str, ...]] = {
     2: ("schema_version", "max_cost_per_meeting_micros", "run_rate_spend_micros",
         "acquisition_spend_micros", "cost_per_incremental_meeting_micros",
         "cost_per_meeting_withheld_because", "over_cost_per_meeting_ceiling"),
+    3: ("period_spend_micros", "own_spend_micros", "own_spend_basis"),
 }
+
+# What the tenant's own spend for a period rests on. `declared` is a figure an
+# operator recorded for that period; `run rate` is the onboarding baseline
+# prorated by days, which nothing re-measures (decision 46). The report names
+# which, because a reader cannot tell a measurement from an assumption by
+# looking at the number.
+DECLARED, RUN_RATE = "declared", "run rate"
 
 
 class ReportError(ValueError):
@@ -266,6 +274,11 @@ class IncrementalityReport:
     # the signed document must be able to see the figure and the ceiling it was
     # measured against without also holding the programme (decision 45).
     max_cost_per_meeting_micros: int | None = None
+    # What the tenant declared they spent on go-to-market during this period,
+    # in micros. None when nobody declared, and the run-rate is used instead.
+    # Zero is a declaration and not an absence: a tenant who ran the period on
+    # Zolts alone means the four zeros they wrote (decision 46).
+    period_spend_micros: int | None = None
     baseline: BaselineQuote | None = None
     # The canonical shape this report was written in. Defaults to the current
     # one for a report being composed now, and is read back from the body for
@@ -355,18 +368,45 @@ class IncrementalityReport:
                      / DAYS_PER_MONTH)
 
     @property
+    def own_spend_micros(self) -> int | None:
+        """The customer's own go-to-market spend for this period.
+
+        A figure declared *for this period* when there is one, and the
+        onboarding run-rate prorated by days when there is not. Never both and
+        never a blend: a declaration replaces the assumption rather than
+        adjusting it, and prorating a declaration would put the assumption
+        back (decision 46).
+        """
+        if self.period_spend_micros is not None:
+            return self.period_spend_micros
+        return self.run_rate_spend_micros
+
+    @property
+    def own_spend_basis(self) -> str | None:
+        """`declared` or `run rate`, and None when there is neither.
+
+        Part of the digest, because the same figure means different things: one
+        is a measurement of this period and the other is an assumption carried
+        from the tenant's first day, and a reader cannot tell them apart by
+        looking at the number.
+        """
+        if self.period_spend_micros is not None:
+            return DECLARED
+        return None if self.baseline is None else RUN_RATE
+
+    @property
     def acquisition_spend_micros(self) -> int | None:
-        """Everything acquiring cost this period: the customer's own run-rate
-        plus what Zolts billed.
+        """Everything acquiring cost this period: the customer's own spend plus
+        what Zolts billed.
 
         A credit is a cent, which is ten thousand micros. Stated here rather
         than inferred, because a wrong conversion is a hundredfold error in a
         number a CFO reads.
         """
-        run_rate = self.run_rate_spend_micros
-        if run_rate is None:
+        own = self.own_spend_micros
+        if own is None:
             return None
-        return run_rate + round(self.credits_total * 10_000)
+        return own + round(self.credits_total * 10_000)
 
     @property
     def cost_per_incremental_meeting_micros(self) -> int | None:
@@ -407,8 +447,8 @@ class IncrementalityReport:
             reason = self.meetings.why_not_resolvable
             return (f"the meeting comparison is {self.meetings.verdict}"
                     + (f" ({reason})" if reason else ""))
-        return ("no baseline was declared, so the customer's own go-to-market "
-                "spend for this period is unknown")
+        return ("neither a declaration for this period nor a baseline to prorate, "
+                "so the customer's own go-to-market spend is unknown")
 
     @property
     def over_cost_per_meeting_ceiling(self) -> bool | None:
@@ -465,7 +505,10 @@ class IncrementalityReport:
             "incremental_pipeline_micros": self.incremental_pipeline_micros,
             "pipeline_withheld_because": self.pipeline_withheld_because,
             "max_cost_per_meeting_micros": self.max_cost_per_meeting_micros,
+            "period_spend_micros": self.period_spend_micros,
             "run_rate_spend_micros": self.run_rate_spend_micros,
+            "own_spend_micros": self.own_spend_micros,
+            "own_spend_basis": self.own_spend_basis,
             "acquisition_spend_micros": self.acquisition_spend_micros,
             "cost_per_incremental_meeting_micros": self.cost_per_incremental_meeting_micros,
             "cost_per_meeting_withheld_because": self.cost_per_meeting_withheld_because,
@@ -501,14 +544,23 @@ class IncrementalityReport:
                 f"{m.incremental_conversions} incremental meetings "
                 f"({m.treatment_converted} against {m.control_converted} in the control "
                 f"arm): **{_eur(figure)}** per meeting this programme caused.")
+            zolts_micros = round(self.credits_total * 10_000)
+            if self.own_spend_basis == DECLARED:
+                # A measurement of this period, so nothing is disclaimed.
+                rests_on = (
+                    f"{_eur(self.own_spend_micros)} of your own go-to-market spend, "
+                    f"declared for this period")
+            else:
+                rests_on = (
+                    f"{_eur(self.own_spend_micros)} of your own go-to-market spend over "
+                    f"{self.period_days} days, at the monthly run-rate you declared at "
+                    f"onboarding — an assumption, because nothing re-measures it; if your "
+                    f"team or tooling has changed since, so has this figure. Declaring "
+                    f"the period's own spend replaces it (decision 46)")
             lines.append(
-                f"All in, on the same basis as the baseline above: "
-                f"{_eur(self.run_rate_spend_micros)} of your own go-to-market spend over "
-                f"{self.period_days} days, at the monthly run-rate declared at onboarding, "
-                f"plus {_credits(self.credits_total)} credits billed by Zolts "
-                f"({_eur(round(self.credits_total * 10_000))}). The run-rate is the "
-                f"figure you declared and nothing re-measures it; if your team or tooling "
-                f"has changed, this figure changes with it.")
+                f"All in, on the same basis as the baseline above: {rests_on}, plus "
+                f"{_credits(self.credits_total)} credits billed by Zolts "
+                f"({_eur(zolts_micros)}).")
         if ceiling is not None:
             verdict = ("above" if self.over_cost_per_meeting_ceiling else "within") \
                 if figure is not None else "not measured against"
@@ -710,6 +762,11 @@ def from_mapping(data: dict[str, object]) -> IncrementalityReport:
             # A body with no version is version 1, not the current one: every
             # report frozen before the form was versioned carries no such key,
             # and reading it as today's shape is the defect (D-72).
+            # `or None` would turn a declared zero into no declaration, which
+            # is the difference between a tenant who spent nothing outside
+            # Zolts and one who never told us.
+            period_spend_micros=(None if data.get("period_spend_micros") is None
+                                 else int(data["period_spend_micros"])),
             schema_version=int(data.get("schema_version") or 1),
             baseline=None if not baseline else BaselineQuote(
                 digest=str(baseline["digest"]),

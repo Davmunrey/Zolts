@@ -132,6 +132,12 @@ def _reports(cur, program_id: str) -> list[dict[str, Any]]:
             "costPerMeetingCeilingEur": _eur(body.get("max_cost_per_meeting_micros")),
             "costPerMeetingWithheld": body.get("cost_per_meeting_withheld_because"),
             "overCostCeiling": body.get("over_cost_per_meeting_ceiling"),
+            # What the tenant's own spend rests on: `declared` for this period,
+            # or `run rate` prorated from onboarding. The same number means
+            # different things, and a reader cannot tell by looking at it
+            # (decision 46).
+            "ownSpendBasis": body.get("own_spend_basis"),
+            "ownSpendEur": _eur(body.get("own_spend_micros")),
             # Why there is no figure, in the report's own words. A dash with no
             # reason is what made the live console's first measurement panel
             # unreadable (D-28).

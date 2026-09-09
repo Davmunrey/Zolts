@@ -102,6 +102,16 @@ jobs:
             echo "::error::the Postgres tests were skipped; this run proves nothing"
             exit 1
           fi
+          # And the narrower skip. Nine tests assert what the *restricted* role
+          # cannot do — tenant isolation among them — and they skip rather than
+          # fail when the app pool is the owner (D-73). Skipping is the honest
+          # answer on a laptop and an unacceptable one here.
+          if grep -q "ZOLTS_TEST_APP_DATABASE_URL is not set" /tmp/tests.log; then
+            echo "::error::the isolation tests were skipped because the app role was not"
+            echo "::error::configured; a run that cannot observe the restricted role does"
+            echo "::error::not prove tenant isolation"
+            exit 1
+          fi
           echo "the Postgres tests ran: $(python3 -m pytest tests/ -q -m db \
             --collect-only 2>/dev/null | grep -oP '^\d+(?=/)') selected by -m db"
 

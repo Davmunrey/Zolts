@@ -140,9 +140,10 @@ def test_the_run_rate_is_prorated_by_days_and_never_by_a_thirty_day_month():
 
 
 def test_no_baseline_means_no_figure_and_the_document_says_which():
-    """Without a declared baseline the customer's own spend is unknown, and a
-    cost per meeting made of the platform fee alone would be off by an order of
-    magnitude in the flattering direction."""
+    """With neither a declaration for the period nor a baseline to prorate, the
+    customer's own spend is unknown, and a cost per meeting made of the platform
+    fee alone would be off by an order of magnitude in the flattering
+    direction (decisions 45 and 46)."""
     report = _report(Comparison(1000, 1000, 100, 50), baseline=None,
                      max_cost_per_meeting_micros=CEILING)
     assert report.meetings.verdict == SIGNIFICANT, "the comparison is not the problem"
@@ -150,8 +151,9 @@ def test_no_baseline_means_no_figure_and_the_document_says_which():
     assert report.acquisition_spend_micros is None
     assert report.cost_per_incremental_meeting_micros is None
     assert report.over_cost_per_meeting_ceiling is None
-    assert "no baseline was declared" in report.cost_per_meeting_withheld_because
-    assert "no baseline was declared" in report.render_markdown()
+    assert "neither a declaration for this period nor a baseline" in \
+        report.cost_per_meeting_withheld_because
+    assert "neither a declaration for this period nor a baseline" in report.render_markdown()
 
 
 def test_the_figure_is_withheld_with_a_reason_when_the_arms_cannot_resolve():

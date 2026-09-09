@@ -22,7 +22,7 @@ from runtime.api.app import create_app
 from runtime.provision import issue_api_key
 from runtime.repo import baseline as baseline_repo
 from runtime.repo import reports as reports_repo
-from tests.conftest import requires_db
+from tests.conftest import requires_app_role, requires_db
 from tests.test_baseline import DECLARED
 from zolts.baseline import from_mapping as baseline_from_mapping
 from zolts.report import (NOT_RESOLVABLE, NOT_SIGNIFICANT, SIGNIFICANT, VERDICTS,
@@ -387,8 +387,8 @@ def test_the_stored_document_is_the_one_anybody_can_rebuild_from_the_body(db, te
     assert frozen["digest"] in frozen["rendered"]
 
 
-@requires_db
-def test_the_serving_role_cannot_restate_a_frozen_report_or_a_baseline(db, tenant):
+@requires_app_role
+def test_the_serving_role_cannot_restate_a_frozen_report_or_a_baseline(db, tenant, app_role_is_restricted):
     """Write-once by construction. The role that serves requests has no
     statement that can change either document a partner signs against."""
     import psycopg
@@ -403,8 +403,8 @@ def test_the_serving_role_cannot_restate_a_frozen_report_or_a_baseline(db, tenan
             conn.rollback()
 
 
-@requires_db
-def test_a_report_is_the_tenants_own(db, tenant, other_tenant):
+@requires_app_role
+def test_a_report_is_the_tenants_own(db, tenant, other_tenant, app_role_is_restricted):
     from runtime import reporting
 
     tid = str(tenant["id"])
@@ -466,8 +466,8 @@ def test_the_api_reads_the_frozen_reports_and_never_writes_one(db, client, key, 
                       headers=_auth(key)).status_code == 404
 
 
-@requires_db
-def test_another_tenant_cannot_read_a_report_by_its_id(db, client, tenant, other_tenant):
+@requires_app_role
+def test_another_tenant_cannot_read_a_report_by_its_id(db, client, tenant, other_tenant, app_role_is_restricted):
     from runtime import reporting
 
     tid = str(tenant["id"])

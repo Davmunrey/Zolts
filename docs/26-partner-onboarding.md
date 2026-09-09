@@ -18,7 +18,8 @@ From a name on a list to a first send with a holdout, for a design partner on Hu
 | 6 | Partner | Connect sending: domain, mailboxes, Smartlead, the reply webhook | `zolts capacity` shows a cap above zero |
 | 7 | Partner | Activate one program | `lint` is empty; `tenants can send` is ok |
 | 8 | Runtime | The first send | a touch with `status = 'sent'`, and a policy decision beside it |
-| 9 | Operator | Close the period | `zolts close-period` freezes one incrementality report per program, and prints each verdict and digest |
+| 9 | Operator | Declare the period's own GTM spend, before closing | `zolts period-spend` prints the total the reports will divide by |
+| 10 | Operator | Close the period | `zolts close-period` freezes one incrementality report per program, and prints each verdict and digest |
 
 ### 1 · The invitation
 
@@ -131,7 +132,32 @@ select t.channel, t.status, t.sent_at, d.decision, d.rule_key
 
 Then `GET /v1/programs/{program_id}/measurement`: `treatment` and `control` counts, the lift and the minimum detectable effect beside it, and `significant` — which stays `false` for weeks, honestly, until the arms are large enough. The console's Experiments question is deliberately not a view (`docs/20`).
 
-### 9 · The report, frozen
+### 9 · The period's own spend, declared
+
+**Before the close, not after.** The cost per incremental meeting on every report is all in: the partner's own go-to-market spend for the period plus what Zolts billed. With no declaration it falls back to the baseline's monthly run-rate from step 4, prorated by days — an assumption that was true on the partner's first day and that nothing re-measures. A team that grew, or a tool that was dropped, moves the real figure and not that one.
+
+```bash
+cat > /tmp/september.json <<'EOF'
+{"window_start": "2026-09-01", "window_end": "2026-10-01",
+ "spend_tools_micros": 1400000000, "spend_data_micros": 900000000,
+ "spend_sending_micros": 400000000, "spend_people_micros": 12000000000}
+EOF
+python3 -m runtime.cli period-spend --tenant <id> --period <period id> --file /tmp/september.json
+```
+
+Same four fields as the baseline, same units, **for the period rather than per month** — they are not prorated. Written once and never replaced, like the baseline and the report (ADR-046). Declaring is optional: skip it and the reports say they used the run-rate, which is a figure the letter can still be read against. Declaring *after* the close is refused, because the reports are already frozen and a row written then would disagree with every one of them while changing none.
+
+The frozen report names which basis it used, so a reader never has to assume:
+
+```sql
+select period_start,
+       body->>'own_spend_basis'                                as basis,
+       (body->>'own_spend_micros')::bigint / 1000000           as own_spend_eur,
+       (body->>'cost_per_incremental_meeting_micros')::bigint / 1000000 as per_meeting_eur
+  from incrementality_report order by period_end desc;
+```
+
+### 10 · The report, frozen
 
 At every period close — `python3 -m runtime.cli close-period --tenant <id>` — the runtime freezes the **incrementality report** for each program that enrolled anybody: the same arms and lift, the unread share, decisions, credits by kind, pipeline on opportunities only, and the baseline's digest from step 4, written once with a digest of its own (ADR-043). `python3 -m runtime.cli report --tenant <id>` prints it; `GET /v1/programs/{program_id}/reports` lists it. The one at the term's last close is what the letter's success table is read from.
 
@@ -158,7 +184,7 @@ select verdict, period_start, period_end, digest, frozen_at
 >
 > **Term.** Three months from the date of the first activated program, for €5k, invoiced on signature (decision B7).
 >
-> **Before.** The baseline frozen on [date] with digest `[64 hex characters]`, declared by [name, role]: monthly GTM spend of €[tools] on tools, €[data] on data, €[sending] on sending and €[people] on people; in the ninety days to [window end], [contacted] contacts made, [replied] replies, [meetings] meetings and [opportunities] opportunities — a cost per meeting of €[x] and per opportunity of €[y]. The row is written once and the digest can be recomputed from it by either party.
+> **Before.** The baseline frozen on [date] with digest `[64 hex characters]`, declared by [name, role]: monthly GTM spend of €[tools] on tools, €[data] on data, €[sending] on sending and €[people] on people; in the ninety days to [window end], [contacted] contacts made, [replied] replies, [meetings] meetings and [opportunities] opportunities — a cost per meeting of €[x] and per opportunity of €[y]. The row is written once and the digest can be recomputed from it by either party. Each period's *after* is read on the same basis — the partner's own spend plus what Zolts billed — and the report names whether that spend was declared for the period or prorated from this baseline, because the same figure means different things (decision 46).
 >
 > **What runs.** [Program key], on [blueprint], with a [10]% holdout assigned deterministically per account. The holdout is not waived. A conversion is what the programme's declared `primary_metric` counts, inside the window that metric names — for [program key], [metric] — and it is named in the frozen report and covered by its digest (decision 40), and the measurement reports how many replies were read by a person beside how many were counted (decision 16).
 >
