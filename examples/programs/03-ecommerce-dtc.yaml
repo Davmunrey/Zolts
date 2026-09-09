@@ -80,7 +80,12 @@ spec:
     holdout_pct: 10
     unit: person
     primary_metric: net_revenue_28d          # net of discount: avoids cannibalisation
-    guardrail_metrics: [unsubscribe_rate, margin_per_order]
+    # None declared, deliberately. Margin per order is the guardrail this
+    # programme wants — a winback that sells at a discount raises revenue and
+    # loses money — and the runtime records no margin (D-76). Cost is guarded
+    # instead, by the budget block below and by the report's cost per
+    # incremental meeting against the ceiling that block declares.
+    guardrail_metrics: []
 
   budget: {monthly_credits: 8000, max_cost_per_person: 0.08, on_exceed: throttle}
 

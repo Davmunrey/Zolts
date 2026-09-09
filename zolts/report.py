@@ -42,6 +42,18 @@ NOT_SIGNIFICANT = "not significant"
 NOT_RESOLVABLE = "not resolvable"
 VERDICTS = (SIGNIFICANT, NOT_SIGNIFICANT, NOT_RESOLVABLE)
 
+# A guardrail's verdict is a different question with a different vocabulary,
+# and reusing the three words above would answer the wrong one. `significant`
+# on the primary metric means the treatment arm did *better* than the holdout —
+# `Comparison.verdict` tests `lift > mde`, so a one-sided improvement is the
+# only thing it can ever report. A guardrail asks the opposite: did the
+# treatment arm do measurably *worse*? Reported as a third word rather than by
+# reading a minus sign into `significant`, because a reader who sees
+# "significant" beside a guardrail will read it as good news (D-76).
+HELD = "held"
+DEGRADED = "degraded"
+GUARDRAIL_VERDICTS = (HELD, DEGRADED, NOT_RESOLVABLE)
+
 # The floor the measurement endpoint and the console already apply to the
 # control rate before computing an MDE: a control arm converting at zero would
 # make the detectable effect zero, and then any lift at all "clears" it.
@@ -60,7 +72,7 @@ DAYS_PER_MONTH = 365.2425 / 12
 # did not carry (D-72). Every change to the key set is a new version, the old
 # key sets stay here, and a rebuild recomputes the shape the document declares
 # rather than the shape this code happens to be at.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Keys introduced after version 1. A body that declares no version *is* version
 # 1: every report frozen before the form was versioned at all.
@@ -69,6 +81,7 @@ KEYS_ADDED_IN: dict[int, tuple[str, ...]] = {
         "acquisition_spend_micros", "cost_per_incremental_meeting_micros",
         "cost_per_meeting_withheld_because", "over_cost_per_meeting_ceiling"),
     3: ("period_spend_micros", "own_spend_micros", "own_spend_basis"),
+    4: ("guardrails", "guardrails_not_measured"),
 }
 
 # What the tenant's own spend for a period rests on. `declared` is a figure an
@@ -182,6 +195,51 @@ class Comparison:
         }
 
 
+@dataclass(frozen=True)
+class Guardrail:
+    """A metric a programme promised not to damage, and whether it did.
+
+    Measured exactly like the primary metric — the same two arms, the same
+    concurrent holdout, the same detectable effect — and read in the opposite
+    direction. That symmetry is the whole reason a guardrail has to be a
+    metric the holdout can also exhibit: an unsubscribe rate has a control arm
+    that is structurally zero, because the holdout is never touched, so it
+    would report *not resolvable* for ever while looking like a measurement
+    still gathering data. `zolts.metrics.resolve_guardrail` refuses those at
+    admission; what reaches here is comparable by construction (D-76).
+
+    A guardrail is not a budget. Nothing here pauses a programme, exactly as
+    nothing acts on the cost ceiling (decision 45): the report states what the
+    holdout says and the operator decides. What it stops is the report reading
+    as an unqualified win while a declared guardrail moved against it.
+    """
+    name: str
+    window_days: int
+    comparison: Comparison
+
+    @property
+    def verdict(self) -> str:
+        c = self.comparison
+        if not c.resolvable:
+            return NOT_RESOLVABLE
+        # Symmetric with the primary metric's test and pointing the other way:
+        # a drop has to clear the same detectable effect a gain does, or the
+        # guardrail fires on noise and the operator learns to ignore it.
+        return DEGRADED if (c.lift or 0.0) < -(c.minimum_detectable_effect or 0.0) else HELD
+
+    @property
+    def breached(self) -> bool:
+        return self.verdict == DEGRADED
+
+    def canonical(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "window_days": self.window_days,
+            "verdict": self.verdict,
+            "comparison": self.comparison.canonical(),
+        }
+
+
 def _round(value: float | None, places: int = 6) -> float | None:
     return None if value is None else round(value, places)
 
@@ -253,6 +311,20 @@ class IncrementalityReport:
     # different metrics are two different claims (D-51).
     primary_metric: str = DEFAULT_METRIC.name
     metric_window_days: int = DEFAULT_METRIC.window_days
+    # What the programme promised not to damage, and whether it did. Empty is
+    # a real answer and the commonest one: three of the four shipped archetypes
+    # declare no guardrail, because the guardrails they want — churn, margin,
+    # rep time — are not outcomes this runtime records, and declaring a metric
+    # nothing counts is a guard that passes because it never runs (D-76).
+    guardrails: tuple[Guardrail, ...] = ()
+    # Guardrails a stored programme declares that this runtime cannot measure,
+    # and why, as `(name, reason)` pairs. Admission refuses these now, so a
+    # programme published after D-76 cannot carry one — but programmes
+    # published before it can, and a freeze that raised on one would stop the
+    # whole tenant's period close. Dropped from the measurement and named in
+    # the document, because a declared control that vanishes from the report is
+    # the defect this pair of keys exists to end.
+    guardrails_not_measured: tuple[tuple[str, str], ...] = ()
     # Conversions by outcome type and arm, so the composition of the primary
     # number is visible: a lift made of positive replies is not a lift made
     # of opportunities, and the reader should not have to trust that.
@@ -514,6 +586,9 @@ class IncrementalityReport:
             "cost_per_meeting_withheld_because": self.cost_per_meeting_withheld_because,
             "over_cost_per_meeting_ceiling": self.over_cost_per_meeting_ceiling,
             "verdict": self.verdict,
+            "guardrails": [g.canonical() for g in self.guardrails],
+            "guardrails_not_measured": [{"name": n, "why": w}
+                                        for n, w in self.guardrails_not_measured],
             "baseline": self.baseline.canonical() if self.baseline else None,
             "schema_version": self.schema_version,
         }
@@ -528,6 +603,69 @@ class IncrementalityReport:
         so the document and the row can be checked against each other."""
         blob = json.dumps(self.canonical(), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode()).hexdigest()
+
+    @property
+    def breached_guardrails(self) -> tuple[Guardrail, ...]:
+        return tuple(g for g in self.guardrails if g.breached)
+
+    @property
+    def guardrail_qualification(self) -> str | None:
+        """The clause that stops a win reading as an unqualified one.
+
+        The control this closes was declared and unenforced: a programme that
+        won on its primary metric while damaging a guardrail reported the win
+        and nothing else (`zolts.controls`). The qualification sits in the
+        verdict paragraph rather than in a section further down, because a
+        reader who stops after the first paragraph is the reader this is for.
+        """
+        breached = self.breached_guardrails
+        if not breached:
+            return None
+        names = ", ".join(f"`{g.name}`" for g in breached)
+        return (f"It did not come free: {_n(len(breached), 'guardrail', 'guardrails')} "
+                f"the programme declared — {names} — measurably degraded against the "
+                f"same holdout. See Guardrails below.")
+
+    def _guardrail_lines(self, lines: list[str]) -> None:
+        """What the programme promised not to damage, measured the same way.
+
+        Stated even when nothing was declared. A blank section reads as a
+        report that forgot to check; a sentence saying none was declared is
+        the honest form, and it is the form three of the four shipped
+        archetypes produce (D-76).
+        """
+        lines.extend(["", "## Guardrails", ""])
+        if not self.guardrails and not self.guardrails_not_measured:
+            lines.append(
+                "None declared. A guardrail is answered by the holdout, so it has to "
+                "name something the holdout can also exhibit — this programme declared "
+                "no such metric, and nothing here was checked against one.")
+        elif not self.guardrails:
+            lines.append(
+                "None measured. Everything this programme declared as a guardrail is "
+                "listed below with the reason it could not be one.")
+        else:
+            self._guardrail_table(lines)
+        for name, why in self.guardrails_not_measured:
+            lines.extend(["", f"`{name}` was declared as a guardrail and not measured: "
+                              f"{why}."])
+
+    def _guardrail_table(self, lines: list[str]) -> None:
+        lines.extend(["| Guardrail | Window | Treatment | Control | Lift | Verdict |",
+                      "|---|---|---|---|---|---|"])
+        for g in self.guardrails:
+            c = g.comparison
+            lines.append(
+                f"| `{g.name}` | {g.window_days}d | {_pct_rate(c.treatment_rate)} "
+                f"| {_pct_rate(c.control_rate)} | {_pp(c.lift)} | {g.verdict} |")
+        lines.extend([
+            "",
+            "Measured against the same concurrent holdout as the primary metric, and "
+            "read the other way: *degraded* means the treatment arm did worse by more "
+            "than the detectable effect, *held* means it did not, and *not resolvable* "
+            "means the arms are too small to say either. Reported and never acted on — "
+            "no programme is paused by this table (decision 45).",
+        ])
 
     def _cost_per_meeting_lines(self, lines: list[str]) -> None:
         """The acquisition-cost section, against the ceiling the programme
@@ -583,7 +721,8 @@ class IncrementalityReport:
             "## Verdict",
             "",
             f"**{self.verdict.capitalize()}.** "
-            + _verdict_sentence(p),
+            + _verdict_sentence(p)
+            + (f" {self.guardrail_qualification}" if self.guardrail_qualification else ""),
             "",
             "## Arms",
             "",
@@ -629,6 +768,11 @@ class IncrementalityReport:
         # the document that was signed rather than a longer one (D-72).
         if self.schema_version >= 2:
             self._cost_per_meeting_lines(lines)
+        # Absent from a version that never carried them, for the same reason
+        # the cost section is: re-rendering an older document has to produce
+        # the document that was signed (D-72).
+        if self.schema_version >= 4:
+            self._guardrail_lines(lines)
         lines += [
             "",
             "## What it rests on",
@@ -743,6 +887,13 @@ def from_mapping(data: dict[str, object]) -> IncrementalityReport:
                                    or DEFAULT_METRIC.window_days),
             primary=_comparison(primary),
             opportunities=_comparison(opps),
+            guardrails=tuple(
+                Guardrail(name=str(g["name"]), window_days=int(g["window_days"]),
+                          comparison=_comparison(g["comparison"]))
+                for g in (data.get("guardrails") or [])),
+            guardrails_not_measured=tuple(
+                (str(g["name"]), str(g["why"]))
+                for g in (data.get("guardrails_not_measured") or [])),
             converted_by_type={str(t): {str(a): int(n) for a, n in arms.items()}
                                for t, arms in (data.get("converted_by_type") or {}).items()},
             unread_conversions=int(data.get("unread_conversions") or 0),

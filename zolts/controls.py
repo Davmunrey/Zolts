@@ -163,9 +163,14 @@ CONTROLS: tuple[Control, ...] = (
         "spec.experiment.guardrail_metrics",
         "metrics that must not degrade while the experiment runs",
         enforced_by=None,
+        reported_by="zolts/report.py, on the frozen incrementality report",
         consequence=(
-            "Declared and never evaluated, so a program that wins on its primary "
-            "metric while damaging a guardrail reports an unqualified win")),
+            "Measured against the same holdout as the primary metric and never acted "
+            "on: a degraded guardrail qualifies the verdict paragraph and pauses "
+            "nothing, exactly like the cost ceiling above (decision 45). What is now "
+            "enforced is admissibility, not the limit — a guardrail naming something "
+            "the holdout cannot exhibit is refused at publication rather than measured "
+            "to a permanent *not resolvable* (D-76)")),
 
     # -- declared by a blueprint, carried into a program's policy overlay,
     #    and read by nothing (D-64) ---------------------------------------
