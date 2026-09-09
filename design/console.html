@@ -1131,7 +1131,19 @@ function frozenReports(p){
           + 'style="color:var(--ink)">' + (breach ? "above" : "within")
           + '</b> it.')
     + ' Reported, never enforced.</span></div>';
-  return '<div class="block"><div class="blabel">Frozen reports</div>' + body + ceiling
+  // Whether the cost per meeting rests on a measurement of this period or on
+  // the run-rate declared at onboarding. The figure reads the same either way,
+  // which is exactly why the panel has to say which (decision 46).
+  var basis = first.ownSpendBasis == null ? '' :
+    '<p style="margin:8px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
+    + 'Your own go-to-market spend for this period: <b style="color:var(--ink)">€'
+    + nf(first.ownSpendEur) + '</b>, '
+    + (first.ownSpendBasis === "declared"
+        ? 'declared for the period.'
+        : 'prorated from the run-rate declared at onboarding. Nothing re-measures that, '
+          + 'so declaring the period\'s own spend replaces it.')
+    + '</p>';
+  return '<div class="block"><div class="blabel">Frozen reports</div>' + body + ceiling + basis
     + '<p style="margin:10px 0 0;font-size:11.5px;color:var(--ink-tertiary);line-height:1.45">'
     + 'Written once and never restated. The digest covers the figures and what they were '
     + 'computed from, so this row and a signed copy can be checked against each other'

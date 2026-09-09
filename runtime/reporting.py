@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from runtime.repo import baseline as baseline_repo
+from runtime.repo import period_spend as period_spend_repo
 from runtime.repo import ledger, reports
 from zolts import metrics
 from zolts.report import (BaselineQuote, Comparison, IncrementalityReport,
@@ -131,6 +132,11 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
         " group by e.variant",
         (program_id, end, end, metric.window_days))
     opps = {r["variant"]: int(r["n"]) for r in cur.fetchall()}
+    # What the tenant declared they spent on go-to-market this period, if
+    # anybody did. Preferred over the baseline's prorated run-rate, which is
+    # what the figure rested on when nothing re-measured it (decision 46).
+    declared = period_spend_repo.get(cur, str(period["id"]))
+
     frozen = baseline_repo.get(cur)
     quote = None if frozen is None else BaselineQuote(
         digest=frozen["digest"], window_start=frozen["window_start"],
@@ -162,6 +168,7 @@ def compose(cur, program: dict[str, Any], period: dict[str, Any]) -> Incremental
         decisions=decisions, credits_by_kind=credits,
         average_opportunity_micros=average, opportunities_with_amount=with_amount,
         max_cost_per_meeting_micros=ceiling_micros(program.get("spec") or {}),
+        period_spend_micros=None if declared is None else int(declared["total_micros"]),
         baseline=quote)
 
 

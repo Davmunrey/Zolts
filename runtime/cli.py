@@ -343,6 +343,16 @@ def main(argv: list[str] | None = None) -> int:
     base.add_argument("--signed-by", required=True,
                       help="who signs the letter that quotes the digest")
 
+    spend = sub.add_parser(
+        "period-spend",
+        help="declare what a tenant's GTM cost during one billing period")
+    spend.add_argument("--tenant", required=True)
+    spend.add_argument("--period", required=True,
+                       help="the billing period this spend is for")
+    spend.add_argument("--file", required=True,
+                       help="a JSON document with window_start, window_end and the four "
+                            "spend_*_micros fields; '-' reads stdin")
+
     serve = sub.add_parser("serve", help="run the API")
     serve.add_argument("--host", default="0.0.0.0")
     serve.add_argument("--port", type=int, default=8000)
@@ -1009,6 +1019,36 @@ def main(argv: list[str] | None = None) -> int:
                           "note": "quote the digest in the letter the partner signs; the "
                                   "row and the letter can then be checked against each "
                                   "other by anyone holding both"}, indent=2, default=str))
+        return 0
+
+    if args.command == "period-spend":
+        from runtime.repo import period_spend as period_spend_repo
+        from zolts.spend import SpendError, from_mapping
+
+        raw = sys.stdin.read() if args.file == "-" else open(args.file, encoding="utf-8").read()
+        try:
+            declared = from_mapping(json.loads(raw))
+        except (SpendError, ValueError) as exc:
+            print(f"the declaration cannot be recorded as written: {exc}", file=sys.stderr)
+            return 2
+        with db.tenant_tx(args.tenant) as cur:
+            try:
+                row = period_spend_repo.declare(cur, args.tenant, args.period, declared,
+                                                declared_by="operator")
+            except (period_spend_repo.SpendAlreadyDeclared,
+                    period_spend_repo.ReportAlreadyFrozen) as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+            ledger.audit(cur, args.tenant, actor="operator", action="period_spend.declared",
+                         subject=args.period,
+                         detail={"digest": row["digest"],
+                                 "total_micros": int(row["total_micros"])})
+        print(json.dumps({**period_spend_repo.as_dict(row),
+                          "note": "this period's reports will divide by the figure above "
+                                  "rather than prorating the onboarding run-rate, and will "
+                                  "say so. Declare before the period closes; afterwards the "
+                                  "reports are frozen and a declaration changes nothing"},
+                         indent=2, default=str))
         return 0
 
     if args.command == "webhook":

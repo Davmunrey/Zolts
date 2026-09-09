@@ -474,6 +474,8 @@ def _frozen_reports(program, holdout: float, seen: dict | None) -> list[dict[str
         "costPerMeetingCeilingEur": _eur(body["max_cost_per_meeting_micros"]),
         "costPerMeetingWithheld": body["cost_per_meeting_withheld_because"],
         "overCostCeiling": body["over_cost_per_meeting_ceiling"],
+        "ownSpendBasis": body["own_spend_basis"],
+        "ownSpendEur": _eur(body["own_spend_micros"]),
         "withheld": body["pipeline_withheld_because"],
         "credits": body["credits_total"],
         "unreadShare": body["unread_share"],

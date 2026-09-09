@@ -19,16 +19,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # when one is not configured: an isolation property verified against a stub is
 # not verified at all.
 OWNER_URL = os.environ.get("ZOLTS_TEST_DATABASE_URL")
-APP_URL = os.environ.get("ZOLTS_TEST_APP_DATABASE_URL") or OWNER_URL
+# Falls back to the owner so a contributor with one URL still runs the suite.
+# That fallback is safe for a test that needs *a* database and a lie for one
+# that asserts what the restricted role cannot do — see `requires_app_role`.
+_DECLARED_APP_URL = os.environ.get("ZOLTS_TEST_APP_DATABASE_URL")
+APP_URL = _DECLARED_APP_URL or OWNER_URL
 SECRET = "test-secret-key"
 
 _skip_without_db = pytest.mark.skipif(
     not OWNER_URL, reason="ZOLTS_TEST_DATABASE_URL is not set")
 
+# A test that asserts *the serving role cannot do this* is asserting something
+# about a role. With no separate app URL the pool connects as the owner, every
+# such assertion fails, and the failure is about the environment rather than
+# the product — six of them did, including the row-level-security ones, and a
+# suite that fails on correct code teaches the team to press re-run (D-73).
+_skip_without_app_role = pytest.mark.skipif(
+    not (OWNER_URL and _DECLARED_APP_URL),
+    reason="ZOLTS_TEST_APP_DATABASE_URL is not set, so the pool connects as the "
+           "owner and a privilege the app role lacks cannot be observed")
+
 
 def requires_db(test):
     """Skip without a real Postgres. See `pytest_collection_modifyitems`."""
     return _skip_without_db(test)
+
+
+def requires_app_role(test):
+    """Skip unless the app pool is a genuinely restricted role.
+
+    The premise, established rather than assumed: `app_role_is_restricted`
+    then asserts the connection really is that role before the verdict, so a
+    misconfiguration cannot pass as a proof of isolation.
+    """
+    return _skip_without_db(_skip_without_app_role(test))
 
 
 def pytest_collection_modifyitems(items):
@@ -60,6 +84,32 @@ def db():
     database.grant_app_role()
     yield database
     database.close()
+
+
+@pytest.fixture
+def app_role_is_restricted(db):
+    """Assert the app pool really is a role the owner's grants restrict.
+
+    `requires_app_role` skips when no separate URL is configured; this checks
+    the premise rather than trusting the variable, because a URL that points at
+    the owner by mistake would otherwise turn every privilege assertion below
+    it into a test of nothing (D-73). It is the same rule this repository
+    applies to ambient time and ambient configuration: establish the premise,
+    assert it, then take the verdict.
+    """
+    assert db.isolation_enforced, (
+        "the app pool and the owner pool are the same role, so a privilege the "
+        "app role lacks cannot be observed and nothing below proves isolation")
+    with db.pool.connection() as conn:
+        serving = conn.execute("select current_user").fetchone()[0]
+        conn.rollback()
+    with db.admin_pool.connection() as owner_conn:
+        owning = owner_conn.execute("select current_user").fetchone()[0]
+        owner_conn.rollback()
+    assert serving != owning, (
+        f"the app pool connects as {serving!r}, which is the owner: a privilege "
+        f"this role lacks cannot be observed, so nothing below proves isolation")
+    return serving
 
 
 def _tenant(db, region: str, blueprint_id: str) -> dict:

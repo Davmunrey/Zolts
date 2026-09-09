@@ -201,6 +201,10 @@ class Database:
             # serves requests has no statement that can restate either.
             conn.execute(f"revoke update, delete on tenant_baseline from {app_role}")
             conn.execute(f"revoke update, delete on incrementality_report from {app_role}")
+            # And the third: a period's declared spend is what a signed report
+            # divides by, so it may not be restated after the result is read
+            # (decision 46).
+            conn.execute(f"revoke update, delete on tenant_period_spend from {app_role}")
             conn.commit()
 
 

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from tests.conftest import OWNER_URL, SECRET
+from tests.conftest import OWNER_URL, SECRET, requires_app_role
 from runtime.provision import issue_api_key, store_connection
 
 
-def test_a_tenant_reads_only_its_own_rows(db, tenant, other_tenant):
+@requires_app_role
+def test_a_tenant_reads_only_its_own_rows(db, tenant, other_tenant, app_role_is_restricted):
     for t, name in ((tenant, "Mine"), (other_tenant, "Theirs")):
         with db.tenant_tx(str(t["id"])) as cur:
             cur.execute("insert into account (tenant_id, name) values (%s,%s)", (t["id"], name))
@@ -19,21 +20,24 @@ def test_a_tenant_reads_only_its_own_rows(db, tenant, other_tenant):
     assert "Mine" in names and "Theirs" not in names
 
 
-def test_writing_another_tenants_id_is_rejected(db, tenant, other_tenant):
+@requires_app_role
+def test_writing_another_tenants_id_is_rejected(db, tenant, other_tenant, app_role_is_restricted):
     with pytest.raises(Exception):
         with db.tenant_tx(str(tenant["id"])) as cur:
             cur.execute("insert into account (tenant_id, name) values (%s,'smuggled')",
                         (other_tenant["id"],))
 
 
-def test_a_query_without_a_tenant_raises_rather_than_returning_nothing(db):
+@requires_app_role
+def test_a_query_without_a_tenant_raises_rather_than_returning_nothing(db, app_role_is_restricted):
     """An empty result would be indistinguishable from a correct answer."""
     with pytest.raises(Exception, match="zolts.tenant_id is not set"):
         with db.pool.connection() as conn:
             conn.execute("select count(*) from account").fetchone()
 
 
-def test_updating_a_row_into_another_tenant_is_rejected(db, tenant, other_tenant):
+@requires_app_role
+def test_updating_a_row_into_another_tenant_is_rejected(db, tenant, other_tenant, app_role_is_restricted):
     with db.tenant_tx(str(tenant["id"])) as cur:
         cur.execute("insert into account (tenant_id, name) values (%s,'Mine') returning id",
                     (tenant["id"],))
@@ -111,7 +115,8 @@ def test_ci_never_reports_green_having_skipped_these():
     assert OWNER_URL, "ZOLTS_TEST_DATABASE_URL must be set in CI"
 
 
-def test_the_application_role_cannot_read_invitations(db):
+@requires_app_role
+def test_the_application_role_cannot_read_invitations(db, app_role_is_restricted):
     """Invitations are operator state, not tenant state. They exist before
     their tenant does and are only ever touched by the owner connection behind
     the signup endpoint, so the role that serves tenant requests has no reason
