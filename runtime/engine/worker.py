@@ -111,6 +111,19 @@ class Worker:
                                         or "legitimate_interest"),
                         secret_key=self.secret_key)
 
+                # The programme's own exit rules, before its next step is
+                # queued. `apply_exits` had no production caller at all
+                # (D-77), so `days_in_program > 45` — the *exhausted* rule
+                # every shipped archetype declares — ended nothing. Nothing is
+                # bound as `outcome` here: on a tick there is no outcome, and
+                # a comparison against an absent field is a non-match, so the
+                # rules about one correctly do not fire. Those are handled
+                # where the outcome is recorded, which is also where the
+                # already-queued next step still has to be cancelled.
+                if planner.apply_exits(cur, tenant_id, enrollment, program, {},
+                                       now=now) is not None:
+                    continue
+
                 result = planner.plan_next(cur, tenant_id, enrollment, program, now=now)
                 if result and result.queued:
                     planned += 1

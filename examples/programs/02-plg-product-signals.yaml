@@ -95,5 +95,12 @@ spec:
 
   exit:
     - {when: "workspace.plan_tier != 'free' and workspace.plan_tier != 'starter'", reason: converted}
-    - {when: "outcome.type == 'unsubscribe'", reason: opted_out, suppress: true}
+    # An explicit no. `reply_negative` is what triage writes for one, and it is
+    # the rule that makes `suppress` mean something: the sequence stops and the
+    # person is added to the suppression list. This used to test for
+    # `outcome.type == 'unsubscribe'`, which nothing ever writes — a real
+    # unsubscribe is suppressed, exited and cancelled by the runtime before any
+    # outcome is recorded, so the rule could not fire and the lint that checked
+    # for it was answered by nothing (D-77).
+    - {when: "outcome.type == 'reply_negative'", reason: declined, suppress: true}
     - {when: "days_in_program > 21", reason: exhausted}

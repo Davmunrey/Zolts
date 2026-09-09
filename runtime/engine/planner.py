@@ -197,15 +197,51 @@ def plan_next(cur, tenant_id: str, enrollment: dict[str, Any],
     return Planned(str(row["id"]) if row else None, step_key, channel, scheduled, row is not None)
 
 
+@dataclass(frozen=True)
+class Exited:
+    """The exit rule that fired, and what the caller still has to do about it.
+
+    `suppress` is returned rather than acted on here because suppression is by
+    contact, and this module is given an enrollment. The enrollment names an
+    account or a person; which human to stop contacting is a question the
+    caller already answered — `inbound` holds the person the reply came from.
+    Resolving it a second way here would be a second answer to drift from.
+    """
+    reason: str
+    suppress: bool
+
+
 def apply_exits(cur, tenant_id: str, enrollment: dict[str, Any], program: dict[str, Any],
-                variables: dict[str, Any]) -> str | None:
-    """Evaluate the program's exit rules. Returns the reason when one fires."""
+                variables: dict[str, Any], now: datetime | None = None) -> Exited | None:
+    """Evaluate the program's exit rules. Returns the rule that fired.
+
+    This had no production caller for the whole of the product's life (D-77).
+    `spec.exit` is read here and nowhere else, so every shipped programme's
+    exit block was declarative content the runtime never evaluated: nothing
+    exited on `outcome.type in (...)` and nothing on `days_in_program > 45`.
+    It stayed invisible because the two exits that *do* fire cover the ends —
+    `sequence_complete` when the steps run out, and `opted_out` from
+    `inbound._opt_out` — leaving the product-quality case in between silent.
+    A person who booked a meeting kept receiving the rest of the sequence.
+
+    **What is in scope, and why each is here.** `days_in_program` and
+    `engagement` are properties of the enrollment and are always bound;
+    `engagement` is the same mapping a step's own `when` clause reads, because
+    a second vocabulary for the same facts is a second set of rules to get
+    wrong. `outcome` is bound by the caller and only when there is one: on the
+    tick there is no outcome, and `zolts.expr` answers a comparison against an
+    absent field with False. So a rule about an outcome is a non-match on the
+    tick rather than an error — the posture D-37 set for a payload that cannot
+    answer its own predicate.
+    """
     spec = program["spec"]
     days_in = 0
     entered = enrollment.get("entered_at")
     if entered:
-        days_in = (datetime.now(timezone.utc) - entered).days
-    scope = {"days_in_program": days_in, **variables}
+        days_in = ((now or datetime.now(timezone.utc)) - entered).days
+    scope = {"days_in_program": days_in,
+             "engagement": engagement(cur, str(enrollment["id"])),
+             **variables}
     for rule in spec.get("exit") or []:
         when = rule.get("when")
         if not when:
@@ -219,5 +255,5 @@ def apply_exits(cur, tenant_id: str, enrollment: dict[str, Any], program: dict[s
                 "update action set state = 'cancelled', last_error = %s, updated_at = now()"
                 " where enrollment_id = %s and state in ('pending','leased')",
                 (f"enrollment exited: {reason}", str(enrollment["id"])))
-            return reason
+            return Exited(reason=reason, suppress=bool(rule.get("suppress")))
     return None

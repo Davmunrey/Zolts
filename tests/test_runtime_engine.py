@@ -48,7 +48,11 @@ SPEC = {
     },
     "policy": {"overrides": {"max_touches_per_person_per_week": 3}},
     "experiment": {"holdout_pct": 10, "unit": "account", "salt": "test-salt"},
-    "exit": [{"when": "outcome.type == 'unsubscribe'", "reason": "opted_out", "suppress": True}],
+    # `reply_negative` rather than `unsubscribe`: triage routes an unsubscribe to
+    # the suppression path before any outcome is written, so a rule naming it can
+    # never fire — the dead rule all four archetypes carried (D-77).
+    "exit": [{"when": "outcome.type == 'reply_negative'", "reason": "declined",
+              "suppress": True}],
 }
 
 # Dispatch tests are about dispatch, not about assignment. A 10% holdout means
@@ -349,7 +353,8 @@ def test_exiting_an_enrollment_cancels_its_queued_work(db, tenant, fake):
         assert actions.pending_count(cur) == 1
 
         row = enrollments.get(cur, results[0].enrollment_id)
-        reason = planner.apply_exits(cur, tid, row, program,
-                                     {"outcome": {"type": "unsubscribe"}})
-        assert reason == "opted_out"
+        exited = planner.apply_exits(cur, tid, row, program,
+                                     {"outcome": {"type": "reply_negative"}})
+        assert exited is not None and exited.reason == "declined"
+        assert exited.suppress, "the rule declares it; the caller acts on it"
         assert actions.pending_count(cur) == 0
