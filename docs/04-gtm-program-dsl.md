@@ -48,7 +48,7 @@ spec:
 | `policy` | Overrides on tenant policy (stricter only) | A program **cannot** relax global policy |
 | `experiment` | Mandatory `holdout_pct` ≥ 5% (a waiver requires justification) | Without it, `zolts apply` refuses |
 | `budget` | Credits per month, max cost per account, max cost per meeting | The tenant's credit ceiling stops execution; the per-programme fields do not yet, and `zolts validate` names the ones that are decoration (D-63). `max_cost_per_meeting` is **reported and never enforced** — it appears on the frozen report beside the cost the period achieved, because a programme is above it every day until the first meeting lands (decision 45) |
-| `exit` | Reply, meeting, opportunity created, unsubscribe, exhaustion | Prevents the classic "we kept emailing an existing customer" |
+| `exit` | Reply, meeting, opportunity created, an explicit no, exhaustion | Prevents the classic "we kept emailing an existing customer" — and did not, for the whole of the product's life: `apply_exits` had no production caller, so every archetype's exit block ended nothing (D-77). Now evaluated on the tick and again where the outcome arrives, because the next step is queued with its wait already applied. A rule may test `days_in_program`, `engagement` and `outcome`; `suppress: true` adds the contact to the suppression list. **Unsubscribe is not an exit rule**: the runtime suppresses, exits and cancels on one unconditionally, and the rule the archetypes declared for it named an outcome type nothing writes (ADR-048) |
 
 ## Lifecycle and testing
 

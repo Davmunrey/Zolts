@@ -116,14 +116,56 @@ def lint(program: Program) -> list[str]:
         if tier not in spec["plays"]:
             findings.append(f"route tier '{tier}' has no play defined; accounts would enter a dead end")
 
-    if not any(exit_rule.get("suppress") for exit_rule in spec["exit"]):
-        findings.append("no exit rule sets suppress: opt-outs would not be recorded")
+    # This used to read: "no exit rule sets suppress: opt-outs would not be
+    # recorded". The claim was false and the check certified it. An opt-out is
+    # recorded by the runtime unconditionally — `inbound._opt_out` suppresses,
+    # exits and cancels for every tenant and every programme, with no flag to
+    # set — and the only rule satisfying the old check in any shipped
+    # archetype named an outcome type nothing ever writes. So a lint that
+    # promised opt-outs were handled was answered by a rule that could not
+    # fire, which is the second defect shape in `docs/22` (D-77).
+    #
+    # What is worth checking is what an exit rule can actually be wrong about:
+    # a rule about an outcome the runtime never records ends nothing, exactly
+    # as that one did.
+    for exit_rule in spec["exit"]:
+        for unwritten in _outcomes_named(exit_rule.get("when") or ""):
+            findings.append(
+                f"exit rule '{exit_rule.get('reason', 'exited')}' tests "
+                f"outcome.type == '{unwritten}', which nothing records; it can never fire")
 
     budget = spec["budget"]
     if budget.get("on_exceed") == "continue_and_alert" and not budget.get("max_cost_per_account"):
         findings.append("budget continues past its ceiling with no per-account cap")
 
     return findings
+
+
+# Every outcome type the runtime writes. `reply_*` comes from triage's own
+# verdicts, and `unsubscribe` is deliberately absent from both: triage routes
+# that verdict to the suppression path before an outcome is written, so a rule
+# testing for it is the dead rule D-77 found in all four archetypes.
+RECORDED_OUTCOMES = frozenset({
+    "reply_positive", "reply_negative", "reply_wrong_person", "reply_not_now",
+    "meeting", "opp_created", "won",
+})
+
+_OUTCOME_TEST = re.compile(r"outcome\.type\s*(?:==|in)\s*(.+)")
+_QUOTED = re.compile(r"['\"]([^'\"]+)['\"]")
+
+
+def _outcomes_named(when: str) -> list[str]:
+    """The outcome types a condition tests for that nothing ever writes.
+
+    Read out of the text rather than by evaluating, because the point is to
+    answer before anything runs. A condition naming no outcome yields nothing,
+    which is how every time-based and engagement-based rule passes.
+    """
+    match = _OUTCOME_TEST.search(when)
+    if not match:
+        return []
+    return [name for name in _QUOTED.findall(match.group(1))
+            if name not in RECORDED_OUTCOMES]
 
 
 # The parameters an operator tunes, and what each one costs to get wrong. Every

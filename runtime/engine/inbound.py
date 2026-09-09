@@ -31,7 +31,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from runtime.db import one
-from runtime.repo import actions, enrollments, entities, ledger
+from runtime.engine import planner
+from runtime.repo import (actions, enrollments, entities, ledger,
+                          programs)
 
 # What a provider event means to the runtime. Anything unmapped is stored and
 # left unhandled rather than guessed at: a wrong mapping writes an outcome that
@@ -212,7 +214,8 @@ def apply(cur, tenant_id: str, event: dict[str, Any],
                triage, result)
     elif event_type in CONVERSION:
         _outcome(cur, tenant_id, enrollment_id, CONVERSION[event_type],
-                 fields.get("value_micros"), occurred, provider, event, result)
+                 fields.get("value_micros"), occurred, provider, event, result,
+                 person=person)
 
     cur.execute("update inbound_event set handled = true, handled_at = now() where id = %s",
                 (event["id"],))
@@ -228,7 +231,7 @@ def _reply(cur, tenant_id: str, person: dict[str, Any] | None,
         # says how much of the reported lift rests on ones like it rather than
         # deflating every tenant's number on a deploy.
         _outcome(cur, tenant_id, enrollment_id, "reply_positive", None, occurred,
-                 provider, event, result)
+                 provider, event, result, person=person)
         return
 
     result.effects.append(f"triage.{triage.verdict}")
@@ -240,7 +243,7 @@ def _reply(cur, tenant_id: str, person: dict[str, Any] | None,
         return
 
     _outcome(cur, tenant_id, enrollment_id, f"reply_{triage.verdict}", None, occurred,
-             provider, event, result, verified_by="triage")
+             provider, event, result, verified_by="triage", person=person)
 
 
 def _reputation(cur, touch: dict[str, Any] | None, *, complaint: bool,
@@ -347,7 +350,8 @@ def _bounce(cur, tenant_id: str, touch: dict[str, Any] | None,
 def _outcome(cur, tenant_id: str, enrollment_id: str | None, outcome_type: str,
              value_micros: int | None, occurred_at: datetime, provider: str,
              event: dict[str, Any], result: Applied,
-             verified_by: str | None = None) -> None:
+             verified_by: str | None = None,
+             person: dict[str, Any] | None = None) -> None:
     # Keyed on the stored event, so a provider retry that reached a second
     # worker cannot record the conversion twice and move the measured lift.
     recorded = ledger.record_outcome(
@@ -356,3 +360,51 @@ def _outcome(cur, tenant_id: str, enrollment_id: str | None, outcome_type: str,
         dedupe_key=f"{provider}:{event['id']}", verified_by=verified_by)
     if recorded:
         result.effects.append(f"outcome.{outcome_type}")
+        _exits(cur, tenant_id, enrollment_id, outcome_type, value_micros, provider,
+               person, result)
+
+
+def _exits(cur, tenant_id: str, enrollment_id: str | None, outcome_type: str,
+           value_micros: int | None, provider: str, person: dict[str, Any] | None,
+           result: Applied) -> None:
+    """The programme's own exit rules, at the moment the outcome arrives.
+
+    Here rather than only on the next tick, because `plan_next` queues the
+    following step with its wait already applied: by the time a reply is read,
+    the next email is in the outbox with a due time of its own. A tick-time
+    exit would run after it had already gone out, which is exactly the
+    automation a buyer points at when they say these tools embarrass them.
+
+    Inside the `recorded` branch on purpose. `record_outcome` returns None for
+    a provider retry it deduplicated, and an exit re-fired on a redelivery
+    would suppress a contact twice and write a second audit line for one event.
+    """
+    if not enrollment_id:
+        return
+    enrollment = enrollments.get(cur, enrollment_id)
+    if enrollment is None:
+        return
+    program = programs.get(cur, str(enrollment["program_id"]))
+    if program is None:
+        return
+    exited = planner.apply_exits(
+        cur, tenant_id, enrollment, program,
+        {"outcome": {"type": outcome_type, "value_micros": value_micros}})
+    if exited is None:
+        return
+    result.effects.append(f"enrollment.exited:{exited.reason}")
+    if not exited.suppress:
+        return
+    # The same suppression `_opt_out` writes, from the same table and with the
+    # same reason vocabulary. A rule that says stop contacting this person and
+    # writes it somewhere else would be a second suppression mechanism that
+    # has to agree with the first for ever.
+    if person and person.get("email"):
+        entities.suppress(cur, tenant_id, "email", str(person["email"]),
+                          exited.reason, provider)
+        result.effects.append("suppression.email")
+    else:
+        # Named rather than passed over: a declared `suppress` that could not
+        # be honoured is the operator's business, and silence here is how a
+        # control becomes a promise kept by luck.
+        result.effects.append("suppression.unattributed")

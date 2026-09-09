@@ -595,7 +595,7 @@
         "t2": true
       },
       "budget": 6000,
-      "specHash": "37a51f312d99d257",
+      "specHash": "64fcae661de36ffe",
       "name": "New site and reputation",
       "spec": {
         "trigger": {
@@ -747,8 +747,8 @@
             "reason": "converted"
           },
           {
-            "when": "outcome.type == 'unsubscribe'",
-            "reason": "opted_out",
+            "when": "outcome.type == 'reply_negative'",
+            "reason": "declined",
             "suppress": true
           },
           {
@@ -834,7 +834,7 @@
         "t2": true
       },
       "budget": 8000,
-      "specHash": "df591be897b348ea",
+      "specHash": "755f3a411a1c1a33",
       "name": "Replenishment winback",
       "spec": {
         "trigger": {
@@ -961,12 +961,12 @@
         },
         "exit": [
           {
-            "when": "outcome.type == 'purchase'",
+            "when": "outcome.type == 'won'",
             "reason": "converted"
           },
           {
-            "when": "outcome.type == 'unsubscribe'",
-            "reason": "opted_out",
+            "when": "outcome.type == 'reply_negative'",
+            "reason": "declined",
             "suppress": true
           },
           {
@@ -1054,7 +1054,7 @@
         "t3": false
       },
       "budget": 40000,
-      "specHash": "d231675dfa2c78b0",
+      "specHash": "7ebce39dc107dcd7",
       "name": "Series A hiring surge",
       "spec": {
         "trigger": {
@@ -1269,8 +1269,8 @@
             "reason": "converted"
           },
           {
-            "when": "outcome.type == 'unsubscribe'",
-            "reason": "opted_out",
+            "when": "outcome.type == 'reply_negative'",
+            "reason": "declined",
             "suppress": true
           },
           {
@@ -1289,11 +1289,11 @@
       },
       "reports": [
         {
-          "id": "b67bd5b4",
+          "id": "4084f123",
           "periodStart": "2026-05-01",
           "periodEnd": "2026-06-01",
           "verdict": "not significant",
-          "digest": "b67bd5b413b82eeb5bade0ab8593e6996e988e435f372ca37a73685c45985306",
+          "digest": "4084f12320d815e07d41554f1cdcfc301341d9dcd851e6f1e6f2684f535648e8",
           "liftPp": 4.48,
           "mdePp": 5.06,
           "nTreat": 1156,
@@ -1383,7 +1383,7 @@
         "t2": true
       },
       "budget": 12000,
-      "specHash": "bdd6b58886d841ee",
+      "specHash": "beceb7573de842fc",
       "name": "Workspace expansion trigger",
       "spec": {
         "trigger": {
@@ -1516,8 +1516,8 @@
             "reason": "converted"
           },
           {
-            "when": "outcome.type == 'unsubscribe'",
-            "reason": "opted_out",
+            "when": "outcome.type == 'reply_negative'",
+            "reason": "declined",
             "suppress": true
           },
           {
@@ -1534,11 +1534,11 @@
       },
       "reports": [
         {
-          "id": "915dae2c",
+          "id": "5526a9ef",
           "periodStart": "2026-05-01",
           "periodEnd": "2026-06-01",
           "verdict": "significant",
-          "digest": "915dae2c853e25ea9d46161e10bf3329384bb1655946d60f6e7c6322df3907f0",
+          "digest": "5526a9efee115ee4a7f0707ac2bcd14570998c8c733aafde001f5472b4fb62a9",
           "liftPp": 5.33,
           "mdePp": 4.19,
           "nTreat": 1819,
