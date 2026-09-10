@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1498 | 445 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1516 | 447 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -48,6 +48,20 @@ What is built, what is next, and what is blocked on a decision rather than on en
 |---|---|---|---|
 | **VER-1** | Mutation coverage across the runtime | **Done, and measured.** `zolts/` catches 39 of 40 sampled mutants — 97.5%, 95% CI 87-100%, from 512 possible. `runtime/` catches **27 of 30 — 90%, 95% CI 74-97%, from 1,473 possible** on a fresh draw at seed `20260908`, against 22 of 30 on the earlier sample the guards were written from. The improvement is **not statistically significant** at thirty mutants (two-proportion `z` 1.67, *p* 0.095) and `docs/22` says so beside the number. Each mutant costs a full Postgres suite run. Every real survivor from both samples is guarded and every equivalent one annotated where it lives, each verified by re-applying its own mutation. CI samples eight on every push to keep the sampler honest, and the measurement now runs against its own database so a suite and a mutation pass no longer contend | S |
 | **VER-4** | The thirteen documents no test reads | Fourteen of the twenty-eight files under `docs/` were named by no test and no script, so every number in them could drift from the product without anything noticing — the shape ADR-017 fixed for the price list and ADR-053 has now fixed for `docs/09`, which went first because its thresholds, wrong, burn a sending domain and cannot be corrected afterwards. That first pass found a documented alarm the runtime had never implemented (D-87), which is the yield to expect. **Not every document should be read by a test:** a market thesis has nothing checkable in it, and a test that parsed one would assert prose. The item is to triage the remaining thirteen into *has checkable claims* and *does not*, and to write the check where it does — `docs/03` (the data model against the migrations), `docs/06` (the signal library against the catalogue) and `docs/07` (the waterfall's providers and hit rates) are the candidates | M |
+
+### Compliance
+
+Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each is sized here and each is guarded: the day one ships, `tests/test_compliance_claims.py` fails until the document is corrected. Five need a founder or counsel before an engineer.
+
+| ID | Item | Why | Size |
+|---|---|---|---|
+| **COMP-1** | A retention job that runs | `docs/03` publishes four retention classes and nothing purges a row on age. The window is settled (H10, twelve months for non-converted PII); what a deletion cascades to is decision 54, and getting it wrong destroys the evidence behind a closed invoice and a signed report | M — after decision 54 |
+| **COMP-2** | Subject access and erasure | No code resolves a request through the identity graph, exports, erases, propagates to a sub-processor or issues a certificate. It is the row a DPO asks about first and it depends on COMP-1's cascade and COMP-3's register | L |
+| **COMP-3** | A sub-processor register | Provider, DPA, region and status, with an alert when a new one is added. Blocked on the founder: the list is a commercial fact, not an engineering one | S — once the list exists |
+| **COMP-4** | A privacy notice in the first contact | Nothing injects one. The copywriter already refuses a draft missing a required marker (`evals.compliance_checks`), so the mechanism is the same one COMP-6 and decision 55 use — what is missing is the text and the rule that selects it | S — once counsel supplies the text |
+| **COMP-5** | A stored legitimate-interest assessment | `legitimate_interest` is a basis a programme declares; no assessment is captured, stored or versioned. A guided template is a product surface, and the surface needs the identity model COMP-7 covers to record who signed it | M |
+| **COMP-6** | Records of processing generated from configuration | The claim was that a RoPA writes itself from live configuration. Nothing does. The inputs exist — programmes, channels, bases, providers, regions — so this is assembly rather than new state | M |
+| **COMP-7** | An identity model: users, roles, sign-off | There is no `user`, `seat` or `role` table (D-82). It gates the RBAC `docs/11` describes, the DPO veto, MFA on day one, the per-rep routing capacity a programme may declare, and `approved_by` meaning a person rather than `key:<uuid>`. Decision 50 is the fork | L |
 
 ### Product
 

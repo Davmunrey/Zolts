@@ -35,31 +35,47 @@ The pack is **data, not code**: a row, published by an operator with `zolts poli
 
 **A decision names the rules that made it.** Every `policy_decision` carries the version and the `sha256` digest of the pack that produced it, and the document behind that digest is kept — so *why did this person receive this message* is answered with the rules as they stood that day, not as they stand now. Decisions written before the packs were versioned carry no digest and are reported as unattributed rather than back-filled.
 
-## GDPR: concrete implementation
+## GDPR: what ships, and what does not
 
-| Obligation | Product implementation |
-|---|---|
-| Legal basis | Declared per channel and per program; without one, the runtime does not execute |
-| Legitimate interest assessment | Guided template, stored and versioned per tenant and program |
-| Minimisation | Enrichment requests only the fields the program declares it needs |
-| Accuracy | Every value retains source, date and confidence; corrections propagate in cascade |
-| Transparency | Privacy notice and data provenance can be injected automatically into the first contact |
-| Data subject rights | Identity-graph lookup → cascade export or erasure, propagation to sub-processors, certificate |
-| Retention | Per-class, per-jurisdiction TTL executed by an audited job |
-| Records of processing | Generated automatically from live configuration, not maintained by hand |
-| Sub-processors | Register with DPA, region and status; alert when a new provider is added |
-| International transfers | Regional residency plus control over which providers may process which region's data |
-| Security | Encryption in transit and at rest, PII in a vault with per-tenant keys, purpose-logged access |
+This table was written in the present tense for eleven obligations, and **6 of them had no
+implementation at all** (D-89). It is the page a data protection
+officer reads in diligence, so every row now carries what the runtime actually
+does today and `tests/test_compliance_claims.py` checks each one against the
+code on every push — in both directions. A row marked *Not built* whose
+mechanism appears in the runtime fails this suite, so the day one ships the
+document is corrected rather than quietly overtaken.
+
+| Obligation | Status | What the runtime does today |
+|---|---|---|
+| Legal basis | **Built** | The published pack declares a required basis per channel and jurisdiction; `zolts.policy` denies without one and the decision records which pack decided (ADR-044) |
+| Minimisation | **Built** | Enrichment buys only the fields a programme declares, and a field the price list does not carry is refused at publish (ADR-035) |
+| Transparency · provenance | **Built** | Every claim in a generated message maps to a retrieved span, a CRM field or the proof library, and one that does not is struck out and shown (ADR-012) |
+| Accuracy | **Partly built** | An enriched value keeps its provider, its timestamp and the measured hit rate behind it (`enrichment_attempt`, ADR-021). Corrections do not propagate in cascade |
+| International transfers | **Partly built** | `tenant.region` is stored and the model endpoint is pinnable per deployment (ADR-011). There is no per-region control over which data provider may process which tenant |
+| Security | **Partly built** | TLS in transit, connector secrets sealed at rest with a rotatable key (SEC-1), and an audit log of the actions a person took (ADR-026). There is no per-tenant key, no PII vault and no purpose log; MFA needs an identity model that does not exist (decision 50) |
+| Transparency · privacy notice | **Not built** | Nothing injects a privacy notice into a first contact. COMP-4 |
+| Legitimate interest assessment | **Not built** | `legitimate_interest` is a basis a programme may declare. No assessment is captured, stored or versioned. COMP-5 |
+| Data subject rights | **Not built** | No code resolves a subject request, exports or erases through the identity graph, propagates to a sub-processor or issues a certificate. COMP-2 |
+| Retention | **Not built** | Nothing purges a row on age. The windows in `docs/03` are the intended policy, not a running job. COMP-1, decision 54 |
+| Records of processing | **Not built** | No RoPA is generated from configuration. COMP-6 |
+| Sub-processors | **Not built** | No register exists, so nothing alerts when a provider is added. COMP-3 |
+
+**Why the split is worth publishing rather than tidying away.** A buyer's DPO
+asks to see the mechanism behind each row, and a row that cannot be shown costs
+more than a row that says *not yet*: the first is discovered in the room, the
+second is a roadmap. Five of these need a founder or counsel before they need an
+engineer — which jurisdictions require what, who the sub-processors are, what a
+first retention job may delete — and `docs/24` sizes each one.
 
 ## EU AI Act: applicable obligations
 
 Typical GTM usage falls in the **limited risk** band (transparency obligations), but the design assumes the stricter scenario:
 
-- **AI content disclosure** configurable per jurisdiction and channel, with default templates.
-- **System traceability**: model, prompt version, sources, evals and approver for every piece of content.
-- **Meaningful human oversight**: eval gating and human-reviewed tiers are the mechanism, not a checkbox.
-- **Technical documentation of the scoring system**: per-factor explainability is mandatory in the engine (`explain: true` is not optional).
-- **Prohibitions**: no inference of special categories of data (health, orientation, religion, union membership, political belief) and no scoring based on them. A hard engine rule, not a setting.
+- **System traceability** — *built*: every proposal records the model, the evidence it was written from, the eval scores and who or what approved it, and nothing is sent that is not a proposal first (ADR-012).
+- **Meaningful human oversight** — *built*: eval gating and human-reviewed tiers are the mechanism, not a checkbox, and the review queue is a screen an operator works.
+- **Technical documentation of the scoring system** — *built*: per-factor explainability is mandatory in `zolts/scoring.py`; `explain: true` is not optional.
+- **AI content disclosure** — *not switched on*: `evals.compliance_checks` verifies a disclosure marker is present and refuses the draft without one, and **nothing ever asks it to**. `requires_ai_disclosure` defaults to `False` at every call site and no jurisdiction, channel or pack sets it, so the check has never run in anger (D-90). The pack is where the answer belongs — a regulatory change ships without a deployment (ADR-044) — and which jurisdictions require the marker is decision 55. There are no default templates.
+- **Prohibitions** — *not enforced*: `spec.policy.special_category_inference` accepts one value, `forbidden`, and `zolts/controls.py` registers it as a control nothing reads. No enrichment field the price list carries is a special category, so a check written today would pass on every programme without proving anything; it becomes real when a field that could carry one is priced. It is a setting, not the hard engine rule this line claimed.
 
 ## What a model provider sees
 
@@ -79,7 +95,7 @@ Every call is priced before it is made and recorded after it (`docs/08`), and ev
 
 | Phase | Milestone | Why in that order |
 |---|---|---|
-| Day 1 | Encryption, RLS, MFA, access logging, secret management | Marginal cost is zero if done from the start |
+| Day 1 | Encryption, RLS, access logging, secret management | Marginal cost is zero if done from the start. **MFA is not on this list any more:** it needs an identity model this product does not have (decision 50), and a security sequence that claims it on day one is a sequence nobody can audit |
 | Month 3 | Full GDPR pack (DPA, RoPA, sub-processors, DSAR) | Unlocks the European mid-market |
 | Month 6 | SOC 2 Type I plus external pentest | Entry price for procurement |
 | Month 12 | SOC 2 Type II | Unlocks enterprise |
@@ -87,4 +103,8 @@ Every call is priced before it is made and recorded after it (`docs/08`), and ev
 
 ## Customer-side governance
 
-Roles (RBAC): `owner`, `gtm_engineer` (edits programs), `operator` (executes and reviews), `analyst` (read-only), `dpo` (audit and policy veto, no execution access). The DPO can block a program; nobody can unblock it without their recorded sign-off. Mandatory approvals are configurable per compliance tier.
+**None of this exists yet, and the reason is one decision up the stack.** There is no identity model in this product: a caller is a tenant and an API key, the review queue records `approved_by` as `key:<uuid>` rather than a person, and no `user`, `seat` or `role` table appears in any migration (D-82). So the five roles below are a design, not a permission system, and a DPO reading this page would have found nothing to configure (D-89).
+
+Designed: `owner`, `gtm_engineer` (edits programs), `operator` (executes and reviews), `analyst` (read-only), `dpo` (audit and policy veto, no execution access). The DPO can block a program; nobody can unblock it without their recorded sign-off. Mandatory approvals are configurable per compliance tier.
+
+Whether Zolts models seats at all is decision 50, and it gates this section, the per-rep routing capacity a programme may declare, and the MFA the security sequence promises on day one. COMP-7 sizes the role model; nothing here should be sold as present until it lands.
