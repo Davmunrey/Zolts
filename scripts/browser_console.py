@@ -295,6 +295,13 @@ def main() -> int:
                     "() => [...document.querySelectorAll('#kpis .k')]"
                     ".map(e => e.textContent)")
                 report[f"{view}_view"] = page.locator("#list").inner_text()[:120]
+                if view == "signals":
+                    # `docs/06` calls the per-tier p95 the contractual SLA of
+                    # two plans, and the console printed the measurement with
+                    # no target beside it (D-97). A panel added and never
+                    # opened is the defect this whole script exists for, so
+                    # the verdict is read off the screen rather than assumed.
+                    report["sla_panel"] = page.locator("#detail").inner_text()[:700]
             # A wide screen. Columns used to be fixed pixel widths, so a
             # 1920px display gave its extra 500px to empty gutter while
             # `local-services-multisite` still ellipsised in a 152px column.
@@ -438,6 +445,18 @@ def main() -> int:
             return 1
         if not report.get("generated_keeps_audience"):
             print("::error::the generated document dropped the audience it did not tune",
+                  file=sys.stderr)
+            return 1
+
+        # The tier, its target and a verdict, on a tenant that has sent nothing.
+        # A commitment exists from the day the plan is signed, and a target
+        # that appears only once it is being missed is one nobody planned
+        # against.
+        sla_panel = report.get("sla_panel") or ""
+        if ("Tier A executed" not in sla_panel or "nothing sent yet" not in sla_panel
+                or "no probe for it" not in sla_panel):
+            print("::error::the signals view does not carry the time-to-touch "
+                  "verdict docs/06 publishes:", json.dumps(sla_panel)[:400],
                   file=sys.stderr)
             return 1
 

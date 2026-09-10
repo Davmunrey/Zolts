@@ -279,6 +279,24 @@ MUTATIONS = (
         find="    admission.check(spec, key, _inherited_policy(cur, tenant_id))",
         replace="    admission.check(spec, key)",
         tests="tests/test_inherited_policy.py"),
+    Mutation(
+        id="the-time-to-touch-target-is-the-strict-bound-docs-06-publishes",
+        claim="every target in docs/06's time-to-touch table is read as the "
+              "strict `p95 <` the document writes, so a tier sitting exactly on "
+              "its contractual bound misses it rather than passing (D-97)",
+        path="zolts/latency.py",
+        find="    return Verdict.MEETS if p95_minutes < target else Verdict.MISSES",
+        replace="    return Verdict.MEETS if p95_minutes <= target else Verdict.MISSES",
+        tests="tests/test_time_to_touch_sla.py"),
+    Mutation(
+        id="an-unmeasured-sla-stage-is-never-reported-as-met",
+        claim="the time-to-touch stage this runtime has no probe for says so "
+              "rather than passing, and docs/06's status table has to agree in "
+              "both directions (D-97)",
+        path="zolts/latency.py",
+        find="MEASURED: frozenset[Stage] = frozenset({Stage.PROPOSED, Stage.EXECUTED})",
+        replace="MEASURED: frozenset[Stage] = frozenset({Stage.AVAILABLE, Stage.PROPOSED, Stage.EXECUTED})",
+        tests="tests/test_time_to_touch_sla.py"),
 )
 
 def _dirty() -> bool:

@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1592 | 476 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1617 | 483 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -90,6 +90,14 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 | **P-2** | Program editing beyond the eleven dials | The console emits DSL for money-and-risk parameters (ADR-029). Audience SQL and play copy deliberately stay in a pull request (decision 30). Revisit when an operator asks for a twelfth | M |
 | **P-3** | Brand voice classifier trained on the tenant's own material | Today the copywriter is guarded by evals and provenance, not by a model of the customer's voice | L |
 | **P-4** | Console for multiple tenants in one view | Every screen is single-tenant. An agency partner needs a switcher | M |
+
+### Signals
+
+| ID | Item | Why | Size |
+|---|---|---|---|
+| **SIG-1** | Time the ingest path, so `docs/06`'s first SLA column has a probe | Two of the three time-to-touch stages are measured and judged (ADR-058). *Ingestion → signal available* is not: nothing timestamps the moment a payload arrives separately from the moment its signal row is written, so the column with a five-minute Tier A target is reported as unmeasured. The page says so and a test fails in both directions, which stops it going stale but does not fill the gap | S — one timestamp on the ingest path and a third stage in `watch.sla` |
+| **SIG-2** | A signal that does not beat baseline in 90 days downgrades itself to advisory | `docs/06`'s hygiene section states it in the present tense and nothing does it. It needs per-signal lift against holdout, which the measurement layer can compute per programme and not yet per signal | M |
+| **SIG-3** | Per-signal monthly cost and pipeline contribution, and paid signals switched off when they do not cover it | The other two hygiene claims, and they share an instrument with SIG-2. `signal.check` is priced and billed per account-day (`docs/12`), so the cost half is closer than the contribution half | M |
 
 ## Built
 

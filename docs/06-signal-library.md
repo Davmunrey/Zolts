@@ -101,8 +101,27 @@ Probabilistic combination avoids the classic error of summing signals and satura
 
 These are engineering KPIs, not marketing aspirations: they appear on the customer dashboard and in the contractual SLA of the Scale and Enterprise plans.
 
+**What the runtime measures against that table.** A target nobody checks is a
+number in a document, and this one is written into two plans. The verdict is
+computed per signal tier and never per programme (decision 57): a programme may
+consume signals of several tiers, and a Tier C signal is a daily batch by
+design, so judging the whole programme by its tightest tier would report a
+failure on a system doing exactly what its catalogue says.
+
+| Stage | Status | Measured as |
+|---|---|---|
+| Ingestion → signal available | **Not measured** | No probe. The split the console does publish — observed to ingested — is how long the *source* took to notice, which is upstream of this column and not a weaker version of it |
+| Signal → action proposed | **Built** | `proposal.created_at` less `signal.ingested_at`, p95 per tier |
+| Signal → action executed | **Built** | `touch.sent_at` less `signal.ingested_at`, p95 per tier. Sent, not queued |
+
+The targets live in `zolts/latency.py` and a test reads this table to check
+them, the way `docs/12`'s price list is read (ADR-017). It fails in both
+directions: a stage marked **Not measured** that acquires a probe fails the
+suite until this page is corrected, so the page cannot quietly fall behind the
+runtime. Sizing the missing probe is SIG-1 in `docs/24`.
+
 ## Signal hygiene
 
-- **Noise suppression:** a signal whose measured lift against holdout does not beat baseline within 90 days is automatically downgraded to `advisory` (it stops triggering programs) and the owner is notified. The catalogue prunes itself.
-- **Signal cost in the P&L:** every signal reports monthly cost and pipeline contribution. Paid signals that do not cover their cost are switched off.
+- **Noise suppression — Not built (SIG-2).** The design: a signal whose measured lift against holdout does not beat baseline within 90 days is downgraded to `advisory`, stops triggering programs, and the owner is notified, so the catalogue prunes itself. Nothing does this. There is no `advisory` state on a signal anywhere in the runtime, and the instrument it needs — lift per *signal* rather than per programme — does not exist either: `runtime/reporting.py` measures a programme's arms, and a programme consuming three signals cannot attribute its lift among them without a design for that attribution.
+- **Signal cost in the P&L — Not built (SIG-3).** The design: every signal reports monthly cost and pipeline contribution, and paid signals that do not cover their cost are switched off. Nothing computes either half. The cost half is the closer one — `signal.check` is priced and billed per account-day (`docs/12`) so the spend per signal is already in `cost_event` and only needs grouping — and the contribution half needs the same per-signal attribution SIG-2 needs.
 - **Anti double-touch:** cross-program deduplication at person level — enforced by the frequency cap, which counts touches per person across every programme and channel (ADR-056). It counted an account's enrolment in one programme until D-92. **Priority by score and by owner is not built:** nothing ranks which of three eligible programmes wins, and there is no owner in the data model to rank by (D-82, decision 50). What happens today is that the cap holds the later touches; which programme got there first is whichever the planner reached first.

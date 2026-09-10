@@ -41,6 +41,7 @@ from runtime.connectors.signalsource import (Detection, SignalSourceError, Subje
                                              get_source)
 from runtime.crypto import Keyring, open_sealed
 from runtime.db import one
+from zolts import latency as latency_mod
 from zolts.signals import SignalDefinition, catalogue
 
 # What one account-day of checking costs, per `docs/12`.
@@ -282,6 +283,86 @@ def latency(cur, program_id: str | None = None) -> dict[str, Any]:
         "executionP95Minutes": _minutes(row["execution_p95"]),
         "totalP95Minutes": _minutes(row["total_p95"]),
     }
+
+
+# `signal.type` carries the definition key, and the tier lives on the
+# definition rather than in the database. Rather than denormalise it onto every
+# row — where it would be the tier as it stood the day the signal arrived, and
+# would silently disagree with the catalogue after a re-tiering — the map is
+# handed to the query as two arrays and joined. One source of truth, and a
+# signal whose definition this release no longer ships drops out of the join
+# rather than being counted under a tier nobody declared.
+_TIER_JOIN = "with tier(type, tier) as (select * from unnest(%s::text[], %s::text[]))"
+
+
+def _tier_arrays() -> tuple[list[str], list[str]]:
+    pairs = [(key, definition.tier) for key, definition in catalogue().items()
+             if definition.tier]
+    return [k for k, _ in pairs], [t for _, t in pairs]
+
+
+def sla(cur, program_id: str | None = None) -> list[dict[str, Any]]:
+    """`docs/06`'s time-to-touch table, measured and judged, one row per tier.
+
+    Per tier and not per programme (decision 57). A programme may consume
+    signals of several tiers, and a Tier C signal is a daily batch by design —
+    holding the programme that consumes one to Tier A's sixty minutes would
+    report a failure on a system doing exactly what its own catalogue says.
+
+    Every tier the catalogue declares appears, including the ones nothing has
+    happened on yet. A tier that vanishes from the report when it has no data
+    is a tier whose SLA looks met.
+    """
+    types, tiers = _tier_arrays()
+    measured = {stage: {} for stage in (latency_mod.Stage.PROPOSED,
+                                        latency_mod.Stage.EXECUTED)}
+    for stage, sql in (
+        # The proposal is the moment a person could first see the action, which
+        # is the column `docs/06` calls signal to action proposed.
+        (latency_mod.Stage.PROPOSED,
+         " select tier.tier as tier,"
+         "   percentile_disc(0.95) within group ("
+         "     order by extract(epoch from (p.created_at - s.ingested_at)) / 60"
+         "   ) as p95, count(*) as n"
+         "   from proposal p"
+         "   join enrollment e on e.id = p.enrollment_id"
+         "   join signal s on s.id = (e.context->>'signal_id')::uuid"
+         "   join tier on tier.type = s.type"
+         "  where (%s::uuid is null or e.program_id = %s::uuid)"
+         "  group by tier.tier"),
+        # Sent, not queued. A touch sitting in the outbox has not reached
+        # anybody, and counting it as executed would make the SLA report best
+        # on the day the sender is broken.
+        (latency_mod.Stage.EXECUTED,
+         " select tier.tier as tier,"
+         "   percentile_disc(0.95) within group ("
+         "     order by extract(epoch from (t.sent_at - s.ingested_at)) / 60"
+         "   ) as p95, count(*) as n"
+         "   from touch t"
+         "   join enrollment e on e.id = t.enrollment_id"
+         "   join signal s on s.id = (e.context->>'signal_id')::uuid"
+         "   join tier on tier.type = s.type"
+         "  where t.sent_at is not null"
+         "    and (%s::uuid is null or e.program_id = %s::uuid)"
+         "  group by tier.tier"),
+    ):
+        cur.execute(_TIER_JOIN + sql, (types, tiers, program_id, program_id))
+        for row in cur.fetchall():
+            measured[stage][row["tier"]] = (_minutes(row["p95"]), int(row["n"]))
+
+    report: list[dict[str, Any]] = []
+    for tier in sorted(set(tiers)):
+        stages = {}
+        for stage in latency_mod.Stage:
+            p95, seen = measured.get(stage, {}).get(tier, (None, 0))
+            stages[stage.value] = {
+                "p95Minutes": p95,
+                "targetMinutes": latency_mod.target_minutes(tier, stage),
+                "observations": seen,
+                "verdict": latency_mod.judge(tier, stage, p95).value,
+            }
+        report.append({"tier": tier, "stages": stages})
+    return report
 
 
 def _minutes(value: Any) -> int | None:

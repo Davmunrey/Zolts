@@ -930,6 +930,22 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-058 · The time-to-touch verdict is per signal tier, and a stage with no probe says so.**
+`docs/06` publishes a p95 target per signal tier across three stages and writes underneath it: *these are engineering KPIs, not marketing aspirations: they appear on the customer dashboard and in the contractual SLA of the Scale and Enterprise plans.* The runtime measured the latency — a detection and execution split, on the console's own signals view — and compared it to nothing (D-97). An operator read a number with no target beside it, which is the same as no SLA.
+
+**Per tier, never per programme.** A programme may consume signals of several tiers, and the tiers are not competing descriptions of one deadline — they are different decay curves. A Tier C signal is a daily batch *by design*, so holding the programme that consumes one to Tier A's sixty minutes reports a failure on a system doing exactly what its own catalogue says. The obvious alternative, *the tightest tier a programme consumes governs it*, manufactures that failure on purpose. Judging per tier dissolves the question rather than answering it, and it is the shape the document's own table already has.
+
+**The tier lives on the definition, not on the row.** `signal.type` carries the definition key and the catalogue carries the tier, so the map is handed to the query rather than denormalised onto every signal. Denormalising would freeze the tier as it stood the day the signal arrived and then disagree with the catalogue silently after a re-tiering. A signal type this release no longer ships drops out of the join instead of being counted under a tier nobody declared.
+
+| Decision | Why |
+|---|---|
+| **The document's bound is strict** | Every target is written `p95 < x`, so a tier sitting exactly on its bound misses. A strict bound enforced loosely is off by exactly the amount a renewal argues about |
+| **A silence is never a pass** | Four answers are not verdicts: no data, no target published, an unknown tier, and no probe. Each is distinct, because a missing probe reported as an absent obligation is how an unmeasured SLA reads as a met one |
+| **Sent, not queued** | A touch in the outbox has reached nobody. Counting it as executed would make the SLA report best on the day the sender is broken |
+| **The unmeasured stage keeps its target on screen** | Ingestion to signal available has no probe and the console still prints what was promised. Hiding it would make an unmeasured commitment look like an absent one |
+
+**The one stage this runtime cannot answer, and why it is not faked.** `docs/06` targets ingestion to signal available. The split the console does publish — observed to ingested — is how long the *source* took to notice, upstream of that column and not a weaker version of it. Reporting it against this target would be the worse defect, because a verdict on the wrong quantity reads exactly like a verdict on the right one. `docs/06` carries a status per stage and a test fails in both directions, so the day a probe is built the page goes red rather than stale (ADR-054's mechanism, fourth document).
+
 **ADR-057 · The overlay resolves at the choke point, and the archetype it resolves against is the tenant's.**
 `docs/05` states the inheritance chain — Blueprint → Industry Pack → Tenant → Program — and calls it the third path between a generic product that needs six weeks of consulting and a per-customer fork that destroys margin. Each level may **add or restrict, never relax policy**. `zolts/overlay.py` implements exactly that and raises on any lower layer that weakens what it inherits, and **nothing in the runtime ever called it** (D-94).
 
