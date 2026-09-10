@@ -252,3 +252,62 @@ def close_period(cur, tenant: dict[str, Any], period_id: str) -> dict[str, Any]:
         " statement = %s where id = %s returning *",
         (seats_used, json.dumps(closing.as_dict()), period_id))
     return one(cur)
+
+
+def cost_per_contact(cur, program_id: str | None = None,
+                     since=None, until=None) -> dict[str, Any]:
+    """Token spend per contact reached, against `docs/08`'s target (AGENT-4).
+
+    The numerator is the model kinds only and it is `cost_micros` — what the
+    calls cost this business — rather than `billed_credits`, which is what the
+    customer is charged. The document targets the first; the second would
+    report the price list back to itself.
+
+    The denominator counts distinct people, not touches and not enrolments: a
+    contact reached three times in a programme is one contact touched. A sent
+    touch that names nobody predates `touch.person_id` and is excluded, which
+    understates the denominator and so overstates the cost — the direction that
+    cannot make a missed target look met.
+    """
+    from zolts import agentcost
+
+    window = " and occurred_at >= %s" if since else ""
+    window += " and occurred_at < %s" if until else ""
+    spend_args: list[Any] = [sorted(agentcost.MODEL_KINDS), program_id, program_id]
+    spend_args += [a for a in (since, until) if a]
+    cur.execute(
+        "select coalesce(sum(cost_micros), 0) as micros, count(*) as calls"
+        "  from cost_event"
+        " where kind = any(%s)"
+        "   and (%s::uuid is null or program_id = %s::uuid)" + window,
+        tuple(spend_args))
+    spend = cur.fetchone()
+
+    touch_window = " and t.sent_at >= %s" if since else ""
+    touch_window += " and t.sent_at < %s" if until else ""
+    reach_args: list[Any] = [program_id, program_id]
+    reach_args += [a for a in (since, until) if a]
+    cur.execute(
+        "select count(distinct t.person_id) as contacts,"
+        "       count(*) filter (where t.person_id is null) as unattributed"
+        "  from touch t"
+        "  join enrollment e on e.id = t.enrollment_id"
+        " where t.sent_at is not null and t.direction = 'out'"
+        "   and (%s::uuid is null or e.program_id = %s::uuid)" + touch_window,
+        tuple(reach_args))
+    reach = cur.fetchone()
+
+    contacts = int(reach["contacts"])
+    micros = int(spend["micros"])
+    per_contact = round(micros / 1_000_000 / contacts, 4) if contacts else None
+    return {
+        "eurPerContact": per_contact,
+        "targetEurPerContact": agentcost.TARGET_EUR_PER_CONTACT,
+        "verdict": agentcost.judge(per_contact).value,
+        "contactsTouched": contacts,
+        "modelCalls": int(spend["calls"]),
+        "tokenSpendEur": round(micros / 1_000_000, 4),
+        # Reported rather than hidden: a denominator missing rows is a number
+        # that reads high, and the reader is owed the reason.
+        "touchesNamingNobody": int(reach["unattributed"]),
+    }
