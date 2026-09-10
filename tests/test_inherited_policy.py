@@ -212,3 +212,56 @@ def test_every_shipped_programme_is_admissible_under_its_own_archetype(db, path)
             cur, str(tenant["id"]), key=document["metadata"]["key"], version="9.9.9",
             spec=spec, spec_hash=hashlib.sha256(body.encode()).hexdigest())
     assert row is not None
+
+
+# ── the two checks must answer with the same status code ──────────────────
+
+@requires_db
+def test_publishing_a_loosening_programme_over_http_is_a_422_not_a_500(db):
+    """`POST /v1/programs` runs a cheap pre-check and `publish` is the
+    authority, and until this the two disagreed about the archetype.
+
+    The handler's own comment says the pre-check exists *to say 422 rather than
+    500*. It cannot answer this question — the archetype needs the tenant's
+    blueprint, which needs a cursor — so the authority's refusal reached the
+    client as an unhandled exception: a pre-check weaker than the check it
+    fronts, returning the status code its comment exists to prevent (D-95).
+
+    A 422 tells an operator their programme is wrong. A 500 tells them the
+    product is broken, and in a console it leaves the editor open over a
+    request that never resolves.
+
+    The document is a shipped programme rather than a minimal one, because the
+    handler validates against the full schema before it reaches admission: a
+    hand-rolled spec is refused for a missing `trigger` and the test then
+    passes on a 422 that has nothing to do with archetypes. It is published
+    under `public-sector`, which permits one touch a week where the programme
+    declares three.
+    """
+    from fastapi.testclient import TestClient
+
+    from runtime.api.app import create_app
+    from runtime.provision import issue_api_key
+    from tests.conftest import SECRET
+
+    document = yaml.safe_load(
+        (ROOT / "examples" / "programs" / "01-b2b-saas-sales-led.yaml").read_text())
+    spec = document["spec"]
+    assert spec["policy"]["overrides"]["max_touches_per_person_per_week"] == 3, (
+        "the premise: this programme asks for more than public-sector permits")
+
+    tenant = _tenant_on(db, "public-sector")
+    token = issue_api_key(db, str(tenant["id"]), name="probe", scopes=["write"]).token
+    client = TestClient(create_app(db, secret_key=SECRET))
+    response = client.post(
+        "/v1/programs", headers={"Authorization": f"Bearer {token}"},
+        json={"key": f"p-{uuid.uuid4().hex[:8]}", "version": "1.0.0",
+              "name": document["metadata"]["name"],
+              "blueprint": "public-sector", "spec": spec})
+
+    assert response.status_code == 422, (
+        f"the archetype refusal reached the client as {response.status_code}; "
+        f"{response.text[:200]}")
+    assert "max_touches_per_person_per_week" in response.text, (
+        f"a 422 for some other reason, which is the right code for the wrong "
+        f"question: {response.text[:200]}")
