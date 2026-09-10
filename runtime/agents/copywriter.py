@@ -26,7 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from runtime.agents.client import CHEAP_MODEL, Completion, ModelClient, ModelUnavailable
+from runtime.agents.client import Completion, ModelClient, ModelUnavailable
 from runtime.agents.spend import SpendGuard, SpendVerdict
 from zolts import evals, offers, provenance
 

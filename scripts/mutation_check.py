@@ -262,6 +262,14 @@ MUTATIONS = (
         find='            mailbox_id=mailbox_id, person_id=str(person["id"]) if person else None)',
         replace="            mailbox_id=mailbox_id)",
         tests="tests/test_frequency_cap.py"),
+    Mutation(
+        id="the-agent-layer-page-cannot-outrun-the-agents",
+        claim="an agent docs/08 marks Not built stays unbuilt, so the day one "
+              "ships the page is corrected rather than quietly overtaken (D-93)",
+        path="docs/08-ai-agent-layer.md",
+        find="| **Strategist** | **Not built** |",
+        replace="| **Strategist** | **Built** |",
+        tests="tests/test_agent_layer_claims.py"),
 )
 
 def _dirty() -> bool:

@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1557 | 464 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1577 | 464 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -62,6 +62,20 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 | **COMP-5** | A stored legitimate-interest assessment | `legitimate_interest` is a basis a programme declares; no assessment is captured, stored or versioned. A guided template is a product surface, and the surface needs the identity model COMP-7 covers to record who signed it | M |
 | **COMP-6** | Records of processing generated from configuration | The claim was that a RoPA writes itself from live configuration. Nothing does. The inputs exist — programmes, channels, bases, providers, regions — so this is assembly rather than new state | M |
 | **COMP-7** | An identity model: users, roles, sign-off | There is no `user`, `seat` or `role` table (D-82). It gates the RBAC `docs/11` describes, the DPO veto, MFA on day one, the per-rep routing capacity a programme may declare, and `approved_by` meaning a person rather than `key:<uuid>`. Decision 50 is the fork | L |
+
+### Agent layer
+
+`docs/08` described six agents and a model architecture in the present tense; three agents and four mechanisms did not exist (D-93, ADR-054's mechanism applied a third time). Each is sized here and each is guarded: the day one ships, `tests/test_agent_layer_claims.py` fails until the document is corrected.
+
+| ID | Item | Why | Size |
+|---|---|---|---|
+| **AGENT-6** | A golden set that blocks a deployment | 200-500 cases per tenant, run on every prompt or model change. It is first here because it is the instrument three other items need: decision 56 cannot be closed without it, P-3 cannot be evaluated without it, and a prompt change ships today on nobody's evidence | M |
+| **AGENT-4** | Cost per contact touched, measured against the target | `docs/08` targets under €0.02 in tokens. Every call is priced before it is made and recorded after, so the number is computable per programme and per period — nothing computes it and nothing compares it | S |
+| **AGENT-5** | Prompt caching | A cost and latency lever at volume, and there is no volume yet. It moves up the moment a tenant's dossiers are stable and re-read | S |
+| **AGENT-3** | The Analyst | The incrementality report states the finding; nothing writes the post-mortem an operator acts on (ADR-043). The constraint is the one the role carries: it may only conclude from a valid experiment | M |
+| **AGENT-1** | The Strategist | Recommends a programme and a tier from a dossier. Needs a minimum population size and a prior test, or it is a segmentation machine with no brake | M |
+| **AGENT-2** | The Ops agent | Proposes CRM mappings and merges. Mappings are tenant-authored documents today (ADR-014) and merges are reversible by design, so the agent is a proposal layer over machinery that already exists | M |
+| **AGENT-7** | The outward MCP server | Read and simulate only by default; any external effect needs explicit approval. Deliberately last: building the interface before the governance it must not bypass is finished is the wrong order, and the product still has six open compliance items | L |
 
 ### Product
 
