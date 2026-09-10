@@ -110,15 +110,18 @@ failure on a system doing exactly what its catalogue says.
 
 | Stage | Status | Measured as |
 |---|---|---|
-| Ingestion → signal available | **Not measured** | No probe. The split the console does publish — observed to ingested — is how long the *source* took to notice, which is upstream of this column and not a weaker version of it |
+| Ingestion → signal available | **Built** | `signal.ingested_at` less `signal.received_at`, p95 per tier. The arrival is stamped before the transaction opens, so the stage measures the trigger evaluation across every live programme — the part that grows with the programme count (SIG-1). Not `observed_at`: that is how long the *source* took to notice, upstream of every column here |
 | Signal → action proposed | **Built** | `proposal.created_at` less `signal.ingested_at`, p95 per tier |
 | Signal → action executed | **Built** | `touch.sent_at` less `signal.ingested_at`, p95 per tier. Sent, not queued |
 
 The targets live in `zolts/latency.py` and a test reads this table to check
 them, the way `docs/12`'s price list is read (ADR-017). It fails in both
 directions: a stage marked **Not measured** that acquires a probe fails the
-suite until this page is corrected, so the page cannot quietly fall behind the
-runtime. Sizing the missing probe is SIG-1 in `docs/24`.
+suite until this page is corrected — which is how the first row moved, rather
+than somebody remembering to move it — so the page cannot quietly fall behind
+the runtime. A signal written before migration 029 carries no arrival time and
+is excluded rather than counted as instantaneous, which is the direction that
+would flatter the number.
 
 ## Signal hygiene
 

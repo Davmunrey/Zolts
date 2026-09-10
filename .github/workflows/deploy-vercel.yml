@@ -113,6 +113,30 @@ jobs:
             python3 scripts/smoke_deployed.py --url "$ZOLTS_URL" --allow-unconfigured
           fi
 
+  # Green stopped meaning anything: thirty-nine runs of this workflow reported
+  # success while production served a build from weeks earlier, because the
+  # release skips without its secrets and nothing anywhere compared what is
+  # deployed with what is on `main` (D-100).
+  #
+  # This job needs no secret — it opens the public address and reads the build
+  # stamp every assembled page carries — and it does not skip. A missing
+  # credential is a setup state and skipping on it is right; a stale production
+  # is a product state, and it stays red until somebody deploys.
+  #
+  # `always()` because on a schedule the release above does not run at all, and
+  # on a push this must read the address after the release has had its turn.
+  drift:
+    needs: release
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Compare what production serves with what this commit builds
+        run: python3 scripts/deploy_drift.py --url "${{ vars.ZOLTS_URL || 'https://zolts.vercel.app' }}"
+
   smoke:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest

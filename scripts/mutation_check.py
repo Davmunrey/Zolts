@@ -290,13 +290,49 @@ MUTATIONS = (
         tests="tests/test_time_to_touch_sla.py"),
     Mutation(
         id="an-unmeasured-sla-stage-is-never-reported-as-met",
-        claim="the time-to-touch stage this runtime has no probe for says so "
-              "rather than passing, and docs/06's status table has to agree in "
-              "both directions (D-97)",
+        claim="every time-to-touch stage docs/06 targets has a probe, and the "
+              "page's status table has to agree in both directions — a stage "
+              "losing its probe fails rather than reading as met (D-97, SIG-1)",
         path="zolts/latency.py",
-        find="MEASURED: frozenset[Stage] = frozenset({Stage.PROPOSED, Stage.EXECUTED})",
-        replace="MEASURED: frozenset[Stage] = frozenset({Stage.AVAILABLE, Stage.PROPOSED, Stage.EXECUTED})",
+        find="MEASURED: frozenset[Stage] = frozenset({Stage.AVAILABLE, Stage.PROPOSED,",
+        replace="MEASURED: frozenset[Stage] = frozenset({Stage.PROPOSED,",
         tests="tests/test_time_to_touch_sla.py"),
+    Mutation(
+        id="the-push-path-stamps-when-the-payload-arrived",
+        claim="`POST /v1/signals` records when the request reached this runtime, "
+              "without which docs/06's first SLA column has a column and no data "
+              "(SIG-1)",
+        path="runtime/api/app.py",
+        find="                result = enroll.ingest(cur, principal.tenant_id, received_at=received_at,",
+        replace="                result = enroll.ingest(cur, principal.tenant_id,",
+        tests="tests/test_time_to_touch_sla.py"),
+    Mutation(
+        id="the-watching-pass-stamps-when-the-batch-arrived",
+        claim="the detection loop records when the source handed the batch back, "
+              "so the arrival stage measures this runtime's work rather than the "
+              "source's (SIG-1)",
+        path="runtime/watch.py",
+        find="                                received_at=received_at)",
+        replace="                                received_at=None)",
+        tests="tests/test_time_to_touch_sla.py"),
+    Mutation(
+        id="the-document-says-the-scheme-the-stylesheet-paints",
+        claim="the console document reads its colour scheme off the surface's own "
+              "canvas token, so it cannot go back to telling the browser the "
+              "opposite of what the page paints (D-99)",
+        path="runtime/surface.py",
+        find='    return "light" if 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.5 else "dark"',
+        replace='    return "dark"',
+        tests="tests/test_deploy_drift.py"),
+    Mutation(
+        id="something-compares-production-with-main",
+        claim="the static build stamps the page it builds, without which the drift "
+              "check cannot tell a stale production from a current one — thirty-nine "
+              "green runs over a build weeks old (D-100)",
+        path="scripts/build_site.py",
+        find="    rendered = document(inject(source, fixture), build=build_id(source),",
+        replace="    rendered = document(inject(source, fixture),",
+        tests="tests/test_deploy_drift.py"),
 )
 
 def _dirty() -> bool:

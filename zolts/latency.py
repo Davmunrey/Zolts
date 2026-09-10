@@ -26,14 +26,19 @@ p95 at the bound the document names and requires the verdict to flip there,
 because a table compared against another table passes on a constant nothing
 reads, and that is this repository's dominant defect.
 
-**Two of the three stages have no probe, and say so.** `docs/06` targets
-ingestion to signal available, signal to action proposed, and signal to action
-executed. This runtime can measure the last two. The first is a stage inside
-the ingest path that is not separately timestamped, and the split the runtime
-*does* publish — observed to ingested, which is how long the source took to
-notice — is a different measurement upstream of that column, not a weaker
-version of it. Reporting it against this target would be the worse defect:
-a verdict on the wrong quantity reads exactly like a verdict on the right one.
+**All three stages have a probe, and the origins do not overlap.** `docs/06`
+targets ingestion to signal available, signal to action proposed, and signal to
+action executed. The first was unmeasured until `signal.received_at` recorded
+when a payload reached this runtime (SIG-1); the other two run from
+`signal.ingested_at`, so the trigger evaluation that happens between arrival
+and the write is counted once, in the first stage, and never twice.
+
+`received_at` is not the same thing as `observed_at`. The split the console
+also publishes — observed to ingested — is how long the *source* took to
+notice, upstream of every column in this table. Reporting that against this
+target would be a verdict on the wrong quantity, which reads exactly like a
+verdict on the right one, so it stays where it is and is labelled for what it
+measures.
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ class Stage(str, Enum):
     """The three columns of `docs/06`'s time-to-touch table."""
 
     AVAILABLE = "available"
-    """Ingestion to signal available. Not measured — see the module docstring."""
+    """A payload arriving to the signal row existing and able to trigger."""
 
     PROPOSED = "proposed"
     """Signal available to an action proposed for a person to see."""
@@ -89,7 +94,8 @@ TARGETS: dict[str, dict[Stage, int | None]] = {
 # `NO_TARGET` is the document declining to commit, `NOT_MEASURED` is this
 # runtime failing to check something the document does commit to. Collapsing
 # them would let a missing probe read as an absent obligation.
-MEASURED: frozenset[Stage] = frozenset({Stage.PROPOSED, Stage.EXECUTED})
+MEASURED: frozenset[Stage] = frozenset({Stage.AVAILABLE, Stage.PROPOSED,
+                                        Stage.EXECUTED})
 
 
 def target_minutes(tier: str | None, stage: Stage) -> int | None:

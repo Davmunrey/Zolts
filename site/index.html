@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#08090a">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f2f2f3">
+<meta name="zolts-build" content="fad9000ed7de">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -1755,27 +1756,29 @@ function renderProspects(){
    like an absent obligation is how an unmeasured SLA reads as a met one. */
 function slaBlock(tiers){
   if (!tiers.length) return "";
-  var says = {meets: "meets", misses: "misses", no_data: "nothing sent yet",
+  var says = {meets: "meets", misses: "misses", no_data: "no observations yet",
               no_target: "no p95 published", not_measured: "not measured",
               unknown_tier: "unknown tier"};
+  var stages = ["available", "proposed", "executed"];
   var rows = [], unmeasured = [];
   tiers.forEach(function(t){
-    ["proposed", "executed"].forEach(function(key){
+    stages.forEach(function(key){
       var st = (t.stages || {})[key];
       if (!st) return;
+      if (st.verdict === "not_measured"){
+        unmeasured.push("Tier " + t.tier + " " + key);
+        return;
+      }
       var value = (st.verdict === "meets" || st.verdict === "misses")
         ? nf(st.p95Minutes) + "/" + nf(st.targetMinutes) + " min, " + says[st.verdict]
         : (says[st.verdict] || st.verdict);
       rows.push(["Tier " + t.tier + " " + key, value,
                  st.verdict === "misses" ? "warnt" : ""]);
     });
-    var first = (t.stages || {}).available;
-    if (first && first.verdict === "not_measured")
-      unmeasured.push("Tier " + t.tier + " " + nf(first.targetMinutes) + " min");
   });
   return block("Time-to-touch SLA (docs/06)", rows)
-    + (unmeasured.length ? note("Not measured", [["Ingestion to signal available.",
-        "Targeted at " + unmeasured.join(", ") + " and this runtime has no probe for it."]])
+    + (unmeasured.length ? note("Not measured", [[unmeasured.join(", ") + ".",
+        "This runtime has no probe for that stage, so no verdict is given."]])
       : "");
 }
 

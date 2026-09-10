@@ -30,7 +30,7 @@ from runtime.engine import admission, enroll
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
-from runtime.surface import content_security_policy, document, inject
+from runtime.surface import build_id, content_security_policy, document, inject
 from zolts import dsl, experiment
 from zolts import metrics
 
@@ -668,9 +668,16 @@ def create_app(db: Database, *, install_connectors: bool = True,
         warnings: list[str] = []
         if not body.dedupe_key:
             warnings.append("no dedupe_key: a replay of this signal will be counted twice")
+        # `docs/06` targets ingestion to signal available, and the moment of
+        # ingestion is this one — before the transaction opens, not inside it.
+        # Taken after, it would measure nothing: the work the stage is about is
+        # the trigger evaluation across every live programme, which happens
+        # between here and the write (SIG-1).
+        received_at = _now()
         with db.tenant_tx(principal.tenant_id) as cur:
             try:
-                result = enroll.ingest(cur, principal.tenant_id, **body.model_dump())
+                result = enroll.ingest(cur, principal.tenant_id, received_at=received_at,
+                                       **body.model_dump())
             except enroll.HoldoutMissing as exc:
                 raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
         # A predicate the payload could not answer is a non-match, not a 500 —
@@ -985,7 +992,8 @@ def create_app(db: Database, *, install_connectors: bool = True,
                 f"the console surface is missing from this deployment "
                 f"({SURFACE}); the API and the worker are unaffected, and "
                 f"GET /v1/console returns the same data as JSON")
-        rendered = document(inject(SURFACE.read_text(encoding="utf-8"), data),
+        template = SURFACE.read_text(encoding="utf-8")
+        rendered = document(inject(template, data), build=build_id(template),
                             title=f"Zolts — {tenant['name']}")
         return Response(
             content=rendered, media_type="text/html; charset=utf-8",

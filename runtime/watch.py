@@ -133,7 +133,8 @@ def _credential(cur, connector: str, secret_key: "str | Keyring | None") -> str 
 
 
 def _ingest(cur, tenant_id: str, definition: SignalDefinition,
-            detection: Detection, now: datetime) -> int:
+            detection: Detection, now: datetime,
+            received_at: datetime | None = None) -> int:
     """Hand a fresh detection to the enrollment path.
 
     The strength, the decay and the legal basis come from the definition rather
@@ -153,7 +154,7 @@ def _ingest(cur, tenant_id: str, definition: SignalDefinition,
         half_life_h=definition.half_life_h, source=definition.connector,
         legal_basis=definition.legal_basis, payload=detection.payload,
         observed_at=detection.observed_at,
-        dedupe_key=detection.dedupe_key, now=now)
+        dedupe_key=detection.dedupe_key, received_at=received_at, now=now)
     return len(result.enrollments)
 
 
@@ -209,6 +210,10 @@ def once(cur, tenant: dict[str, Any], *, secret_key: "str | Keyring | None" = No
             result.signals.append(Watched(signal_key=key, error=str(exc)))
             continue
 
+        # The batch is in our hands from here. That is the moment `docs/06`
+        # calls ingestion — not `moment`, which is the pass's own clock and
+        # would make a slow source look like a slow runtime (SIG-1).
+        received_at = _now()
         found = {d.entity_id: d for d in detections}
         checked = detected = stale = enrolled = 0
         credits = 0.0
@@ -236,7 +241,8 @@ def once(cur, tenant: dict[str, Any], *, secret_key: "str | Keyring | None" = No
                 stale += 1
                 continue
             detected += 1
-            enrolled += _ingest(cur, tenant_id, definition, detection, moment)
+            enrolled += _ingest(cur, tenant_id, definition, detection, moment,
+                                received_at=received_at)
 
         result.signals.append(Watched(
             signal_key=key, checked=checked, detected=detected, stale=stale,
@@ -314,9 +320,25 @@ def sla(cur, program_id: str | None = None) -> list[dict[str, Any]]:
     is a tier whose SLA looks met.
     """
     types, tiers = _tier_arrays()
-    measured = {stage: {} for stage in (latency_mod.Stage.PROPOSED,
-                                        latency_mod.Stage.EXECUTED)}
+    measured = {stage: {} for stage in latency_mod.Stage}
     for stage, sql in (
+        # Arrival to the row existing. Only rows that carry an arrival time:
+        # a signal written before migration 029 has none, and counting it as
+        # instantaneous would flatter the number in the one direction that
+        # matters (SIG-1).
+        (latency_mod.Stage.AVAILABLE,
+         " select tier.tier as tier,"
+         "   percentile_disc(0.95) within group ("
+         "     order by extract(epoch from (s.ingested_at - s.received_at)) / 60"
+         "   ) as p95, count(*) as n"
+         "   from signal s"
+         "   join tier on tier.type = s.type"
+         "  where s.received_at is not null"
+         "    and (%s::uuid is null or exists ("
+         "      select 1 from enrollment e"
+         "       where e.program_id = %s::uuid"
+         "         and (e.context->>'signal_id')::uuid = s.id))"
+         "  group by tier.tier"),
         # The proposal is the moment a person could first see the action, which
         # is the column `docs/06` calls signal to action proposed.
         (latency_mod.Stage.PROPOSED,
@@ -363,6 +385,15 @@ def sla(cur, program_id: str | None = None) -> list[dict[str, Any]]:
             }
         report.append({"tier": tier, "stages": stages})
     return report
+
+
+def _now() -> datetime:
+    """Wall clock, named so a test can see which reading it is replacing.
+
+    Deliberately not the pass's `moment`: that is when the sweep started, and
+    using it here would charge the source's own latency to this runtime.
+    """
+    return datetime.now(timezone.utc)
 
 
 def _minutes(value: Any) -> int | None:

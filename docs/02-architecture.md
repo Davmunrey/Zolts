@@ -930,6 +930,20 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-059 · A deploy is not done until something compares what production serves with what is on `main`.**
+Two correct decisions produced a wrong outcome. `vercel.json` turns the platform's own deploys of `main` off so production is released only from the workflow, which migrates the database and runs preflight before taking traffic (ADR-041). The workflow's release job skips rather than fails while its Vercel secrets are unset, so that a run which is red teaches the team something. Both hold. Together they meant production served a build from weeks earlier behind **thirty-nine consecutive green runs**, and the founder found it by opening the page (D-100).
+
+**A missing credential and a stale production are different states and are reported differently.** Skipping on the first is right: nobody has set it up yet, and failing would train the team to ignore red. The second is a fact about the product. It stays red until somebody deploys, and it needs no credential to detect.
+
+| Decision | Why |
+|---|---|
+| **Every assembled page carries a build stamp** | A digest of the surface template, taken before any tenant's data is injected, so the static build and the API serving live figures stamp the same twelve characters for the same code. Digesting the render instead would make every tenant a different build |
+| **The check opens the public address** | It needs no secret, so it cannot be gated on one, so it cannot skip into the silence that caused this |
+| **Unreachable is not a pass** | Exit 2, never 0. A check that cannot reach its subject and reports success is a guard surviving the thing it guards against — `ambient_check.py`'s whole subject |
+| **The stamp's absence is drift, not an error** | Every build since this existed carries one, so a page without it predates the stamp. That is exactly the condition that went unnoticed, and it has to be the loud case rather than the confusing one |
+
+**What this constrains.** The drift job runs on every push to `main` and on the hourly schedule, and a test reads the workflow and fails if it ever grows a condition on a secret. Until the three Vercel secrets exist the job is red, and that is the intended reading: production genuinely is behind. The remedy is named in the failure message rather than left to a reader to reconstruct.
+
 **ADR-058 · The time-to-touch verdict is per signal tier, and a stage with no probe says so.**
 `docs/06` publishes a p95 target per signal tier across three stages and writes underneath it: *these are engineering KPIs, not marketing aspirations: they appear on the customer dashboard and in the contractual SLA of the Scale and Enterprise plans.* The runtime measured the latency — a detection and execution split, on the console's own signals view — and compared it to nothing (D-97). An operator read a number with no target beside it, which is the same as no SLA.
 

@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from build_fixture import build as build_fixture
-from runtime.surface import (DESCRIPTION, TITLE, content_security_policy, document,
-                             inject)
+from runtime.surface import (DESCRIPTION, TITLE, build_id, content_security_policy,
+                             document, inject)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -67,7 +67,8 @@ OUT_DIR = ROOT / "site"
 def build() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     fixture = build_fixture()
-    rendered = document(inject(source, fixture), title=TITLE, description=DESCRIPTION)
+    rendered = document(inject(source, fixture), build=build_id(source),
+                        title=TITLE, description=DESCRIPTION)
 
     OUT_DIR.mkdir(exist_ok=True)
     (OUT_DIR / "index.html").write_text(rendered, encoding="utf-8")

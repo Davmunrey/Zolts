@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -37,7 +38,9 @@ import pytest
 from runtime import watch
 from runtime.api import console as console_view
 from tests.conftest import requires_db
-from zolts.latency import MEASURED, TARGETS, Stage, Verdict, judge, target_minutes
+from zolts import latency
+from zolts.latency import (MEASURED, TARGETS, Stage, Verdict, judge,
+                          target_minutes)
 from zolts.signals import catalogue
 
 DOC = Path(__file__).resolve().parent.parent / "docs" / "06-signal-library.md"
@@ -123,19 +126,28 @@ def test_a_cell_the_document_writes_as_prose_is_not_given_a_number():
     assert judge("D", Stage.EXECUTED, 10_000) is Verdict.NO_TARGET
 
 
-def test_the_stage_with_no_probe_says_so_rather_than_passing():
-    """The column this runtime cannot measure never reports a pass.
+def test_a_stage_with_no_probe_would_say_so_rather_than_passing():
+    """The answer that exists for a stage this runtime cannot measure.
 
-    `docs/06` targets ingestion to signal available. The split the runtime does
-    publish — observed to ingested — is the source's own lag, upstream of that
-    column. Reporting it here would be a verdict on the wrong quantity, which
-    reads exactly like a verdict on the right one.
+    Every stage has a probe today (SIG-1 built the last one), so this holds the
+    behaviour rather than a current gap: a stage dropped from `MEASURED` is
+    reported as unmeasured and never as met. The distinction is the load-bearing
+    part — `NO_TARGET` is the document declining to commit, `NOT_MEASURED` is
+    this runtime failing to check something it did commit to, and collapsing
+    them would let a missing probe read as an absent obligation.
     """
-    assert Stage.AVAILABLE not in MEASURED
+    assert Verdict.NOT_MEASURED is not Verdict.NO_TARGET
     for tier in TARGETS:
         assert target_minutes(tier, Stage.AVAILABLE) is not None, tier
-        assert judge(tier, Stage.AVAILABLE, 1) is Verdict.NOT_MEASURED, tier
-    assert Verdict.NOT_MEASURED is not Verdict.NO_TARGET
+    unprobed = MEASURED - {Stage.AVAILABLE}
+    with mock.patch.object(latency, "MEASURED", unprobed):
+        assert latency.judge("A", Stage.AVAILABLE, 1) is Verdict.NOT_MEASURED
+        assert latency.judge("A", Stage.EXECUTED, 1) is Verdict.MEETS
+
+
+def test_every_stage_the_document_targets_has_a_probe():
+    """SIG-1 closed the last gap. A stage losing its probe fails here."""
+    assert set(Stage) == set(MEASURED)
 
 
 def test_no_data_is_not_a_pass():
@@ -246,7 +258,7 @@ def _tier_a_signal() -> str:
 
 
 def _fixture(cur, tenant_id, *, signal_type, proposed_after, executed_after,
-             ingested_at=NOW):
+             ingested_at=NOW, received_before=None):
     """One signal, one enrolment, one proposal and one sent touch.
 
     Every timestamp is written rather than defaulted. The measurement is about
@@ -258,11 +270,14 @@ def _fixture(cur, tenant_id, *, signal_type, proposed_after, executed_after,
     account = cur.fetchone()["id"]
     cur.execute(
         "insert into signal (tenant_id, entity_type, entity_id, type, strength,"
-        " half_life_h, source, legal_basis, payload, observed_at, ingested_at)"
+        " half_life_h, source, legal_basis, payload, observed_at, ingested_at,"
+        " received_at)"
         " values (%s,'account',%s,%s,0.5,72,'test','legitimate_interest','{}',"
-        " %s, %s) returning id",
+        " %s, %s, %s) returning id",
         (tenant_id, account, signal_type, ingested_at - timedelta(minutes=3),
-         ingested_at))
+         ingested_at,
+         None if received_before is None
+         else ingested_at - timedelta(minutes=received_before)))
     signal = cur.fetchone()["id"]
     cur.execute(
         "insert into program (tenant_id, key, version, spec, spec_hash, status)"
@@ -338,18 +353,56 @@ def test_a_tier_with_nothing_on_it_still_appears(db, tenant):
 
 
 @requires_db
-def test_the_unmeasured_stage_is_reported_as_unmeasured_not_as_met(db, tenant):
+def test_the_arrival_stage_is_measured_from_the_payload_reaching_the_runtime(db, tenant):
+    """SIG-1: `docs/06`'s first column, from `received_at` to `ingested_at`.
+
+    Not from `observed_at`. That is the source's own lag, upstream of every
+    column in the table, and a verdict on it would be a verdict on somebody
+    else's work wearing this one's label.
+    """
+    signal = _tier_a_signal()
+    with db.tenant_tx(tenant['id']) as cur:
+        assert target_minutes("A", Stage.AVAILABLE) == 5
+        _fixture(cur, tenant['id'], signal_type=signal, proposed_after=1,
+                 executed_after=1, received_before=4)
+        row = _row(watch.sla(cur), "A")
+    available = row["stages"]["available"]
+    assert available["verdict"] == "meets"
+    assert available["p95Minutes"] == 4
+    assert available["observations"] == 1
+
+
+@requires_db
+def test_an_arrival_outside_the_tier_target_misses_it(db, tenant):
     signal = _tier_a_signal()
     with db.tenant_tx(tenant['id']) as cur:
         _fixture(cur, tenant['id'], signal_type=signal, proposed_after=1,
-                 executed_after=1)
+                 executed_after=1, received_before=20)
         row = _row(watch.sla(cur), "A")
-    available = row["stages"]["available"]
-    assert available["verdict"] == "not_measured"
-    assert available["p95Minutes"] is None
-    # The target is still published, because the operator's question is what
-    # was promised — hiding it would make an unmeasured commitment look absent.
-    assert available["targetMinutes"] == 5
+    assert row["stages"]["available"]["verdict"] == "misses"
+    assert row["stages"]["available"]["p95Minutes"] == 20
+
+
+@requires_db
+def test_a_signal_with_no_arrival_time_is_excluded_not_counted_as_instant(db, tenant):
+    """A row written before migration 029 has no arrival time.
+
+    Counting it as instantaneous would pull every tier's p95 towards zero — the
+    one direction that flatters a number written into a contract — so it is
+    left out of the population entirely and the stage reports no data.
+    """
+    signal = _tier_a_signal()
+    with db.tenant_tx(tenant['id']) as cur:
+        _fixture(cur, tenant['id'], signal_type=signal, proposed_after=1,
+                 executed_after=1, received_before=None)
+        cur.execute("select count(*) as n from signal where received_at is null")
+        assert cur.fetchone()["n"] == 1, "the premise: a row with no arrival time"
+        row = _row(watch.sla(cur), "A")
+    assert row["stages"]["available"]["verdict"] == "no_data"
+    assert row["stages"]["available"]["observations"] == 0
+    # The other two stages read from `ingested_at` and are unaffected, which is
+    # what keeps the arrival gap counted once rather than in every column.
+    assert row["stages"]["executed"]["observations"] == 1
 
 
 @requires_db
@@ -386,6 +439,82 @@ def test_the_verdict_can_be_read_for_one_programme(db, tenant):
         # observations is the slower: the programme filter narrows rather than
         # being ignored.
         assert _row(watch.sla(cur), "A")["stages"]["executed"]["verdict"] == "misses"
+
+
+# -- the call sites, not the column -------------------------------------
+#
+# A timestamp nothing writes is the defect this repository keeps finding: D-85
+# and D-92 were both a column the tests filled in directly while the production
+# path left it null. Both real paths are driven here, end to end.
+
+
+@requires_db
+def test_the_push_endpoint_stamps_the_arrival(db, tenant):
+    """`POST /v1/signals`: arrival is the request, not the insert."""
+    from fastapi.testclient import TestClient
+
+    from runtime.api.app import create_app
+    from runtime.provision import issue_api_key
+    from tests.conftest import SECRET
+
+    with db.tenant_tx(tenant['id']) as cur:
+        cur.execute("insert into account (tenant_id, name) values (%s,'Push Co')"
+                    " returning id", (tenant['id'],))
+        account = str(cur.fetchone()["id"])
+
+    token = issue_api_key(db, str(tenant['id']), name="sla-probe",
+                          scopes=["ingest"]).token
+    client = TestClient(create_app(db, secret_key=SECRET))
+    response = client.post(
+        "/v1/signals", headers={"Authorization": f"Bearer {token}"},
+        json={"entity_type": "account", "entity_id": account,
+              "type": _tier_a_signal(), "strength": 0.6, "half_life_h": 72,
+              "source": "test", "legal_basis": "legitimate_interest",
+              "payload": {}, "observed_at": "2026-05-04T11:00:00+00:00",
+              "dedupe_key": f"sla-{uuid.uuid4().hex}"})
+    assert response.status_code == 200, response.text
+
+    with db.tenant_tx(tenant['id']) as cur:
+        cur.execute("select received_at, ingested_at from signal"
+                    " where entity_id = %s", (account,))
+        row = cur.fetchone()
+    assert row["received_at"] is not None, (
+        "the push path wrote a signal with no arrival time, so docs/06's first "
+        "SLA column has a column and no data")
+    # Before the write, not after: taken after, the stage would measure nothing.
+    assert row["received_at"] <= row["ingested_at"]
+
+
+@requires_db
+def test_the_watching_pass_stamps_the_arrival(db, tenant):
+    """The detection path: arrival is when the source handed the batch back."""
+    from runtime.connectors import signalsource
+    from runtime.connectors.fake import FakeSignalSource
+    from tests.test_runtime_engine import DISPATCH_SPEC, _account_with_contact, _publish
+
+    saved = dict(signalsource._SOURCES)
+    signalsource._SOURCES.clear()
+    try:
+        signalsource.register_source(FakeSignalSource(connector="press_feed"))
+        tid = str(tenant["id"])
+        with db.tenant_tx(tid) as cur:
+            _account_with_contact(cur, tid)
+            _publish(cur, tid, key="funded", spec={
+                **DISPATCH_SPEC,
+                "trigger": {**DISPATCH_SPEC["trigger"],
+                            "events": [{"signal": "funding.round"}]}})
+            cur.execute("select * from tenant where id = %s", (tid,))
+            result = watch.once(cur, cur.fetchone(), now=NOW)
+            cur.execute("select received_at from signal where type = 'funding.round'")
+            rows = cur.fetchall()
+    finally:
+        signalsource._SOURCES.clear()
+        signalsource._SOURCES.update(saved)
+
+    assert result.signals and result.signals[0].detected, (
+        "the premise: this pass detected something to stamp")
+    assert rows and all(r["received_at"] is not None for r in rows), (
+        "the watching pass wrote a signal with no arrival time")
 
 
 @requires_db

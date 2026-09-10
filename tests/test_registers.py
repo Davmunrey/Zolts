@@ -34,6 +34,9 @@ WORDS = {
     "seventy": 70, "eighty": 80, "ninety": 90,
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
     "seven": 7, "eight": 8, "nine": 9,
+    # The register crossed a hundred rows. A total the map cannot read is a
+    # count nobody is checking, which is what this test exists to prevent.
+    "hundred": 100,
 }
 
 
