@@ -32,22 +32,50 @@ class NoActivePack(RuntimeError):
     """Nothing is published, which means nothing may be decided."""
 
 
-def install_shipped(cur, *, published_by: str = "shipped") -> dict[str, Any]:
-    """Store the pack this release ships with, and make it active if none is.
+SHIPPED = "shipped"
+
+
+def install_shipped(cur, *, published_by: str = SHIPPED) -> dict[str, Any]:
+    """Store the pack this release ships with, and decide whether it governs.
 
     Idempotent on the digest: a redeploy of the same rules is the same pack.
-    A deployment that has published its own pack keeps it — the shipped one is
-    stored beside it so an old decision citing it still resolves, but it does
-    not take the active seat back on every restart.
+
+    **It takes the active seat from an older shipped pack, and never from an
+    operator's own.** The first version only activated when nothing was active
+    at all, which is correct for the second clause and silently wrong for the
+    first: a deployment upgrading from a release whose shipped pack said one
+    thing to a release whose shipped pack says another went on deciding under
+    the old rules for ever, and the only signal was that nothing changed
+    (D-91). It had never been observed because the case had never arisen —
+    `PACK_V1` had not changed since it was written — and because CI builds a
+    fresh database on every run, which is the branch that works.
+
+    The distinction is `published_by`. A row this function wrote is ours to
+    supersede; a row `publish` wrote is a document an operator authored under
+    ADR-044, and a release must not overrule it. Both stay stored either way,
+    so a decision citing the superseded digest still resolves years later.
     """
     document = policy.to_document(policy.PACK_V1)
     digest = policy.pack_digest(policy.PACK_V1)
-    cur.execute("select digest from policy_pack where active")
+    cur.execute("select digest, published_by from policy_pack where active")
     active = one(cur)
+    # Nothing active, or what is active is an older release's shipped pack.
+    governs = active is None or (
+        active["published_by"] == SHIPPED and active["digest"] != digest)
+    if governs and active is not None:
+        cur.execute("update policy_pack set active = false where active")
     cur.execute(
         "insert into policy_pack (version, digest, body, active, published_by)"
-        " values (%s,%s,%s,%s,%s) on conflict (digest) do nothing",
-        (policy.PACK_V1_VERSION, digest, json.dumps(document), active is None, published_by))
+        " values (%s,%s,%s,%s,%s)"
+        # `or` rather than a plain assignment: on the second call of a
+        # deployment whose shipped pack is already the active one, `governs` is
+        # false — it is not superseding anything — and assigning that would
+        # deactivate the very row it just found active, leaving nothing able to
+        # decide.
+        " on conflict (digest) do update set"
+        "   active = policy_pack.active or excluded.active,"
+        "   version = excluded.version",
+        (policy.PACK_V1_VERSION, digest, json.dumps(document), governs, published_by))
     return get(cur, digest) or {}
 
 

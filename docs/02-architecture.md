@@ -893,6 +893,25 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **What this constrains.** A new obligation, a new claim or a new mechanism now has to arrive with its probe, and a mechanism that ships turns the page red until somebody edits it. That is the intended cost: the failure mode here is not a wrong line of code, it is a true sentence that stopped being true and nothing noticed for two quarters.
 
+**ADR-055 · A jurisdictional obligation is a field in the pack, and a newer shipped pack supersedes an older one.**
+`zolts.evals.compliance_checks` has refused a draft carrying no AI-disclosure marker since the agent layer shipped, and nothing ever asked it to: `requires_ai_disclosure` was a keyword defaulting to `False` on `generate.run` and `copywriter.draft` with no caller that set it (D-90). A written, tested, switched-off control is this repository's dominant defect landing in the section a regulator reads.
+
+**The obligation is territorial, so it belongs in the pack rather than in code.** The EU AI Act's transparency duty applies where the recipient is, and ADR-044 built packs precisely so a regulatory change ships without a deployment. A `JurisdictionRule` now carries `ai_disclosure`; the shipped pack sets it for the EU jurisdictions it covers and for the unknown jurisdiction, and counsel changes that list by republishing a document. Decision 55 records the default and the reasoning behind the two edges.
+
+| | |
+|---|---|
+| **Unknown means required** | The same fail-closed direction as consent. A marker costs a sentence; its absence where the law wanted one is a breach, and the pack's whole posture is that an unknown jurisdiction is not an implicit allow |
+| **Absent in an old document means not required** | `from_document` reads a missing field as `False`. Reading silence as *required* would change what a pack published last year meant, and a decision citing its digest would no longer describe what happened |
+| **The digest covers it** | A canonical form that omitted the field would hash the same across a change to it, so the digest would certify a rule it never covered — the reason `to_document` names every field a rule decides by |
+| **Resolved once, at the gate** | The gate is the one place that reads the *published* pack. A second lookup at generation would be a second answer the day an operator publishes their own, so the answer rides on `GateResult` and the worker hands it on |
+| **An override may add it, never drop it** | `tighten` merges through `replace`, so a programme's policy block that says nothing about disclosure inherits the jurisdiction's answer rather than clearing it |
+
+**And the release path had a hole the same size.** `install_shipped` took the active seat only when nothing was active at all. That is right for a pack an operator published under ADR-044 and silently wrong for one an earlier release installed: a deployment upgrading from a release whose shipped pack said one thing to a release whose shipped pack says another went on deciding under the old rules for ever, and the only symptom was that nothing changed (D-91). So ADR-044's claim had a mirror image — a regulatory change that ships *with* a deployment did not take effect either. The distinction is `published_by`: a row this code wrote is ours to supersede, a row `publish` wrote is not.
+
+**It had never been seen because the case had never arisen and because CI is always right.** `PACK_V1` had not changed since it was written, and every CI run builds a fresh database, which is the branch that works. The test for it therefore builds its own premise — it installs an older shipped pack, asserts that it *is* active, and only then asks whether the newer one takes the seat. A test that started from whatever the database happened to hold would have certified the machine it ran on (D-73).
+
+**What this constrains.** Changing `PACK_V1` now changes what every deployment decides under at the next migration, which is the intended power and the reason the operator's own pack is protected from it. And a jurisdictional obligation added in code rather than in the pack is a regression: the next one belongs in `JurisdictionRule`, in the canonical form, and in `docs/11`'s table with a probe behind it (ADR-054).
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 

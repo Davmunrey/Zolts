@@ -226,6 +226,25 @@ MUTATIONS = (
         find="        requires_ai_disclosure: bool = False) -> Generated:",
         replace="        requires_ai_disclosure: bool = True) -> Generated:",
         tests="tests/test_compliance_claims.py"),
+    Mutation(
+        id="the-disclosure-marker-is-required-where-the-pack-says",
+        claim="the shipped pack requires an AI-disclosure marker in the EU "
+              "jurisdictions it covers, and a message without one reaches a "
+              "person instead of a prospect (D-90, decision 55)",
+        path="zolts/policy.py",
+        find='        suppression_lists=("robinson_list_es",),\n        ai_disclosure=True,',
+        replace='        suppression_lists=("robinson_list_es",),',
+        tests="tests/test_ai_disclosure.py"),
+    Mutation(
+        id="a-newer-shipped-pack-takes-the-seat",
+        claim="a release that changes the shipped pack changes what a running "
+              "deployment decides under, rather than migrating and leaving the "
+              "old rules in place (D-91)",
+        path="runtime/policy_packs.py",
+        find="    governs = active is None or (\n"
+             "        active[\"published_by\"] == SHIPPED and active[\"digest\"] != digest)",
+        replace="    governs = active is None",
+        tests="tests/test_policy_packs.py"),
 )
 
 def _dirty() -> bool:

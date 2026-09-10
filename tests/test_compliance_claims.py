@@ -146,22 +146,33 @@ def test_the_document_counts_the_open_rows_rather_than_remembering_them():
 
 # ── the claims outside the table ──────────────────────────────────────────
 
-def test_the_ai_disclosure_check_is_not_described_as_switched_on():
-    """`evals.compliance_checks` refuses a draft with no disclosure marker, and
-    `requires_ai_disclosure` is `False` at every call site with nothing setting
-    it (D-90). Until something does, the document says so."""
+def test_the_ai_disclosure_check_is_switched_on_by_the_pack():
+    """This test used to assert the opposite, and that is the point of it.
+
+    While `requires_ai_disclosure` was a keyword no caller set, it pinned the
+    default off and required `docs/11` to say *not switched on* (D-90). Pack v2
+    wired it, so the guard turned red and the page was corrected in the same
+    commit — which is the behaviour ADR-054 asks of every row: a control that
+    ships corrects the document rather than quietly overtaking it.
+
+    What it holds now is the other direction. The flag must still default off,
+    because a `GateResult` that did not answer means the pack's own silence and
+    not a marker demanded of every message in every market; and something must
+    still be setting it, or the check is switched off again.
+    """
     from runtime.engine import generate
     from runtime.agents import copywriter
 
     for function in (generate.run, copywriter.draft):
         default = function.__kwdefaults__ or {}
         assert default.get("requires_ai_disclosure") is False, (
-            f"{function.__module__}.{function.__name__} no longer defaults the "
-            f"disclosure flag off; docs/11 says nothing switches it on")
+            f"{function.__module__}.{function.__name__} now demands the marker "
+            f"by default, which is a rule no pack published")
 
-    callers = _appears(r"requires_ai_disclosure=True")
-    assert not callers, f"something sets the flag now: {callers}; docs/11 is stale"
-    assert "not switched on" in DOC.read_text(encoding="utf-8")
+    text = DOC.read_text(encoding="utf-8")
+    assert "built, from the pack" in text, "docs/11 no longer says the check is wired"
+    assert "not switched on" not in text, "docs/11 still describes the check as off"
+    assert _appears(r"ai_disclosure"), "nothing in the runtime reads the pack's answer"
 
 
 def test_no_document_claims_a_role_model_this_product_does_not_have():

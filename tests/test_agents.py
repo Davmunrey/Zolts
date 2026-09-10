@@ -245,10 +245,20 @@ def _agent_spec():
 # What the seeded dossier actually contains: the account, the contact, and a
 # recent funding signal. A draft is only supportable against the evidence that
 # retrieval produced, so the fixture states both halves rather than hoping.
+# The contact is in Spain, and pack v2 requires an AI-disclosure marker in the
+# EU jurisdictions it covers (decision 55). A draft without one is refused by
+# `evals.compliance_checks` and goes to a person, which is the product working:
+# the fixture carries the marker because a real message sent there would have
+# to. `test_a_draft_with_no_disclosure_marker_reaches_a_person` asserts the
+# other half, so this line cannot be quietly softening the check.
 WIRED_DRAFT = (
     "Hi Dana. Dana Cruz works at Acme, and that is usually where the reporting layer "
     "breaks first. Acme just closed a funding round of 9000000. Worth twenty minutes "
-    "next week? Reply unsubscribe and I will stop.")
+    "next week? This message is AI-assisted. Reply unsubscribe and I will stop.")
+
+# The same draft as it was before pack v2: everything the evaluator wants except
+# the marker the jurisdiction requires.
+DRAFT_WITHOUT_DISCLOSURE = WIRED_DRAFT.replace("This message is AI-assisted. ", "")
 
 
 def _seed(db, tenant, fake, guard, client):
@@ -301,6 +311,39 @@ def test_an_agent_step_produces_a_proposal_then_a_send(db, tenant, fake, guard):
     assert queued.get("dispatched") == 1, f"expected one promoted proposal, got {queued}"
     assert ("generate", "succeeded") in kinds
     assert any(k == "dispatch" for k, _ in kinds), "an approved proposal must queue a send"
+
+
+@has_guard
+def test_a_draft_with_no_disclosure_marker_reaches_a_person(db, tenant, fake, guard):
+    """The other half of `WIRED_DRAFT`'s marker, so that line cannot be a
+    softening nobody notices.
+
+    The fixture contact is in Spain and pack v2 requires the marker there
+    (decision 55). The same draft without it is the draft this suite carried
+    until the flag was wired, and it must now stop at a person rather than
+    going out — which is `evals.compliance_checks` doing the job it has been
+    able to do since the agent layer shipped, being asked for the first time
+    (D-90).
+    """
+    from runtime.repo import proposals
+
+    tid, worker, _ = _seed(db, tenant, fake, guard,
+                           StubClient(text=DRAFT_WITHOUT_DISCLOSURE))
+    tick = worker.tick([tid])
+    assert tick.succeeded >= 1, tick.errors
+
+    with db.tenant_tx(tid) as cur:
+        queued = proposals.counts(cur)
+        cur.execute("select kind from action where kind = 'dispatch'")
+        sends = cur.fetchall()
+        cur.execute("select gate_reason from proposal order by created_at desc limit 1")
+        reason = (cur.fetchone() or {}).get("gate_reason") or ""
+
+    assert queued.get("needs_human") == 1, (
+        f"a message missing the marker its jurisdiction requires was not held: {queued}")
+    assert not sends, "a draft that fails a compliance check must not queue a send"
+    assert "disclosure" in reason.lower(), (
+        f"the proposal was held for some other reason: {reason!r}")
 
 
 @has_guard

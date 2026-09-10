@@ -250,3 +250,86 @@ def test_the_command_line_publishes_a_pack_and_prints_the_active_one(
     with db.admin_tx() as cur:
         policy_packs.publish(cur, policy.to_document(policy.PACK_V1),
                              version=policy.PACK_V1_VERSION, published_by="test")
+
+
+# ── the upgrade path CI never builds ──────────────────────────────────────
+
+@requires_db
+def test_a_newer_shipped_pack_supersedes_an_older_one(db):
+    """The branch a fresh database can never reach.
+
+    `install_shipped` used to activate only when nothing was active at all, so
+    a deployment upgrading from a release whose shipped pack said one thing to
+    a release whose shipped pack says another went on deciding under the old
+    rules for ever, with no signal but the absence of change (D-91). It had
+    never been observed because `PACK_V1` had not changed since it was written
+    and because CI builds a fresh database on every run — the branch that
+    works.
+
+    So the premise is built here rather than found: an older shipped pack is
+    installed and made active, and this test asserts it *is* the active one
+    before asking whether the newer one takes the seat. A test that started
+    from whatever the database happened to hold would be certifying the
+    machine it ran on (D-73).
+    """
+    older = {k: v for k, v in policy.PACK_V1.items() if k != "GB"}
+    assert policy.pack_digest(older) != policy.pack_digest(policy.PACK_V1)
+
+    with db.admin_tx() as cur:
+        cur.execute("delete from policy_pack")
+        cur.execute(
+            "insert into policy_pack (version, digest, body, active, published_by)"
+            " values ('1',%s,%s,true,'shipped')",
+            (policy.pack_digest(older), json.dumps(policy.to_document(older))))
+        assert policy_packs.active(cur)["digest"] == policy.pack_digest(older), (
+            "the premise did not hold: the older pack is not the active one")
+
+        policy_packs.install_shipped(cur)
+        active = policy_packs.active(cur)
+
+    assert active["digest"] == policy.pack_digest(policy.PACK_V1), (
+        "a release shipped new rules and the deployment kept deciding under the old ones")
+    assert active["version"] == policy.PACK_V1_VERSION
+
+
+@requires_db
+def test_a_newer_shipped_pack_never_displaces_an_operators_own(db):
+    """The other half, and the reason the first is not simply *always activate*.
+
+    A pack `publish` wrote is a document an operator authored under ADR-044.
+    A release must not overrule it — that would make the published-pack path a
+    setting that resets on the next deploy, which is the shape of a control an
+    operator believes they have.
+    """
+    theirs = {k: v for k, v in policy.PACK_V1.items() if k != "CA"}
+    with db.admin_tx() as cur:
+        cur.execute("delete from policy_pack")
+        policy_packs.publish(cur, policy.to_document(theirs),
+                             version="operator-1", published_by="an operator")
+        assert policy_packs.active(cur)["digest"] == policy.pack_digest(theirs)
+
+        policy_packs.install_shipped(cur)
+        active = policy_packs.active(cur)
+        stored = {row["digest"] for row in policy_packs.history(cur)}
+
+    assert active["digest"] == policy.pack_digest(theirs), (
+        "a deploy took the active seat back from a pack an operator published")
+    assert active["published_by"] == "an operator"
+    assert policy.pack_digest(policy.PACK_V1) in stored, (
+        "the shipped pack was not stored beside it, so a decision citing it "
+        "could not resolve")
+
+
+@requires_db
+def test_installing_the_same_shipped_pack_twice_leaves_it_active(db):
+    """Idempotence, asserted because the fix nearly broke it: an upsert that
+    assigned the computed flag deactivated the very row it had just found
+    active, leaving a deployment where nothing could be decided."""
+    with db.admin_tx() as cur:
+        cur.execute("delete from policy_pack")
+        policy_packs.install_shipped(cur)
+        first = policy_packs.active(cur)
+        policy_packs.install_shipped(cur)
+        second = policy_packs.active(cur)
+    assert first["digest"] == second["digest"] == policy.pack_digest(policy.PACK_V1)
+    assert second["active"]
