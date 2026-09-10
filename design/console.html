@@ -1734,6 +1734,38 @@ function renderProspects(){
         [nf((m.email || 0) + (m.phone || 0) + (m.firmographics || 0)), "fields missing"]]);
 }
 
+/* The tier's own target beside the tier's own number. Per tier and never per
+   programme (decision 57): a programme may consume several tiers, and a Tier C
+   signal is a daily batch by design, so one verdict for the programme would
+   fail a system doing exactly what its catalogue says. The stage this runtime
+   cannot measure is named rather than dropped — a missing probe that looks
+   like an absent obligation is how an unmeasured SLA reads as a met one. */
+function slaBlock(tiers){
+  if (!tiers.length) return "";
+  var says = {meets: "meets", misses: "misses", no_data: "nothing sent yet",
+              no_target: "no p95 published", not_measured: "not measured",
+              unknown_tier: "unknown tier"};
+  var rows = [], unmeasured = [];
+  tiers.forEach(function(t){
+    ["proposed", "executed"].forEach(function(key){
+      var st = (t.stages || {})[key];
+      if (!st) return;
+      var value = (st.verdict === "meets" || st.verdict === "misses")
+        ? nf(st.p95Minutes) + "/" + nf(st.targetMinutes) + " min, " + says[st.verdict]
+        : (says[st.verdict] || st.verdict);
+      rows.push(["Tier " + t.tier + " " + key, value,
+                 st.verdict === "misses" ? "warnt" : ""]);
+    });
+    var first = (t.stages || {}).available;
+    if (first && first.verdict === "not_measured")
+      unmeasured.push("Tier " + t.tier + " " + nf(first.targetMinutes) + " min");
+  });
+  return block("Time-to-touch SLA (docs/06)", rows)
+    + (unmeasured.length ? note("Not measured", [["Ingestion to signal available.",
+        "Targeted at " + unmeasured.join(", ") + " and this runtime has no probe for it."]])
+      : "");
+}
+
 /* ── signals ───────────────────────────────────────────────────────────
    docs/06 calls signal-to-action latency the highest-leverage variable in
    the system, so the split between how long the source took and how long we
@@ -1743,10 +1775,19 @@ function renderSignals(){
   var recent = S.recent || [], watched = S.watched || [], L = S.latency || {};
   document.getElementById("shown").textContent = recent.length;
 
+  /* docs/06 publishes a p95 per tier and calls it the contractual SLA of two
+     plans. The console printed the measurement beside no target at all, which
+     is an SLA an operator can miss for a quarter without being told (D-97).
+     Shown before anything has fired too: a commitment exists from the day the
+     plan is signed, and a target that appears only once it is being missed is
+     a target nobody planned against. Values are kept short because this column
+     does not wrap (D-38). */
+  var sla = slaBlock(S.sla || []);
+
   if (!recent.length && !watched.length){
     list.innerHTML = empty("Nothing detected yet. A live program's trigger is what puts a "
       + "signal on the watch list.");
-    detail.innerHTML = block("Time to touch", [["Touches from a signal", "0"]]);
+    detail.innerHTML = block("Time to touch", [["Touches from a signal", "0"]]) + sla;
     foot([]);
     return;
   }
@@ -1786,7 +1827,7 @@ function renderSignals(){
     ["This runtime acting", mins(L.executionP95Minutes)],
     ["Signal to touch", mins(L.totalP95Minutes), "hi"],
     ["Measured over", nf(L.touches || 0) + " touches"]
-  ]) + note("Why it is split", [
+  ]) + sla + note("Why it is split", [
     ["A slow source.", "Change the source — the wait is before us."],
     ["A slow runtime.", "Add workers — the wait is ours."]
   ]);

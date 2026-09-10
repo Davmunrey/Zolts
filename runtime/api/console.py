@@ -621,7 +621,12 @@ def signals_view(cur, limit: int = 100) -> dict[str, Any]:
         "lastChecked": r["last_checked"].isoformat(),
     } for r in cur.fetchall()]
 
-    return {"recent": recent, "watched": watched, "latency": watch.latency(cur)}
+    # The number and the verdict on it. `docs/06` publishes a p95 target per
+    # tier and calls it the contractual SLA of two plans; until now the
+    # console printed the measurement beside no target at all, which is an
+    # SLA an operator can miss for a quarter without being told (D-97).
+    return {"recent": recent, "watched": watched,
+            "latency": watch.latency(cur), "sla": watch.sla(cur)}
 
 
 def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:

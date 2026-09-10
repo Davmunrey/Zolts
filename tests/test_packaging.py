@@ -9,6 +9,7 @@ thing standing between that and a first-run demo.
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 from pathlib import Path
@@ -20,19 +21,77 @@ from tests.conftest import requires_db
 ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILE = ROOT / "Dockerfile"
 
-# Resolved from the modules rather than written down here, so renaming a
-# directory in the code and forgetting the Dockerfile fails this test.
-def _runtime_data_paths() -> dict[str, Path]:
-    from runtime.api.app import SURFACE
-    from runtime.db import MIGRATIONS
-    from zolts.blueprint import BLUEPRINT_DIR
-    from zolts.catalog import PROGRAM_DIR
-    from zolts.dsl import SCHEMA_PATH as PROGRAM_SCHEMA
-    from zolts.mapping import SCHEMA_PATH as MAPPING_SCHEMA
+# Discovered from the source rather than listed here. The list this replaced
+# named six paths and the signal catalogue was not one of them, so the whole
+# signal library — every tier, every freshness SLA, the thing `docs/06` calls
+# the highest-leverage variable in the system — was absent from the image and
+# nothing said so (D-98). Its comment claimed the list was resolved from the
+# modules, and it was: renaming a directory failed the test and *adding* one
+# was invisible to it. A guard that only fires in the direction the defect does
+# not take is the defect it was written for, one release later.
+#
+# So every `Path(__file__)…parent / "…"` expression under `zolts/` and
+# `runtime/` is read out of the syntax tree, whether it sits at module level or
+# inside a function. A directory added tomorrow fails this test until the
+# Dockerfile ships it.
+SOURCE_ROOTS = ("zolts", "runtime")
 
-    return {"blueprints": BLUEPRINT_DIR, "programs": PROGRAM_DIR,
-            "program schema": PROGRAM_SCHEMA, "mapping schema": MAPPING_SCHEMA,
-            "console surface": SURFACE, "migrations": MIGRATIONS}
+
+def _anchor_depth(node: ast.AST) -> int | None:
+    """How many `.parent` hops a `Path(__file__)…` chain climbs, or None."""
+    hops = 0
+    while True:
+        if isinstance(node, ast.Attribute):
+            if node.attr == "parent":
+                hops += 1
+            elif node.attr != "resolve":
+                return None
+            node = node.value
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id == "Path":
+                anchored = (node.args and isinstance(node.args[0], ast.Name)
+                            and node.args[0].id == "__file__")
+                return hops if (anchored and hops) else None
+            node = node.func
+        else:
+            return None
+
+
+def _runtime_data_paths() -> dict[str, Path]:
+    found: dict[str, Path] = {}
+    sources = [path for root in SOURCE_ROOTS
+               for path in sorted((ROOT / root).rglob("*.py"))]
+    for source in sources:
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        # Only the end of each chain. `ast.walk` also yields the inner
+        # `… / "examples"` of `… / "examples" / "programs"`, and a prefix
+        # directory nothing reads is not a path the image has to ship.
+        inner = {id(node.left) for node in ast.walk(tree)
+                 if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)}
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)):
+                continue
+            if id(node) in inner:
+                continue
+            parts, cursor = [], node
+            while isinstance(cursor, ast.BinOp) and isinstance(cursor.op, ast.Div):
+                if not (isinstance(cursor.right, ast.Constant)
+                        and isinstance(cursor.right.value, str)):
+                    parts = []
+                    break
+                parts.append(cursor.right.value)
+                cursor = cursor.left
+            hops = _anchor_depth(cursor) if parts else None
+            if hops is None or hops > len(source.parents):
+                continue
+            resolved = source.parents[hops - 1].joinpath(*reversed(parts))
+            if resolved.exists():
+                found[resolved.relative_to(ROOT).as_posix()] = resolved
+    # `runtime/db.py` builds the migrations path the same way; assert the
+    # discovery found something rather than silently checking nothing, which is
+    # how a guard that runs and proves nothing looks exactly like one that bites.
+    assert len(found) >= 5, f"the discovery found only {sorted(found)}"
+    return found
 
 
 def _copied_sources() -> list[str]:

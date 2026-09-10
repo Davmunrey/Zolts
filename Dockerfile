@@ -20,6 +20,7 @@ COPY scripts/ scripts/
 # the quickstart reported success and the product was empty.
 COPY examples/schema/ examples/schema/
 COPY examples/programs/ examples/programs/
+COPY examples/signals/ examples/signals/
 COPY blueprints/ blueprints/
 COPY design/ design/
 
