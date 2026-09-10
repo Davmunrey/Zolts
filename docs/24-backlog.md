@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1479 | 445 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1498 | 445 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -47,6 +47,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | ID | Item | Why | Size |
 |---|---|---|---|
 | **VER-1** | Mutation coverage across the runtime | **Done, and measured.** `zolts/` catches 39 of 40 sampled mutants — 97.5%, 95% CI 87-100%, from 512 possible. `runtime/` catches **27 of 30 — 90%, 95% CI 74-97%, from 1,473 possible** on a fresh draw at seed `20260908`, against 22 of 30 on the earlier sample the guards were written from. The improvement is **not statistically significant** at thirty mutants (two-proportion `z` 1.67, *p* 0.095) and `docs/22` says so beside the number. Each mutant costs a full Postgres suite run. Every real survivor from both samples is guarded and every equivalent one annotated where it lives, each verified by re-applying its own mutation. CI samples eight on every push to keep the sampler honest, and the measurement now runs against its own database so a suite and a mutation pass no longer contend | S |
+| **VER-4** | The thirteen documents no test reads | Fourteen of the twenty-eight files under `docs/` were named by no test and no script, so every number in them could drift from the product without anything noticing — the shape ADR-017 fixed for the price list and ADR-053 has now fixed for `docs/09`, which went first because its thresholds, wrong, burn a sending domain and cannot be corrected afterwards. That first pass found a documented alarm the runtime had never implemented (D-87), which is the yield to expect. **Not every document should be read by a test:** a market thesis has nothing checkable in it, and a test that parsed one would assert prose. The item is to triage the remaining thirteen into *has checkable claims* and *does not*, and to write the check where it does — `docs/03` (the data model against the migrations), `docs/06` (the signal library against the catalogue) and `docs/07` (the waterfall's providers and hit rates) are the candidates | M |
 
 ### Product
 

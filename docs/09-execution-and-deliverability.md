@@ -15,7 +15,7 @@ reputation_factor ∈ [0, 1.2]  a function of bounces, complaints, engagement, P
 
 The scheduler assigns each send to a specific mailbox, optimising for mailbox reputation, geographic and language affinity with the recipient, the recipient's MX provider (segregating Google-bound from Microsoft-bound traffic), and load balance. A mailbox whose reputation degrades is automatically pulled back into warm-up.
 
-Implemented in `zolts/deliverability.py`, with 32 tests. Executing it settled three things the prose left open.
+Implemented in `zolts/deliverability.py`, with 46 tests, fourteen of them reading the threshold table out of this document (ADR-053). Executing it settled three things the prose left open.
 
 **Reputation is scored per domain, so the domain is the unit that burns.** A domain past the complaint cut-off has zero capacity including its healthy mailboxes. Letting a clean mailbox keep sending from a burned domain is not a way out; it is how the rest of the fleet follows.
 
@@ -35,6 +35,12 @@ Missing authentication is handled separately from reputation, because it is not 
 | Unsubscribe | <0.5% | 1% | 2% → review |
 | Emails per mailbox per day | 30-40 | 50 | 60 |
 | Simultaneous new domains | — | — | Staggered ramp, never a mass activation |
+
+**This table is read by a test, not restated by a comment.** `tests/test_operating_thresholds.py` builds metrics at each bound above and requires `assess` to return a rule about that metric, in both directions — nothing may fire early either. The reply row is why: it names an alarm at 2% and a review at 1%, only the review had ever been implemented, and a mailbox replying at 1.5% was in alarm here and healthy in the product (D-87, ADR-053). Where the document and the code disagree, the disagreement is a build failure rather than a paragraph somebody edits.
+
+**The reply row does not cost sending capacity, and the row below it does.** An alarm normally halves a mailbox, and cold outreach replies just under 2% on a good day: halving the fleet for that would spend deliverability headroom on a targeting problem no amount of headroom fixes. Below 1% is different — engagement that low is a signal the mail providers read themselves.
+
+**Emails per mailbox per day is a bound on our own arithmetic.** `sent_today` counts the touches this runtime sent, so a mailbox a rep also sends from by hand is judged on our half of its traffic; whether to read the mailbox's real volume from the provider is decision 53. The scheduler's own peak is 48, below the alarm, and a test asserts it stays there.
 
 Every verdict carries a rule key and a rationale, for the same reason policy decisions do: an unexplained pause is a pause the operator works around. `ramp_plan()` schedules new domains in waves of two a week apart — activating a fleet at once gives every domain one shared reputation history, so a single mistake takes all of them down together instead of one.
 

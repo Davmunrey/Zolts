@@ -856,6 +856,25 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **What this constrains.** The decimal separator matters: `1,5` is one and a half in half of Europe and fifteen in the other half, and reading it as fifteen is the direction that sends the offer out. A separator leaving one or two digits behind it is decimal; anything else is grouping, because a group is three digits.
 
+**ADR-053 · A threshold the document calls non-negotiable is read by a test, not restated by a comment.**
+`docs/09` heads its threshold table **"Operating thresholds (non-negotiable)"**, and `zolts/deliverability.py` opens the constant beneath it with the comment *"The table in docs/09, as data"*. Nothing checked that it was, and it was not: the reply-rate row names an alarm at 2% and a review at 1%, and only the review had ever been written. A mailbox replying at 1.5% was in alarm in the document and healthy in the product (D-87).
+
+**This is ADR-017's mechanism, one document over, for a sharper reason.** The price list lives in code and a test reads `docs/12` to check it. A price that drifts is invoiced wrongly and corrected afterwards; a bounce cut-off that drifts burns a sending domain, and that is not correctable on the timescale that matters. The module's own docstring already said its errors do not surface as a failing test — which is the argument for making one surface them, not for accepting it.
+
+**The document's notation decides the direction, and nothing is inferred from the metric's name.** A leading `<` in a threshold cell means the rule fires *below* the number, a bare number means at or above it. Four rows are ceilings and one is a floor; a fifth row added tomorrow is read the same way, rather than by somebody remembering which metrics count upward.
+
+| Checked | How |
+|---|---|
+| Every rate bound the document names | `Metrics` built at that bound, and `assess` must return a rule about that metric. Not a comparison of two tables: a table comparison passes on a constant nothing reads, which is this repository's dominant defect |
+| Nothing fires early | A product stricter than the contract it published costs sending capacity nobody agreed to give up, and reads to an operator as a defect |
+| A cut-off that says *paused* pauses | Two rows pause and two say a human reviews. A review that silently paused would stop a tenant over a copy problem; a pause that became a review would let a burning domain keep sending |
+| Emails per mailbox per day | As a property, measured rather than restated: the largest capacity any mailbox can be granted, over every warm-up day and the best metrics the model rewards, stays below the alarm. The runtime does not enforce this row directly — its own arithmetic already stays under it, and the assertion is that it keeps doing so |
+| *Never a mass activation* | The one row with no number. `ramp_plan` must never bring the whole fleet up in one wave, for any size of fleet |
+
+**An alarm that costs capacity and an alarm that asks a human to look are different things.** `reputation_factor` halves a mailbox on any alarm, so implementing the 2% reply row as an ordinary alarm would have halved the fleet of every tenant whose cold outreach replies at 1.9% — a normal figure — for a targeting problem no amount of sending headroom fixes. `reply.alarm` is advisory and does not reach the multiplier. `reply.collapsed` at 1% is not: engagement that low is a signal the mail providers read themselves. That distinction was a comment until a mutation survived it, and it is now two tests.
+
+**What this constrains.** The table is now the contract in both directions. Relaxing a bound means editing the document and watching the suite go red, which is the point — a threshold that can be loosened in prose is not non-negotiable, whatever the heading says. `docs/09` was the first of fourteen documents no test reads (VER-4); it went first because it is the only one whose numbers, wrong, are unrecoverable.
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 
