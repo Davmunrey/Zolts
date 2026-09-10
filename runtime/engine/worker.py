@@ -178,11 +178,16 @@ class Worker:
             # twenty-four, which is the same reasoning that freezes a metric
             # with the version that declared it.
             sla = step.get("sla_hours")
+            # Who the task is about. It does not consume the frequency cap —
+            # a queued task has no `sent_at` — but a task nobody can attribute
+            # to a person is one an operator cannot act on either.
+            subject = self._resolve_contact(cur, payload)
             ledger.record_touch(
                 cur, tenant_id, enrollment_id=action["enrollment_id"], channel=channel,
                 step_key=action["step_key"], idempotency_key=action["idempotency_key"],
                 content={"step": step, "awaiting": "human_review"},
                 provider=None, provider_ref=None, status="queued",
+                person_id=str(subject["id"]) if subject else None,
                 due_at=(None if sla is None
                         else datetime.now(timezone.utc) + timedelta(hours=int(sla))))
             actions.succeed(cur, str(action["id"]), {"queued_for_human": True})
@@ -229,7 +234,8 @@ class Worker:
                 cur, tenant_id, enrollment_id=action["enrollment_id"], channel=channel,
                 step_key=action["step_key"], idempotency_key=action["idempotency_key"],
                 content={"blocked_by": verdict.rule_key, "rationale": verdict.rationale},
-                provider=None, provider_ref=None, status="failed")
+                provider=None, provider_ref=None, status="failed",
+                person_id=str(person["id"]) if person else None)
             tick.cancelled += 1
             return
 
@@ -272,7 +278,7 @@ class Worker:
             content={"step": payload.get("step", {})}, provider=provider,
             provider_ref=result.provider_ref, status="sent",
             cost_micros=result.cost_micros, sent_at=datetime.now(timezone.utc),
-            mailbox_id=mailbox_id)
+            mailbox_id=mailbox_id, person_id=str(person["id"]) if person else None)
         # Metered whatever the provider cost us, at this channel's price.
         # Billing a send only when we happen to know our own COGS made every
         # send through a provider that reports no cost free to the customer,
@@ -352,7 +358,8 @@ class Worker:
                 idempotency_key=action["idempotency_key"],
                 content={"proposal_id": result.proposal_id, "awaiting": result.state,
                          "reason": result.reason},
-                provider=None, provider_ref=None, status="queued")
+                provider=None, provider_ref=None, status="queued",
+                person_id=str(person["id"]) if person else None)
         tick.succeeded += 1
 
     # -- helpers ---------------------------------------------------------

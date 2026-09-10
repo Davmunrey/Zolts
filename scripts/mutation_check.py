@@ -245,6 +245,23 @@ MUTATIONS = (
              "        active[\"published_by\"] == SHIPPED and active[\"digest\"] != digest)",
         replace="    governs = active is None",
         tests="tests/test_policy_packs.py"),
+    Mutation(
+        id="the-frequency-cap-counts-a-person",
+        claim="the touches-per-week cap counts a person across every programme "
+              "and channel, not an account's enrolment in one of them (D-92)",
+        path="runtime/engine/gate.py",
+        find='    touches_week = ledger.touches_this_week(cur, str(person["id"]))',
+        replace="    touches_week = 0",
+        tests="tests/test_frequency_cap.py"),
+    Mutation(
+        id="a-sent-touch-names-its-person",
+        claim="the worker records who a sent touch reached, without which the "
+              "cap counts nothing and the only symptom is a fourth message "
+              "in a week (D-92)",
+        path="runtime/engine/worker.py",
+        find='            mailbox_id=mailbox_id, person_id=str(person["id"]) if person else None)',
+        replace="            mailbox_id=mailbox_id)",
+        tests="tests/test_frequency_cap.py"),
 )
 
 def _dirty() -> bool:
