@@ -189,6 +189,25 @@ MUTATIONS = (
         find="    window_start: str = Field(min_length=10, max_length=10)\n",
         replace="    window_start: str = Field(min_length=10, max_length=11)\n",
         tests="tests/test_survivors.py"),
+    Mutation(
+        id="every-documented-threshold-is-a-rule",
+        claim="the reply-rate alarm docs/09 calls non-negotiable fires at the 2% "
+              "the document names, and not only at the 1% below it (D-87)",
+        path="zolts/deliverability.py",
+        find="""    ("reply.alarm",        "reply_rate",       0.02,   Health.ALARM,
+     "reply rate below 2%"),
+""",
+        replace="",
+        tests="tests/test_operating_thresholds.py"),
+    Mutation(
+        id="an-advisory-alarm-costs-no-capacity",
+        claim="a weak reply rate is reported and does not halve a mailbox, and a "
+              "collapsed one still does — the two bounds of one docs/09 row mean "
+              "different things (D-87)",
+        path="zolts/deliverability.py",
+        find='ADVISORY = frozenset({"reply.alarm"})',
+        replace="ADVISORY = frozenset()",
+        tests="tests/test_operating_thresholds.py"),
 )
 
 def _dirty() -> bool:

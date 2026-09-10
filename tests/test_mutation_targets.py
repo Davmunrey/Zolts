@@ -12,6 +12,7 @@ Milliseconds, no mutations applied, no tests run.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -142,3 +143,14 @@ def test_the_probe_reads_the_marker_rather_than_the_file_name():
     guard nobody can check is exactly what this is guarding against."""
     assert CHECK._needs_a_database("tests/test_metrics.py") is True
     assert CHECK._needs_a_database("tests/test_dsl.py") is False
+
+
+def test_the_register_counts_the_guards_rather_than_remembering_them():
+    """`docs/22` states how many guards the script re-proves. It said sixteen
+    while the script held eighteen — the register's own defect shape, committed
+    in the paragraph that names it, so the number is read rather than trusted."""
+    doc = (Path(__file__).resolve().parent.parent / "docs" / "22-defect-register.md").read_text()
+    stated = re.search(r"breaks \*\*(\d+) named guards\*\*", doc)
+    assert stated, "docs/22 no longer states how many guards mutation_check.py breaks"
+    assert int(stated.group(1)) == len(MUTATIONS), (
+        f"docs/22 says {stated.group(1)} named guards and the script holds {len(MUTATIONS)}")

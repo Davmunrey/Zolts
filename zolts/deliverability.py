@@ -91,6 +91,24 @@ THRESHOLDS = (
      "unsubscribe rate at or above 1%"),
 )
 
+# The same table's two inverted rows, worst-first for the same reason. A reply
+# rate is a floor rather than a ceiling — the rule fires *below* the bound — so
+# it cannot live in THRESHOLDS without inverting the comparison for every row.
+FLOORS = (
+    ("reply.collapsed",    "reply_rate",       0.01,   Health.ALARM,
+     "reply rate below 1%; segment and copy need review"),
+    ("reply.alarm",        "reply_rate",       0.02,   Health.ALARM,
+     "reply rate below 2%"),
+)
+
+# An alarm an operator acts on, not one a mail provider is reacting to.
+# `reputation_factor` halves a mailbox on any alarm, and a weak reply rate is a
+# targeting result: halving the sending it is allowed would spend deliverability
+# headroom on a problem deliverability cannot fix, and cold outreach lives just
+# under 2% on a good day. Below 1% is different — engagement that low is a
+# signal the providers themselves read — so `reply.collapsed` is not advisory.
+ADVISORY = frozenset({"reply.alarm"})
+
 # Minimum volume before a rate means anything. One bounce out of three sends is
 # 33% and tells you nothing; pausing on it would make every new mailbox
 # unusable on its first day.
@@ -99,7 +117,14 @@ MIN_SAMPLE = 50
 
 def assess(metrics: Metrics) -> Verdict:
     """Health of a mailbox or domain. Every verdict carries a rule key, for the
-    same reason policy decisions do: an unexplained pause gets worked around."""
+    same reason policy decisions do: an unexplained pause gets worked around.
+
+    Both tables in one pass, ceilings before floors: a bounce rate over its
+    cut-off is a worse finding than a reply rate under its alarm, and the first
+    match decides. `tests/test_operating_thresholds.py` reads the rows out of
+    `docs/09` and requires each one to fire here at the bound the document
+    names, so a threshold cannot be relaxed by editing a table in prose.
+    """
     if metrics.sent < MIN_SAMPLE:
         return Verdict(Health.OK, "sample.insufficient",
                        f"{metrics.sent} sends is below the {MIN_SAMPLE} a rate needs")
@@ -109,12 +134,12 @@ def assess(metrics: Metrics) -> Verdict:
             return Verdict(health, rule_key,
                            f"{text} (observed {getattr(metrics, attr):.3%})")
 
-    # A collapsed reply rate is a targeting failure, not a delivery one, but it
+    # A weak reply rate is a targeting failure, not a delivery one, but it
     # precedes a reputation failure reliably enough to be worth catching here.
-    if metrics.reply_rate < 0.01:
-        return Verdict(Health.ALARM, "reply.collapsed",
-                       f"reply rate {metrics.reply_rate:.2%} is below 1%; "
-                       "segment and copy need review")
+    for rule_key, attr, limit, health, text in FLOORS:
+        if getattr(metrics, attr) < limit:
+            return Verdict(health, rule_key,
+                           f"{text} (observed {getattr(metrics, attr):.3%})")
 
     return Verdict(Health.OK, "ok", "all thresholds clear")
 
@@ -138,7 +163,7 @@ def reputation_factor(metrics: Metrics) -> float:
     verdict = assess(metrics)
     if verdict.health is Health.PAUSED:
         return 0.0
-    if verdict.health is Health.ALARM:
+    if verdict.health is Health.ALARM and verdict.rule_key not in ADVISORY:
         return 0.5
     if metrics.sent < MIN_SAMPLE:
         return 1.0
