@@ -930,6 +930,19 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-063 · A screen that spends money shows the price, sends only what was selected, and does not choose the legal basis for you.**
+`POST /v1/enrich` has said, since enrichment became executable, that *the console sends the rows the operator selected*. The console sent nothing. The Prospects screen computed which contacts were missing an email or a phone — by its own comment, using the same rule the engine uses to decide whether to spend money — and offered no way to buy any of it (D-103). One panel below, the cost of a dossier was the literal string `20 credits`.
+
+| Decision | Why |
+|---|---|
+| **The price is on the button, before the click** | A phone number is 25 credits and an email is 8, in the same selection on the same screen. A purchase whose cost appears only on the invoice is how a data budget disappears |
+| **Every price is read from `zolts.billing`** | A surface holding its own copy quotes a stale one the day the list changes, and nothing fails. The test is behavioural: move the list and the view has to move with it, because a dict compared against the dict that built it passes on any dict |
+| **Named rows, never everything unresolved** | The endpoint already enforces it. A screen that disagreed would offer a purchase nobody can predict the bill for |
+| **Only a row with something buyable can be selected** | A row that highlights and then buys nothing is a control that lies about what it will spend |
+| **The legal basis is chosen, never defaulted** | It is recorded against every value bought and cannot be reconstructed later. A field the screen fills in silently records the screen's default rather than a decision, so nothing is preselected and the buy refuses until somebody picks |
+
+**Where a basis is unbacked, the screen says so at the point of assertion.** `docs/11` marks the legitimate interest assessment **Not built** (COMP-5): the basis may be declared and no assessment is captured, stored or versioned. That sentence belongs beside the button, not in a compliance appendix, because this is where somebody is about to assert it. A test reads the document and fails if the screen keeps saying it after the gap closes.
+
 **ADR-062 · An action that gave up is recovered one at a time, from a screen, with the error intact.**
 `docs/25`'s outbox runbook told the operator, for a dead action whose error is a `401`, `403` or `invalid_grant`: re-enter the credential, then requeue. The requeue it supplied was a raw SQL `update` to run by hand against production, and it did three things wrong at once (D-102).
 

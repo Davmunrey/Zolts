@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1750 | 527 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1765 | 530 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -100,6 +100,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **A missing field can be bought from the screen that shows it is missing.** `POST /v1/enrich` named the console as its caller and the console never called it: Prospects computed what was missing with the engine's own rule and offered nothing. It now sells the selected rows with the cost on the button, every price read from the price list rather than restated, and a legal basis that is chosen rather than defaulted — including the sentence saying no assessment backs legitimate interest yet (ADR-063, D-103).
 
 - **An action that gave up can be recovered.** The outbox runbook told the operator to requeue a dead action and supplied a raw SQL `update` that nulls `last_error` across a whole channel — destroying the only record of why each one died, at the moment somebody is deciding about it, and reviving the ones whose cause is still there. No screen listed them at all. There is now an Outbox screen with the error that killed each action, the runbook's own triage read off that text, and two acts: put it back on the wire carrying the same idempotency key, or retire it. Both require a written reason and record who acted (ADR-062, D-102).
 

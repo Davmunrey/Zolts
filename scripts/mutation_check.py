@@ -424,6 +424,26 @@ MUTATIONS = (
         replace="        \" where id = %s returning *\", (action_id,))\n"
                 "    return one(cur)\n\n\ndef discard",
         tests="tests/test_outbox_recovery.py"),
+    Mutation(
+        id="a-bought-field-names-the-basis-somebody-chose",
+        claim="the legal basis is recorded against every value bought and "
+              "cannot be reconstructed later, so the screen refuses to buy "
+              "until a person picks one — a field the surface fills in "
+              "silently records the surface's default, not a decision",
+        path="design/console.html",
+        find="      if (!state.basis){",
+        replace="      if (false){",
+        tests="tests/test_enrichment_buying.py"),
+    Mutation(
+        id="the-screen-quotes-the-price-list-not-its-own-copy",
+        claim="every enrichment price the console shows is read out of "
+              "`zolts.billing`, so a screen that spends a data budget cannot "
+              "quote a stale price the day the list changes",
+        path="runtime/api/console.py",
+        find='            **{field: float(billing.CREDITS[f"enrich.{field}"])\n'
+             '               for field in ("email", "phone", "firmographics")},',
+        replace='            **{"email": 8.0, "phone": 25.0, "firmographics": 4.0},',
+        tests="tests/test_enrichment_buying.py"),
 )
 
 def _dirty() -> bool:

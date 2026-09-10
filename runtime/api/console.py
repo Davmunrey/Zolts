@@ -17,7 +17,7 @@ from typing import Any
 
 from runtime import fleet, outbox, sendingcontrol
 from runtime.repo import enrollments, programs
-from zolts import attention, dsl
+from zolts import attention, billing, dsl
 from zolts.deliverability import assess
 from zolts.sendingcontrol import judge_resume
 from zolts.catalog import load_catalog
@@ -584,6 +584,21 @@ def prospects_view(cur, limit: int = 200) -> dict[str, Any]:
             "firmographics": sum(1 for a in accounts if a["missing"]),
             "email": sum(1 for p in people if "email" in p["missing"]),
             "phone": sum(1 for p in people if "phone" in p["missing"]),
+        },
+        # What each field costs, read out of `zolts.billing` rather than
+        # restated. A screen that spends a data budget without showing the
+        # price is how the budget disappears, and a screen that quotes its own
+        # copy of the price list quotes a stale one the day the list changes.
+        # The spread is the reason it has to be visible: a phone number is
+        # three times an email.
+        "prices": {
+            **{field: float(billing.CREDITS[f"enrich.{field}"])
+               for field in ("email", "phone", "firmographics")},
+            # The surface printed "20 credits" for a dossier as a literal, one
+            # panel below the fields it now prices properly. A price restated
+            # in markup is a price that is wrong the day the list changes, and
+            # nothing would have failed.
+            "dossier": float(billing.CREDITS["agent.dossier"]),
         },
     }
 

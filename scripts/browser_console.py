@@ -108,6 +108,14 @@ def _seed() -> tuple[str, str]:
              json.dumps({"awaiting": "human_review",
                          "brief": "Call the RevOps lead about the new role."})))
 
+        # One contact with nothing on them, so a row on Prospects is buyable.
+        # Seeded incomplete on purpose: the empty state proves the screen
+        # exists, and only a row an operator can spend money on proves the
+        # control does.
+        cur.execute(
+            "insert into person (tenant_id, full_name, country)"
+            " values (%s,'Dana Reyes','ES')", (tenant_id,))
+
         # One action that gave up, with the error the runbook's own triage
         # table keys on. Seeded dead on purpose: an empty state proves the
         # screen exists, and only a row proves an operator can act on it.
@@ -347,6 +355,31 @@ def main() -> int:
             page.click("#ob-revive")
             page.wait_for_selector('#list .empty', timeout=15_000)
             report["outbox_after_revive"] = page.locator("#list").inner_text()[:200]
+
+            # 5c. Buying a missing field. `POST /v1/enrich` says in its own
+            #     docstring that the console sends the rows the operator
+            #     selected; the console sent nothing, and the screen that
+            #     computed what was missing offered no way to buy any of it.
+            page.click('nav a[data-view="prospects"]')
+            page.wait_for_selector('#list .row[data-p]', timeout=15_000)
+            page.locator('#list .row[data-p]').first.click()
+            page.wait_for_selector("#buy-email", timeout=15_000)
+            #     The price is on the button, before the click. A phone number
+            #     is three times an email and a purchase whose cost appears
+            #     only on the invoice is how a data budget disappears.
+            report["buy_offered"] = page.locator("#buy-email").inner_text()
+
+            #     Nothing preselects a legal basis, and the button refuses
+            #     until one is chosen: it is recorded against every value
+            #     bought and cannot be reconstructed later.
+            page.click("#buy-email")
+            page.wait_for_selector("#buy-msg:not([hidden])", timeout=15_000)
+            report["basis_required"] = page.locator("#buy-msg").inner_text()
+
+            page.click('#basis button[data-basis="consent"]')
+            page.wait_for_selector('#basis button[aria-pressed="true"]', timeout=15_000)
+            report["basis_chosen"] = page.locator(
+                '#basis button[aria-pressed="true"]').inner_text()
 
             # 6. The three views that did not exist, and the rail that
             #    offered five links leading nowhere. Every entry is clicked,
@@ -671,6 +704,16 @@ def main() -> int:
         if not report.get("stop_audited"):
             print("a domain was stopped and nothing recorded who or why",
                   file=sys.stderr)
+            return 1
+        if "credits" not in (report.get("buy_offered") or ""):
+            print("::error::the buy control does not say what it will spend:",
+                  json.dumps(report.get("buy_offered")), file=sys.stderr)
+            return 1
+        if "legal basis" not in (report.get("basis_required") or "").lower():
+            print("::error::the console bought a field without a legal basis, "
+                  "which is recorded against every value and cannot be "
+                  "reconstructed later:",
+                  json.dumps(report.get("basis_required")), file=sys.stderr)
             return 1
         revived = report.get("action_revived") or {}
         if revived.get("state") != "pending":
