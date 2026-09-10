@@ -930,6 +930,22 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-057 · The overlay resolves at the choke point, and the archetype it resolves against is the tenant's.**
+`docs/05` states the inheritance chain — Blueprint → Industry Pack → Tenant → Program — and calls it the third path between a generic product that needs six weeks of consulting and a per-customer fork that destroys margin. Each level may **add or restrict, never relax policy**. `zolts/overlay.py` implements exactly that and raises on any lower layer that weakens what it inherits, and **nothing in the runtime ever called it** (D-94).
+
+**Two comments pointed at the resolver and neither reached it.** `programs.publish` says the blueprint in a programme's metadata is *not decoration* because *the overlay resolver needs it*; `generate.py` reasons that a discount ceiling belongs to the archetype because a programme may only tighten. Both are correct about a resolver that was never invoked. A comment describing a call that does not happen is worse than no comment: it is a reader's evidence that the mechanism is live.
+
+**It runs where the other four admission checks run**, for the reason ADR-037 gives: five callers reach a stored programme, and a guard reachable by one of them is a habit of that caller rather than a property of the system.
+
+| Decision | Why |
+|---|---|
+| **The tenant's blueprint governs, not the programme's metadata** | A programme may tighten what its archetype permits and never widen it, so the ceiling belongs to the archetype the customer signed up under. The same reading ADR-052 already takes for the discount authority, and the metadata field is a label rather than an authority |
+| **No blueprint is not a ceiling of zero** | A tenant declaring none, or naming an archetype this release does not ship, has nothing to inherit from. Refusing every programme of such a tenant would make the overlay a gate rather than an inheritance, and would make an upgrade path a wall |
+| **Equal is not looser** | `policy.tighten`'s first version read equality as a relaxation and refused all four shipped programmes. A rule that refuses the product's own examples is a rule nobody can ship, so a test publishes every shipped programme under the archetype its own document names |
+| **Two layers, and the document says two** | The industry-pack and tenant layers are designed and not built. Resolving a chain of four when there are two would be the same defect in a new coat |
+
+**What this constrains.** An archetype's policy is now load-bearing: tightening `blueprints/ecommerce-dtc.yaml` can refuse a programme that published yesterday. That is the intended power — it is what makes a compliance tier mean something — and it means a blueprint change is a release decision rather than a content edit. Two test fixtures were loosening their archetype and neither had any reason to; they were written before anything checked, which is the whole point.
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 

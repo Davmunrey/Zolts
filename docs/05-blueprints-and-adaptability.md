@@ -11,7 +11,18 @@ Blueprint (archetype)  →  Industry Pack  →  Tenant  →  Program
       global                 sectoral       customer    play
 ```
 
-Each level may **add** or **restrict**, never relax policy. Resolution is deterministic and the effective result is inspectable (`zolts explain program X --resolved`). It is the kustomize model applied to GTM: blueprint improvements flow to every customer without breaking their customisations.
+Each level may **add** or **restrict**, never relax policy. It is the kustomize model applied to GTM: blueprint improvements flow to every customer without breaking their customisations.
+
+**Two of the four layers are built, and the resolver had no caller until D-94.** `zolts/overlay.py` enforced restrict-only semantics, was tested in isolation, and nothing in the runtime invoked it — so a programme could publish three touches a week under an archetype permitting one, and the compliance tier a customer chose meant nothing. It now runs at the publish choke point against the **tenant's** archetype (ADR-057), which is the same layer the discount authority reads (ADR-052).
+
+| Layer | Status |
+|---|---|
+| Blueprint | **Built.** `blueprints/*.yaml`, resolved from the profile below |
+| Industry pack | **Not built.** No sectoral layer exists between the archetype and the tenant |
+| Tenant | **Not built** as a policy layer. A tenant names its archetype and its programmes; it declares no policy of its own. Every shipped programme says `inherit: tenant_default`, naming a layer that is not there |
+| Program | **Built.** `spec.policy.overrides`, refused at publish if it loosens the archetype |
+
+`zolts explain program X --resolved` is **not a command that exists**; the resolution a reader would want to inspect is the refusal message, which names the key, both values and the layer that raised it. A real `explain` waits on the two missing layers, because resolving a chain of two and calling it four is the defect above in a new coat.
 
 ## Profiling: 13 dimensions
 

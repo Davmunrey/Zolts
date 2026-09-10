@@ -46,7 +46,11 @@ SPEC = {
         ]},
         "t1": {"auto_send": False, "steps": [{"step": "task_ae", "channel": "task"}]},
     },
-    "policy": {"overrides": {"max_touches_per_person_per_week": 3}},
+    # Two, not three: this spec is published under both fixture tenants and
+    # `other_tenant` is on `ecommerce-dtc`, which permits two. A programme may
+    # not loosen its archetype (D-94), and the number is incidental to every
+    # test in this file — none of them sends three touches in a week.
+    "policy": {"overrides": {"max_touches_per_person_per_week": 2}},
     "experiment": {"holdout_pct": 10, "unit": "account", "salt": "test-salt"},
     # `reply_negative` rather than `unsubscribe`: triage routes an unsubscribe to
     # the suppression path before any outcome is written, so a rule naming it can

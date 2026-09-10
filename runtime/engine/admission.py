@@ -35,7 +35,8 @@ class NotAdmissible(ValueError):
     """A program the runtime refuses to store, and the reason why."""
 
 
-def check(spec: dict[str, Any], program_key: str) -> None:
+def check(spec: dict[str, Any], program_key: str,
+          inherited_policy: dict[str, Any] | None = None) -> None:
     """Raise `NotAdmissible` if this spec must not become a version.
 
     The four failures, each of which is a program that looks armed and does
@@ -64,9 +65,18 @@ def check(spec: dict[str, Any], program_key: str) -> None:
       that cannot be read as stricter is refused rather than ignored;
       ignoring is the worst of the three, because it lets an operator believe
       they are protected by a rule nothing applies.
+    * **A programme that loosens the archetype it inherits from.** `docs/05`
+      says each level may add or restrict and never relax, and `zolts/overlay.py`
+      enforces exactly that — for the whole life of the runtime, with no caller
+      (D-94). `inherited_policy` is the blueprint the *tenant* resolved to, not
+      the one the programme's metadata names: a programme may tighten what its
+      archetype permits and never widen it, so the ceiling belongs to the
+      archetype the customer signed up under (the same reasoning as ADR-052).
+      Absent when the tenant declares no blueprint, which is not a ceiling of
+      zero — it is nothing to inherit from.
     """
     from runtime.engine import audience, enrich_step, enroll
-    from zolts import metrics, policy
+    from zolts import metrics, overlay, policy
 
     try:
         enroll.holdout_pct(spec, program_key)
@@ -78,9 +88,16 @@ def check(spec: dict[str, Any], program_key: str) -> None:
         overrides = (spec.get("policy") or {}).get("overrides") or {}
         for rule in policy.PACK_V1.values():
             policy.tighten(rule, overrides)
+        if inherited_policy:
+            # Two layers, in the order `docs/05` states them. The tenant and
+            # industry-pack layers between them are designed and not built, and
+            # the document says so rather than this resolving a chain of four
+            # when it has two.
+            overlay.resolve([overlay.Layer("blueprint", {"policy": inherited_policy}),
+                             overlay.Layer("program", {"policy": overrides})])
     except (enroll.HoldoutMissing, audience.AudienceError,
             enrich_step.EnrichmentNotPriced, metrics.MetricError,
-            policy.OverrideNotUnderstood) as exc:
+            overlay.PolicyLoosened, policy.OverrideNotUnderstood) as exc:
         # One type at the boundary, the original message intact. Callers map
         # it to a 422; the point of the single type is that a caller cannot
         # catch three of the four and let the fourth through.

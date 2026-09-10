@@ -61,7 +61,7 @@ MUTATIONS = (
         id="admission-at-the-choke-point",
         claim="a program is admitted where it is stored, not in one of five callers",
         path="runtime/repo/programs.py",
-        find="    admission.check(spec, key)\n",
+        find="    admission.check(spec, key, _inherited_policy(cur, tenant_id))\n",
         replace="",
         tests="tests/test_admission.py"),
     Mutation(
@@ -270,6 +270,15 @@ MUTATIONS = (
         find="| **Strategist** | **Not built** |",
         replace="| **Strategist** | **Built** |",
         tests="tests/test_agent_layer_claims.py"),
+    Mutation(
+        id="a-programme-may-not-loosen-its-archetype",
+        claim="the overlay resolver runs at the publish choke point against the "
+              "tenant's blueprint, so a programme cannot widen what its archetype "
+              "permits — it had no caller at all until D-94",
+        path="runtime/repo/programs.py",
+        find="    admission.check(spec, key, _inherited_policy(cur, tenant_id))",
+        replace="    admission.check(spec, key)",
+        tests="tests/test_inherited_policy.py"),
 )
 
 def _dirty() -> bool:

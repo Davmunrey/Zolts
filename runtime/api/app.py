@@ -594,6 +594,14 @@ def create_app(db: Database, *, install_connectors: bool = True,
             # the four paths that do not come through this handler get the
             # same answer — this call exists to refuse without opening a
             # transaction and to say 422 rather than 500.
+            #
+            # It cannot answer every question and does not pretend to: whether
+            # the programme loosens its archetype needs the tenant's blueprint,
+            # which needs a cursor (ADR-057). So this is a cheap pre-check and
+            # `publish` is the authority — and the authority's refusal is caught
+            # below as the same 422. Leaving that one uncaught turned an
+            # inadmissible programme into a 500, which is the status code this
+            # comment exists to prevent (D-95).
             admission.check(body.spec, body.key)
         except admission.NotAdmissible as exc:
             raise HTTPException(422, str(exc)) from exc
@@ -604,6 +612,8 @@ def create_app(db: Database, *, install_connectors: bool = True,
                                        version=body.version, spec=body.spec,
                                        spec_hash=program.spec_hash, status="draft",
                                        created_by=principal.key_id, metadata=metadata)
+            except admission.NotAdmissible as exc:
+                raise HTTPException(422, str(exc)) from exc
             except programs.VersionIsImmutable as exc:
                 # 409, not 422: the document is valid, the version is taken.
                 # An operator who republishes v2.1.0 with a new holdout needs
