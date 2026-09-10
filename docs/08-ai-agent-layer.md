@@ -21,6 +21,14 @@ Every generated message is decomposed into claims. Each claim must map to (a) a 
 
 This is stricter than "the LLM usually gets it right", and it is exactly what a CMO demands before letting messages carrying their brand go out.
 
+## Commercial authority: what a message may offer
+
+Provenance asks whether a claim is **true**. It does not ask whether we are **allowed to say it**, and those come apart on exactly one kind of sentence: an offer. A blueprint declares `policy.discount_authority` — `ecommerce-dtc` permits 15% — and a message that cites the promotion perfectly and offers 25% is correctly sourced and still commits the seller to terms the archetype forbids. Nothing read that ceiling until D-85, and provenance hid the gap: an *unevidenced* offer was already stopped as an unsupported quantified claim, so only the evidenced one ever got through.
+
+An offer over the ceiling stops the send and is listed for the reviewer. It is **never removed** the way an unsupported claim is: deleting the offer and sending the rest is precisely the case this page already sends to a person, and a reviewer who cannot see the offer cannot judge it. A currency amount is stopped too, because a percentage ceiling cannot compare one without an order value (ADR-052, decision 52).
+
+A figure is not an offer until a word makes it one — *20% of our customers renew early* is a fact — and a percentage at or below the ceiling passes whatever the sentence says, so only a figure above the archetype's own limit can ever cost a review.
+
 ## Evals: the quality system
 
 | Level | What it measures | Mechanism | Frequency |

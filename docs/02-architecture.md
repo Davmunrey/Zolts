@@ -839,6 +839,23 @@ That is also why `spec.plays.*.steps.sla_hours` was read by nothing and could no
 
 **What this constrains.** A human step does not gate the sequence — the action succeeds when the task is created, and the next step proceeds. That was already true and is now registered rather than implicit (decision 51). The surfaces are the API and the command line; the console view is a follow-up, because the screenshot check that would prove it cannot run in the development container and an unverified screen in that file is how D-38 happened.
 
+**ADR-052 · Provenance asks whether a claim is true; the authority asks whether we may say it.**
+A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_pct: 15}` — and nothing read it, so nothing constrained the copywriter against it (D-85). `runtime/agents/copywriter.py` had no reference to a blueprint at all.
+
+**These are two different questions and the second is not a special case of the first.** ADR-012 requires every claim to map to a retrieved span, a CRM field or the proof library; an offer with no such backing was therefore already stopped, one layer earlier, as an unsupported quantified claim. The dangerous case is the *evidenced* one: the proof library carries the Q4 promotion, the model cites it correctly, and the message commits the seller to twenty-five per cent under an archetype that permits fifteen. No amount of evidence makes that permissible, because an offer binds in a way a fact does not.
+
+**An unauthorised offer is never dropped.** `zolts/provenance.py` states the rule it follows for a claim whose removal breaks the message: the message goes to a person rather than out with a hole. Deleting the offer and sending the rest is precisely that case, and a reviewer who cannot see the offer cannot judge it — so the sentence stays in the draft and is listed beside the dropped claims.
+
+**A number is not an offer until a word makes it one.** *20% of our customers renew early* is a fact; *20% off* is a commitment. The check requires a discount cue in the same sentence as a money-shaped figure, because a check that asked an operator to approve arithmetic would be waived by the second week. Over-firing is bounded by the ceiling itself: a percentage at or below what the archetype permits passes whatever the sentence says, so only a figure above it can ever cost a review.
+
+**A currency amount against a percentage ceiling needs a person.** `€500 off` cannot be compared with `max_pct: 15` without an order value nobody supplied. Passing what cannot be judged is the flattering direction; the alternative — adding `max_amount` — is a schema change, registered as decision 52 rather than assumed.
+
+**Silence is not a ceiling of zero.** A blueprint that declares no authority has said nothing, and reading that as *offer nothing* would send every message mentioning a discount to a person on an archetype that never asked for it.
+
+**Read from the archetype, not the programme.** A programme may tighten an inherited policy and never loosen it (`zolts/overlay.py`), so the ceiling belongs to the blueprint the tenant signed up under, which `tenant.blueprint_id` names.
+
+**What this constrains.** The decimal separator matters: `1,5` is one and a half in half of Europe and fifteen in the other half, and reading it as fifteen is the direction that sends the offer out. A separator leaving one or two digits behind it is decimal; anything else is grouping, because a group is three digits.
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 

@@ -168,7 +168,7 @@ def check(conditions: list[Condition]) -> int:
         print(f"DIFFERS {node}\n        {baseline_id}: {was} → {where}: {now}")
     print(f"\n{len(broke)} verdicts depend on the ambient state rather than on the code")
     print("::error::a test whose verdict moves with the environment is a test about the "
-          "environment; see the six in docs/22 (D-35, D-59, D-68, D-71, D-73, D-74)",
+          "environment; see the seven in docs/22 (D-35, D-59, D-68, D-71, D-73, D-74, D-86)",
           file=sys.stderr)
     return 1
 

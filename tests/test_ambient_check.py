@@ -116,11 +116,40 @@ def test_the_error_message_names_the_defects_the_script_exists_for():
     and this one is the first thing somebody reads when the script fires."""
     from pathlib import Path
 
+    import re
+
     source = (ROOT / "scripts" / "ambient_check.py").read_text()
     register = (ROOT / "docs" / "22-defect-register.md").read_text()
     shape = next(ln for ln in register.splitlines()
                  if "check that fails on its environment rather than on its subject" in ln)
-    assert "Six of them" in shape or "six of them" in shape, (
-        "the register's count of this shape moved; the script's message quotes it")
-    for defect in ("D-35", "D-59", "D-68", "D-71", "D-73", "D-74"):
-        assert defect in source, f"{defect} is of this shape and the message omits it"
+
+    # Both sides are read, and neither is pinned to a literal. This test named
+    # "Six of them" and went red the day a seventh was registered — a test
+    # failing because a defect was *recorded*, which teaches whoever hits it to
+    # edit the test rather than to check the claim.
+    counted = re.search(r"\*\*\s*(\w+) of them", shape)
+    assert counted, f"the register no longer counts this shape: {shape!r}"
+    named = re.search(r"see the (\w+) in docs/22 \(([^)]*)\)", source)
+    assert named, "the script's message no longer cites the register"
+    assert named.group(1).lower() == counted.group(1).lower(), (
+        f"the register counts {counted.group(1)} of this shape and the script's "
+        f"message says {named.group(1)}")
+
+    # And the ids, which is the half a count cannot check: a message that said
+    # "seven" and listed six would pass on the number alone.
+    cited = [d.strip() for d in named.group(2).split(",")]
+    listed = [row.split("|")[1].strip() for row in register.splitlines()
+              if row.startswith("| D-")]
+    assert len(cited) == _numeral(counted.group(1)), (
+        f"the message cites {len(cited)} defects and claims {counted.group(1)}")
+    for defect in cited:
+        assert defect in listed, f"the message cites {defect}, which the register does not hold"
+        assert defect in source
+
+
+_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+          "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+
+def _numeral(word: str) -> int:
+    return _WORDS[word.lower()]

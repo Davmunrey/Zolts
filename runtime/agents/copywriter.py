@@ -28,7 +28,7 @@ from typing import Any
 
 from runtime.agents.client import CHEAP_MODEL, Completion, ModelClient, ModelUnavailable
 from runtime.agents.spend import SpendGuard, SpendVerdict
-from zolts import evals, provenance
+from zolts import evals, offers, provenance
 
 log = logging.getLogger("zolts.agents.copywriter")
 
@@ -66,6 +66,7 @@ class Draft:
     cost_micros: int
     prompt_version: str = PROMPT_VERSION
     blocked: str | None = None
+    over_authority: list["offers.Offer"] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -80,6 +81,10 @@ class Draft:
     def as_content(self) -> dict[str, Any]:
         return {"body": self.text, "raw": self.raw_text,
                 "dropped_claims": self.verification.dropped,
+                # The offers a reviewer has to decide about, kept beside the
+                # dropped claims: both are reasons this message stopped, and a
+                # reviewer who sees one and not the other is guessing.
+                "unauthorised_offers": [o.sentence for o in self.over_authority],
                 "needs_human_reason": self.verification.reason}
 
 
@@ -92,7 +97,8 @@ def draft(*, client: ModelClient, guard: SpendGuard, evidence: list[provenance.E
           consumed_usd: float | None, limit_usd: float | None,
           threshold: float | None = None, requires_ai_disclosure: bool = False,
           prohibited: tuple[str, ...] = (), label: str = "copywriter",
-          allow_downgrade: bool = True) -> Draft:
+          allow_downgrade: bool = True,
+          authority: "offers.Authority | None" = None) -> Draft:
     """Draft one message, priced and gated. Never sends."""
     user = (f"EVIDENCE\n{_evidence_block(evidence)}\n\n"
             f"OPT-OUT INSTRUCTION TO INCLUDE VERBATIM\n{opt_out}\n\n"
@@ -154,11 +160,20 @@ def draft(*, client: ModelClient, guard: SpendGuard, evidence: list[provenance.E
         # and still have had a number removed from it.
         decision = evals.Gate(False, f"provenance: {verification.reason}",
                               decision.score, decision.threshold)
+    # And the archetype's commercial latitude overrides both. Provenance asks
+    # whether a claim is true; this asks whether we are allowed to say it, and
+    # no amount of evidence makes an unauthorised offer permissible (D-85).
+    # Never dropped like an unsupported claim: deleting the offer and sending
+    # the rest is precisely the case `provenance` sends to a person instead.
+    over = offers.exceeding(verification.message, authority)
+    if over and decision.auto_send:
+        decision = evals.Gate(False, f"discount authority: {offers.reason(over, authority)}",
+                              decision.score, decision.threshold)
 
     return Draft(text=verification.message, raw_text=completion.text, evidence=evidence,
                  verification=verification, evaluation=evaluation, gate=decision,
                  spend=verdict, completion=completion, model=model,
-                 cost_micros=cost_micros,
+                 cost_micros=cost_micros, over_authority=over,
                  meta={"input_tokens": completion.input_tokens,
                        "output_tokens": completion.output_tokens,
                        "downgraded": model != client.model,
