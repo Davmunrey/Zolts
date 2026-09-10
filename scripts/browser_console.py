@@ -209,8 +209,19 @@ def main() -> int:
             page.fill("#c-spec-experiment-holdout_pct", "12")
             page.wait_for_timeout(200)
             report["publish_offered"] = not page.is_disabled("#pub")
-            page.click("#pub")
+            # A successful publish reloads the page. `#tunebtn` is in the DOM
+            # before and after it, so waiting on that selector resolved about
+            # sixty milliseconds after the click — against the document the
+            # reload was already replacing. Every later step then ran on a page
+            # with a navigation in flight underneath it, and the review queue's
+            # Approve button was torn out from under a click that had already
+            # started (D-96). Wait for the reload itself: a publish the server
+            # refuses never navigates, so it fails here, naming this step,
+            # instead of surfacing three steps later as a click that hangs.
+            with page.expect_navigation(wait_until="load", timeout=45_000):
+                page.click("#pub")
             page.wait_for_selector("#tunebtn", timeout=20_000)
+            report["publish_reloaded"] = True
 
             # 4. The review queue: agents propose, a person disposes. Until
             #    this existed the disposing was curl, and the rail counted a
