@@ -178,9 +178,27 @@ def main() -> int:
             # `.app` is in the static markup, so waiting on it resolves before
             # the page's script has run. Wait for something the script
             # produces, or the assertions race the render.
-            page.wait_for_selector("#activate", timeout=15_000)
+            page.wait_for_selector("#goto", timeout=15_000)
             report["console_opened"] = True
             report["tenant_rendered"] = page.locator("#ws-name").inner_text()
+
+            # 2b. The console opens on the work, not on the inventory. A tenant
+            #     one minute past signup has a programme published and never
+            #     activated, and that is the thing to do first — so it has to
+            #     be on this screen, ranked, with the cost of leaving it, and
+            #     the button has to lead to the screen where it is done.
+            report["today_rail"] = page.locator("#nav-today").inner_text()
+            report["today_list"] = page.locator("#list").inner_text()[:500]
+            # Ranked by what ignoring it costs, so a broken promise outranks a
+            # programme that has not started. Read off the screen rather than
+            # assumed: the order is the product decision this view exists for.
+            report["today_order"] = [
+                r.inner_text().split("\n")[0]
+                for r in page.locator("#list .row").all()]
+            page.locator("#list .row", has_text="never activated").first.click()
+            report["today_detail"] = page.locator("#detail").inner_text()[:400]
+            page.click("#goto")
+            page.wait_for_selector("#activate", timeout=15_000)
 
             # 3. The first action after signup: activate the draft.
             report["activate_offered"] = page.locator("#activate").inner_text()
@@ -497,6 +515,25 @@ def main() -> int:
             print("::error::the signals view does not carry the time-to-touch "
                   "verdict docs/06 publishes:", json.dumps(sla_panel)[:400],
                   file=sys.stderr)
+            return 1
+
+        # The worklist has to name the work and what it costs, not just count
+        # it. A number with no reason beside it is the nine screens again.
+        today = (report.get("today_list") or "") + (report.get("today_detail") or "")
+        if "never activated" not in today:
+            print("::error::the console does not open on the work: a programme "
+                  "published and never activated is not on Today:",
+                  json.dumps(today)[:400], file=sys.stderr)
+            return 1
+        order = report.get("today_order") or []
+        if len(order) < 2 or "past their deadline" not in order[0]:
+            print("::error::Today is not ranked by what ignoring each item costs; "
+                  "a broken SLA has to outrank a programme that has not started:",
+                  json.dumps(order)[:300], file=sys.stderr)
+            return 1
+        if "until somebody presses Activate" not in today:
+            print("::error::Today lists the work and not what ignoring it costs:",
+                  json.dumps(today)[:400], file=sys.stderr)
             return 1
 
         cost_panel = report.get("cost_panel") or ""

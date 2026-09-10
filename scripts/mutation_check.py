@@ -358,6 +358,15 @@ MUTATIONS = (
         find='  if (state.view === "tasks"){ renderTasks(); return; }',
         replace='  if (state.view === "tasks"){ return; }',
         tests="tests/test_task_queue_view.py"),
+    Mutation(
+        id="the-worklist-is-ranked-by-cost-not-by-recency",
+        claim="Today ranks what needs a person by what ignoring it costs, so an "
+              "irreversible sending alarm cannot be pushed below a draft "
+              "waiting for approval by arriving earlier",
+        path="zolts/attention.py",
+        find='    return sorted(items, key=lambda item: RANK[kind(item["kind"]).key])',
+        replace="    return list(items)",
+        tests="tests/test_attention.py"),
 )
 
 def _dirty() -> bool:

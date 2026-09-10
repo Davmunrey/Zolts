@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1681 | 502 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1701 | 504 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -100,6 +100,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **The console opens on the work.** Nine screens answered *what is the state of X*; none answered *what do I do now*, so an operator had to open all nine and join them by hand. Today collects every judgement the runtime already makes — a draft waiting, a task past its SLA, a mailbox in alarm, a tier missing its contractual p95, a cost per contact over target, a programme never activated — ranks them by what ignoring each one costs, and sends the click to the screen that owns the action. Built from the views it summarises rather than from its own queries, so the summary cannot drift from them (ADR-060). The view now also survives a reload, so no action loses your place.
 
 - **The human task queue has a screen.** `GET /v1/tasks` has answered it since D-83 gave a human task a way to be closed, and no screen asked. The console now lists what is waiting for a person, soonest deadline first, says by how much each one is late against the SLA its step stamped, and closes it. A task with no declared SLA is waiting rather than permanently breached. The browser check drives it: a seeded task three hours past due is rendered, marked done, and read back from the database.
 

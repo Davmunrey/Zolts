@@ -930,6 +930,23 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-060 · The console opens on the work, and the work is ranked by what ignoring it costs.**
+The console had nine screens and they were the same screen nine times: a row of stat tiles, a table, a detail panel, each answering *what is the state of X* for a different X. None answered the question an operator actually arrives with — **what do I do now** — so answering it meant opening nine screens and joining them in your head. A surface that makes the reader do the joining is a surface that does not help them work, which is what the founder said about it in exactly those terms.
+
+**Every judgement it needs was already being made.** A draft waiting for a person. A task past the SLA its step stamped. A mailbox in alarm. A tier missing the p95 two paid plans commit to (ADR-058). A cost per contact over the target `docs/08` sets. A programme published and never activated. Each was computed, rendered on its own screen, and collected by nothing — the register's dominant shape applied to the operator's attention.
+
+| Decision | Why |
+|---|---|
+| **Ranked by the cost of ignoring, never by recency** | A newest-first list is an inbox, and an inbox rewards whoever shouted last. A burning sending domain outranks a draft waiting for approval because one is reversible and the other is not |
+| **Built from the views it summarises, never from its own queries** | A home screen that counts the review queue a second time is a second answer waiting to disagree with the first, and the day they diverge the operator believes the summary. That is how a dashboard starts lying |
+| **Every row carries what ignoring it costs** | A worklist without reasons is a to-do list somebody else wrote, and an operator reading one has no way to decide what to skip |
+| **An unranked kind is refused, not sorted last** | A surface that silently drops an item it does not recognise to the bottom hides the thing nobody thought about |
+| **The empty state says what the runtime is doing** | An empty screen that says nothing is indistinguishable from one that failed to load |
+
+**The action stays where it already lives.** A row sends the operator to the screen that owns it rather than duplicating the control, so there is one place each thing is done and one place it can go wrong. A test reads the rail and fails if a kind points at a view that does not exist.
+
+**Losing your place on every action was the other half of it.** Every action here reloads the page — activate, publish, approve, mark done — and each dropped the operator back on the landing screen. Invisible while the landing screen was Programs; obvious the moment it was not. The view now survives the reload, which is also what keeps D-43's activation note where decision 35 says it belongs.
+
 **ADR-059 · A deploy is not done until something compares what production serves with what is on `main`.**
 Two correct decisions produced a wrong outcome. `vercel.json` turns the platform's own deploys of `main` off so production is released only from the workflow, which migrates the database and runs preflight before taking traffic (ADR-041). The workflow's release job skips rather than fails while its Vercel secrets are unset, so that a run which is red teaches the team something. Both hold. Together they meant production served a build from weeks earlier behind **thirty-nine consecutive green runs**, and the founder found it by opening the page (D-100).
 
