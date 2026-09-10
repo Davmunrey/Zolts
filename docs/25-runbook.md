@@ -185,17 +185,29 @@ The errors group by cause. One line with a high count is one broken integration.
 
 | Error contains | What to do |
 |---|---|
-| `401`, `403`, `invalid_grant` | the credential expired: re-enter it (`runtime.cli connect`), then requeue |
+| `401`, `403`, `invalid_grant` | the credential expired: re-enter it (`runtime.cli connect`), then revive |
 | `429` | the provider is rate-limiting; see **A provider is 429ing** below |
 | `no active connection for channel` | the tenant has no connector for that step's channel |
 | a provider's own validation message | the data is wrong, not the runtime: fix the record and let the next enrolment carry it |
 
-**Requeue after fixing the cause**, never before:
+**Revive after fixing the cause**, never before. The console's **Outbox** screen
+lists what died with the error that killed it, reads the same triage as the
+table above, and offers the two acts:
 
-```sql
-update action set state = 'pending', attempts = 0, run_after = now(), last_error = null
- where state = 'dead' and updated_at > now() - interval '24 hours' and channel = 'email';
-```
+| Act | What it does |
+|---|---|
+| **Put it back on the wire** | back to `pending` with the attempt budget restored and **the same idempotency key**, which is what an expired lease already relies on: at-least-once here, exactly-once at the provider |
+| **Retire it** | `discarded`, a state of its own. Not `cancelled` — that is the policy gate's, and it names the rule that made it |
+
+Both require a written reason and record who did it. `POST /v1/outbox/{id}/revive`
+and `/discard` are the same acts for a script.
+
+**Do not requeue with SQL.** This runbook used to print an `update` that set
+`last_error = null` across every dead action on a channel inside a 24-hour
+window. It destroyed the only record of why each action died, at the moment
+somebody was deciding what to do about it, and acted on rows nobody had looked
+at — a statement keyed on channel rather than on cause revives the actions
+whose cause is still there alongside the ones it fixed (D-102).
 
 ---
 

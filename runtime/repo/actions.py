@@ -123,5 +123,46 @@ def by_state(cur, state: str, limit: int = 100) -> list[dict[str, Any]]:
     return rows(cur)
 
 
+def revive(cur, action_id: str) -> dict[str, Any] | None:
+    """Put a dead action back in the queue, with its attempt budget restored.
+
+    Safe by the mechanism the worker already relies on. `runtime/engine/worker`
+    states it: crash safety comes from the lease, and an action released by an
+    expired lease carries **the same idempotency key it had before**, so the
+    provider deduplicates the overlap. At-least-once here, exactly-once there.
+    A revive is that path with a person as the trigger rather than a timeout,
+    and it re-runs with the same key for the same reason.
+
+    The attempt count resets because the retries are spent: leaving it at the
+    maximum would move the action straight back to dead on the first hiccup,
+    which is a requeue that requeues nothing. `last_error` is kept — what
+    killed it is what the operator is deciding about.
+
+    Only from `dead`. A pending action is already coming, a succeeded one is
+    done, and reviving either would be a second send with no failure behind it.
+    """
+    cur.execute(
+        "update action set state = 'pending', attempts = 0, leased_until = null,"
+        " run_after = now(), updated_at = now()"
+        " where id = %s and state = 'dead' returning *", (action_id,))
+    return one(cur)
+
+
+def discard(cur, action_id: str) -> dict[str, Any] | None:
+    """Retire a dead action nobody is going to revive.
+
+    Distinct from `cancel`, which is what the policy gate does when a decision
+    forbids an action: that carries a decision id and belongs to the runtime.
+    This is a person saying the work is not worth recovering, and without it a
+    dead row nobody will act on sits in the worklist forever — a permanent
+    alarm is an alarm the operator learns to scroll past.
+    """
+    cur.execute(
+        "update action set state = 'discarded', leased_until = null,"
+        " updated_at = now() where id = %s and state = 'dead' returning *",
+        (action_id,))
+    return one(cur)
+
+
 def dead_letter(cur, limit: int = 100) -> list[dict[str, Any]]:
     return by_state(cur, "dead", limit)

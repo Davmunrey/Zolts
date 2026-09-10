@@ -72,7 +72,7 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 - `zolts/deliverability.py` — sending capacity as managed inventory: warm-up, thresholds, per-provider segregation, staggered ramp
 - `zolts/provenance.py` — every claim in a generated message maps to a source, or it is removed
 - `zolts/evals.py` — the auto-send gate: compliance vetoes, an unmeasured check is not a pass
-- `tests/` — 1730 tests, each backing a specific claim made in `docs/`; 516 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
+- `tests/` — 1750 tests, each backing a specific claim made in `docs/`; 527 of them run against a real Postgres (`pytest -m db`) and CI fails a run that skipped them
 - `examples/tests/*.test.yaml` — declarative program tests: compliance expectations enforced in CI
 - `examples/programs/*.yaml` — four complete programs (B2B SaaS sales-led, PLG/PLS, ecommerce DTC, local multi-site services)
 - `examples/schema/zolts-program.schema.json` — JSON Schema for the DSL
@@ -84,12 +84,12 @@ PYTHONPATH=. python3 scripts/smoke_runtime.py          # signal in, gated action
 
 ```bash
 python3 scripts/validate.py                            # schema validation
-PYTHONPATH=. python3 -m pytest tests/ -q               # 1730 tests
+PYTHONPATH=. python3 -m pytest tests/ -q               # 1750 tests
 PYTHONPATH=. python3 scripts/run_program_tests.py      # 20 declarative cases
 PYTHONPATH=. python3 scripts/benchmark_waterfall.py    # measured savings
 ```
 
-The reference core exists to test the plan; the runtime exists to run it. Building both, and then running what was built, has corrected **101 defects** — recorded one by one in [22](docs/22-defect-register.md) with how each was found. Sixty-two of them were the same shape: a complete specification with no caller. A price in `docs/12` nothing charged, a column no code set, a button labelled for a feature that did not exist, a process table CI never ran, a restore script that ends by telling you to test it. The register's most useful column is not the defect, it is **how it was found**: reading found only documents contradicted by code, never a wrong line, and every high-cost one came from executing the thing or from breaking a guard on purpose to see whether it bites. See [19](docs/19-reference-core.md), [20](docs/20-runtime.md) and [22](docs/22-defect-register.md).
+The reference core exists to test the plan; the runtime exists to run it. Building both, and then running what was built, has corrected **102 defects** — recorded one by one in [22](docs/22-defect-register.md) with how each was found. Sixty-three of them were the same shape: a complete specification with no caller. A price in `docs/12` nothing charged, a column no code set, a button labelled for a feature that did not exist, a process table CI never ran, a restore script that ends by telling you to test it. The register's most useful column is not the defect, it is **how it was found**: reading found only documents contradicted by code, never a wrong line, and every high-cost one came from executing the thing or from breaking a guard on purpose to see whether it bites. See [19](docs/19-reference-core.md), [20](docs/20-runtime.md) and [22](docs/22-defect-register.md).
 
 Two more came from rendering the console against live data: the surface crashed on a program with no measurement yet — which is every program on day one — and it reported EUR 1.75m of incremental pipeline against a control arm with zero observed conversions, because its detectable effect had been computed from a floor rather than an estimate. That second one is now a rule in the core: no effect is declared while either arm carries fewer than five observed conversions.
 
