@@ -448,13 +448,15 @@ def main() -> int:
                   file=sys.stderr)
             return 1
 
-        # The tier, its target and a verdict, on a tenant that has sent nothing.
+        # Every stage the document targets, on a tenant that has sent nothing.
         # A commitment exists from the day the plan is signed, and a target
         # that appears only once it is being missed is one nobody planned
-        # against.
+        # against. All three, because a stage measured in the runtime and
+        # missing from the screen is a measurement nobody reads.
         sla_panel = report.get("sla_panel") or ""
-        if ("Tier A executed" not in sla_panel or "nothing sent yet" not in sla_panel
-                or "no probe for it" not in sla_panel):
+        stages = [f"Tier A {stage}" for stage in ("available", "proposed", "executed")]
+        if (any(row not in sla_panel for row in stages)
+                or "no observations yet" not in sla_panel):
             print("::error::the signals view does not carry the time-to-touch "
                   "verdict docs/06 publishes:", json.dumps(sla_panel)[:400],
                   file=sys.stderr)
