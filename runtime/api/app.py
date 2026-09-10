@@ -30,7 +30,7 @@ from runtime.engine import admission, enroll
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
-from runtime.surface import content_security_policy, document, inject
+from runtime.surface import build_id, content_security_policy, document, inject
 from zolts import dsl, experiment
 from zolts import metrics
 
@@ -992,7 +992,8 @@ def create_app(db: Database, *, install_connectors: bool = True,
                 f"the console surface is missing from this deployment "
                 f"({SURFACE}); the API and the worker are unaffected, and "
                 f"GET /v1/console returns the same data as JSON")
-        rendered = document(inject(SURFACE.read_text(encoding="utf-8"), data),
+        template = SURFACE.read_text(encoding="utf-8")
+        rendered = document(inject(template, data), build=build_id(template),
                             title=f"Zolts — {tenant['name']}")
         return Response(
             content=rendered, media_type="text/html; charset=utf-8",

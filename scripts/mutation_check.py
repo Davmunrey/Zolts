@@ -315,6 +315,24 @@ MUTATIONS = (
         find="                                received_at=received_at)",
         replace="                                received_at=None)",
         tests="tests/test_time_to_touch_sla.py"),
+    Mutation(
+        id="the-document-says-the-scheme-the-stylesheet-paints",
+        claim="the console document reads its colour scheme off the surface's own "
+              "canvas token, so it cannot go back to telling the browser the "
+              "opposite of what the page paints (D-99)",
+        path="runtime/surface.py",
+        find='    return "light" if 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.5 else "dark"',
+        replace='    return "dark"',
+        tests="tests/test_deploy_drift.py"),
+    Mutation(
+        id="something-compares-production-with-main",
+        claim="the static build stamps the page it builds, without which the drift "
+              "check cannot tell a stale production from a current one — thirty-nine "
+              "green runs over a build weeks old (D-100)",
+        path="scripts/build_site.py",
+        find="    rendered = document(inject(source, fixture), build=build_id(source),",
+        replace="    rendered = document(inject(source, fixture),",
+        tests="tests/test_deploy_drift.py"),
 )
 
 def _dirty() -> bool:

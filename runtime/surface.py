@@ -38,8 +38,9 @@ DOCUMENT = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="{description}">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#08090a">
+<meta name="color-scheme" content="{scheme}">
+<meta name="theme-color" content="{canvas}">
+<meta name="zolts-build" content="{build}">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{description}">
@@ -53,6 +54,7 @@ DOCUMENT = """<!doctype html>
 """
 
 _HEAD_PARTS = re.compile(r"<title>.*?</title>|<link\b[^>]*>|<style>.*?</style>", re.S)
+_CANVAS = re.compile(r"--canvas:\s*(#[0-9a-fA-F]{3,8})")
 _INLINE = re.compile(r"<style>(.*?)</style>|<script>(.*?)</script>", re.S)
 
 
@@ -74,7 +76,50 @@ def inject(source: str, data: dict[str, Any]) -> str:
     return source.replace(PLACEHOLDER, json.dumps(data, separators=(",", ":"), default=str), 1)
 
 
-def document(source: str, *, title: str = TITLE, description: str = DESCRIPTION) -> str:
+def build_id(template: str) -> str:
+    """Which build of the surface this is, from the surface itself.
+
+    A digest of the *template*, taken before any tenant's data is injected, so
+    the static build and the API serving live figures stamp the same twelve
+    characters for the same code. It is what `scripts/deploy_drift.py` compares
+    a deployed page against: production served a build from weeks earlier
+    behind thirty-nine green runs, because nothing anywhere compared the two
+    (D-100).
+    """
+    return hashlib.sha256(template.encode("utf-8")).hexdigest()[:12]
+
+
+def canvas(source: str) -> str:
+    """The background the stylesheet actually paints."""
+    found = _CANVAS.search(source)
+    if not found:
+        raise ValueError(
+            "the surface declares no --canvas token, so the document cannot "
+            "say which colour scheme it is; a wrong answer here paints the "
+            "browser's own canvas against the page")
+    return found.group(1)
+
+
+def scheme(source: str) -> str:
+    """`light` or `dark`, read off the surface rather than remembered.
+
+    The document used to declare `dark` as a constant. The brand work inverted
+    the palette to a light one and the constant stayed, so the browser was told
+    the opposite of what the stylesheet paints: form controls render in the
+    wrong scheme, and the canvas behind the page and the mobile chrome around
+    it are painted near-black around a light surface (D-99).
+
+    Derived, so it cannot disagree again. Relative luminance, sRGB weights.
+    """
+    hex_value = canvas(source).lstrip("#")
+    if len(hex_value) == 3:
+        hex_value = "".join(c * 2 for c in hex_value)
+    red, green, blue = (int(hex_value[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    return "light" if 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.5 else "dark"
+
+
+def document(source: str, *, title: str = TITLE, description: str = DESCRIPTION,
+             build: str = "") -> str:
     """Wrap the surface in a real document.
 
     `design/console.html` is authored for a runtime that supplies the shell. It
@@ -87,6 +132,7 @@ def document(source: str, *, title: str = TITLE, description: str = DESCRIPTION)
         body = body.replace(part, "", 1)
     head = "\n".join(p for p in head_parts if not p.startswith("<title>"))
     return DOCUMENT.format(title=title, description=description, favicon=FAVICON,
+                           scheme=scheme(source), canvas=canvas(source), build=build,
                            head=(f"<title>{title}</title>\n" + head).strip(),
                            body=body.strip())
 
