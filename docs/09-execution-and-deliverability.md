@@ -67,7 +67,7 @@ Every verdict carries a rule key and a rationale, for the same reason policy dec
 
 ## Cross-channel coordination
 
-A contact is a person, not a per-channel record. The **frequency cap is global**: if they received an email and a LinkedIn invitation this week, the third touch is delayed even if it comes from a different program. A unified suppression engine covers opt-outs, current customers, open opportunities, competitor accounts, legal suppression lists, and owner-level do-not-contact flags.
+A contact is a person, not a per-channel record. The **frequency cap is global**: if they received an email and a LinkedIn invitation this week, the third touch is delayed even if it comes from a different program. **That was a sentence in this document and not a property of the runtime until D-92:** the gate counted an account's enrolment in one programme, so a person in three plays had three budgets and an account's five contacts shared one. `touch.person_id` records who a touch reached and the cap counts per person across every programme and channel; `tests/test_frequency_cap.py` builds the situation this paragraph describes and asks the gate (ADR-056). A unified suppression engine covers opt-outs, current customers, open opportunities, competitor accounts, legal suppression lists, and owner-level do-not-contact flags.
 
 ## Reputation → decision loop
 

@@ -58,13 +58,18 @@ def record_touch(cur, tenant_id: str, *, enrollment_id: str | None, channel: str
                  step_key: str | None, idempotency_key: str, content: dict[str, Any],
                  provider: str | None, provider_ref: str | None, status: str,
                  cost_micros: int = 0, sent_at: datetime | None = None,
-                 mailbox_id: str | None = None,
+                 mailbox_id: str | None = None, person_id: str | None = None,
                  due_at: datetime | None = None) -> dict[str, Any] | None:
+    """Record one touch. `person_id` is who it reached, and it is not optional
+    in spirit: without it the frequency cap counts an account's enrolment
+    instead of a person, which is what it did for the whole life of the
+    runtime (D-92). It stays nullable because a touch with no resolvable
+    contact is still a touch that happened."""
     cur.execute(
         "insert into touch (tenant_id, enrollment_id, channel, step_key, idempotency_key,"
         " content, provider, provider_ref, status, cost_micros, sent_at, mailbox_id,"
-        " due_at)"
-        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        " person_id, due_at)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
         " on conflict (tenant_id, idempotency_key) do update set"
         "   status = excluded.status, provider_ref ="
         "   coalesce(excluded.provider_ref, touch.provider_ref), sent_at ="
@@ -76,11 +81,15 @@ def record_touch(cur, tenant_id: str, *, enrollment_id: str | None, channel: str
         # The deadline a human task was created under, kept across a retry for
         # the same reason the mailbox is: re-queuing the same work must not
         # quietly move the promise made about when it would be done.
-        "   due_at = coalesce(touch.due_at, excluded.due_at)"
+        "   due_at = coalesce(touch.due_at, excluded.due_at),"
+        # A redelivery that could not resolve the contact must not blank the
+        # one the first attempt recorded: the cap would then stop counting a
+        # person it had already counted.
+        "   person_id = coalesce(touch.person_id, excluded.person_id)"
         " returning *",
         (tenant_id, enrollment_id, channel, step_key, idempotency_key,
          json.dumps(content), provider, provider_ref, status, cost_micros, sent_at,
-         mailbox_id, due_at),
+         mailbox_id, person_id, due_at),
     )
     return one(cur)
 
@@ -137,11 +146,28 @@ def audit(cur, tenant_id: str, *, actor: str, action: str, subject: str | None,
     )
 
 
-def touches_this_week(cur, enrollment_id: str) -> int:
+def touches_this_week(cur, person_id: str) -> int:
+    """How many touches this person received in the last seven days.
+
+    **Per person, across every programme and every channel**, which is what
+    `max_touches_per_person_per_week` has always been named for and what
+    `docs/09` calls the global frequency cap. It counted
+    `touch where enrollment_id = ?` until D-92, and an enrolment is on an
+    *account* in every shipped programme — so one account's five contacts
+    shared a budget of three inside one programme, and the same person in three
+    programmes got three separate budgets. Wrong in both directions at once.
+
+    `sent_at is not null` is the whole of the filter beyond the window: a
+    policy refusal writes a row with no `sent_at`, and a contact the gate
+    blocked must not spend the budget of one it allowed. A queued human task
+    has none either, and is governed by the per-tier capacity `docs/09` gives
+    that channel rather than by this cap.
+    """
     cur.execute(
-        "select count(*) as n from touch where enrollment_id = %s"
-        " and sent_at > now() - interval '7 days'",
-        (enrollment_id,),
+        "select count(*) as n from touch"
+        " where person_id = %s and direction = 'out'"
+        "   and sent_at > now() - interval '7 days'",
+        (person_id,),
     )
     return int(one(cur)["n"])
 

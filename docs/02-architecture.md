@@ -912,6 +912,24 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **What this constrains.** Changing `PACK_V1` now changes what every deployment decides under at the next migration, which is the intended power and the reason the operator's own pack is protected from it. And a jurisdictional obligation added in code rather than in the pack is a regression: the next one belongs in `JurisdictionRule`, in the canonical form, and in `docs/11`'s table with a probe behind it (ADR-054).
 
+**ADR-056 · A touch names the person it reached, because the cap that governs it counts people.**
+`zolts.policy` has enforced `max_touches_per_person_per_week` since the policy engine shipped. `docs/09` calls the frequency cap **global** — *"if they received an email and a LinkedIn invitation this week, the third touch is delayed even if it comes from a different program"* — and `docs/06` promises *cross-program deduplication at person level*. The gate counted `touch where enrollment_id = ?`, and an enrolment is on an **account** in every shipped programme (D-92).
+
+**It was wrong in both directions at once, which is why neither direction ever looked like a bug.**
+
+| | |
+|---|---|
+| Across programmes | A person enrolled in three plays had three budgets of three. Nine touches in a week, every one reported compliant — the shape of automation `docs/09`'s own thesis says a buyer points at when they say these tools embarrass them |
+| Within one programme | An account's five contacts shared one budget of three, so a colleague who had been sent nothing was held by somebody else's touches. Nobody complains about a message that was not sent |
+
+**It could not have been right, because the row did not say who received it.** `Worker._resolve_contact` picks the contact at dispatch and the recipient was discarded immediately after. So this is a column before it is a rule: migration 028 adds `touch.person_id`, and the four call sites that write a touch name it.
+
+**Not back-filled, deliberately.** A touch written before this cannot be attributed without guessing which contact of the account it went to, and a cap counting a guess is worse than one counting less — it holds a contact somebody else was sent. The window is seven days, so the gap closes by itself in a week.
+
+**What counts, and what does not.** Only `sent_at is not null`: a policy refusal writes a row with no send time, and a contact the gate blocked must not spend the allowance of one it allowed. Only `direction = 'out'`: a reply is something the person did. A queued human task has no send time either, and is governed by the per-tier capacity `docs/09` gives that channel rather than by this cap — a rep who has not called yet has not contacted anybody.
+
+**The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 

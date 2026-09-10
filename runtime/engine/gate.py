@@ -89,7 +89,10 @@ def check(cur, tenant_id: str, *, person: dict[str, Any], channel: str,
           action_cost_eur: float = 0.0, remaining_budget_eur: float = float("inf"),
           now: datetime | None = None) -> GateResult:
     now = now or datetime.now(timezone.utc)
-    touches_week = ledger.touches_this_week(cur, enrollment_id) if enrollment_id else 0
+    # The person, not the enrolment. An enrolment is on an account in every
+    # shipped programme, so counting by it made the per-person cap a
+    # per-account-per-programme one (D-92).
+    touches_week = ledger.touches_this_week(cur, str(person["id"]))
     contact = build_contact(cur, person, touches_week)
 
     overrides = (program_spec.get("policy") or {}).get("overrides") or {}
