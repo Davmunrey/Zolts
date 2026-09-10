@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="49e624926109">
+<meta name="zolts-build" content="87e523bf1d10">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -173,6 +173,18 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .field input:invalid{border-color:var(--deny);background:var(--deny-dim,var(--surface-2))}
 .field .bound{grid-column:2;font:450 10.5px/1 var(--mono);color:var(--ink-tertiary);
   text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* The sending switch. A reason is required, so the field is the size of a
+   sentence rather than the size of a number: a box that fits six characters
+   asks for six characters, and what comes back is "fixed". */
+.actf{display:grid;gap:8px;margin-top:10px}
+.actf label{font-size:11.5px;color:var(--ink-secondary);font-family:var(--mono)}
+.actf input{font:450 12px/1.35 var(--mono);color:var(--ink);background:var(--surface-2);
+  border:1px solid var(--hairline);border-radius:4px;padding:8px;width:100%;min-width:0}
+.actf input:focus{outline:2px solid var(--accent-ring);outline-offset:-1px}
+.actf input::placeholder{color:var(--ink-tertiary)}
+.actf .btn{justify-self:start}
+.actf #sc-msg{color:var(--deny);margin:0}
 .field .why{grid-column:1/-1;margin:0}
 .why{font-size:11px;color:var(--ink-tertiary);line-height:1.45}
 .dsl{margin:0;padding:10px;max-height:240px;overflow:auto;
@@ -577,7 +589,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -1668,18 +1680,32 @@ function renderSending(){
 
   function health(h){ return h === "paused" ? "deny" : h === "alarm" ? "warn" : "live"; }
 
-  var rows = (F.pausedDomains || []).map(function(d){
-    return rowOf([dot("deny"), cell(d.name, "k"), cell("0", "n"),
-                  cell("paused", "m bad"), cell(d.pausedReason || "paused", "m")]);
+  /* Every domain, paused or sending, in one addressable list. Both are things
+     an operator acts on, and a row that cannot be selected is a row whose
+     action does not exist. */
+  var stopped = (F.pausedDomains || []).map(function(d){
+    return {name: d.name, paused: true, reason: d.pausedReason,
+            resumption: d.resumption, rule: d.rule, rationale: d.rationale};
+  });
+  var sending = (F.domains || []).map(function(d){
+    return {name: d.name, paused: false, health: d.health, rule: d.rule,
+            rationale: d.rationale, capacity: d.capacity,
+            issues: d.authenticationIssues || [], mailboxes: d.mailboxes || []};
+  });
+  var all = stopped.concat(sending);
+
+  var rows = stopped.map(function(d){
+    return drow(d, [dot("deny"), cell(d.name, "k"), cell("0", "n"),
+                    cell("paused", "m bad"), cell(d.reason || "paused", "m")]);
   }).join("");
 
-  rows += (F.domains || []).map(function(d){
-    var issues = (d.authenticationIssues || []).join(", ");
-    var head = rowOf([dot(health(d.health)), cell(d.name, "k"),
-                      cell(nf(d.capacity) + "/day", "n"),
-                      cell(d.health, "m" + (d.health === "ok" ? "" : " warnt")),
-                      cell(issues || d.rule || "", "m")]);
-    var boxes = (d.mailboxes || []).map(function(m){
+  rows += sending.map(function(d){
+    var issues = d.issues.join(", ");
+    var head = drow(d, [dot(health(d.health)), cell(d.name, "k"),
+                        cell(nf(d.capacity) + "/day", "n"),
+                        cell(d.health, "m" + (d.health === "ok" ? "" : " warnt")),
+                        cell(issues || d.rule || "", "m")]);
+    var boxes = d.mailboxes.map(function(m){
       return rowOf([dot(health(m.health)), cell(m.address, "k"),
                     cell(nf(m.remaining) + " left", "n"),
                     cell("day " + nf(m.warmupDay), "m"),
@@ -1707,17 +1733,138 @@ function renderSending(){
   ]);
 
   list.innerHTML = rows || empty("No sending domain is registered yet.");
-  detail.innerHTML = note("Why capacity moves", [
+  var chosen = all.filter(function(d){ return d.name === state.dsel; })[0] || all[0];
+  state.dsel = chosen ? chosen.name : null;
+  renderSendingDetail(chosen, boxes.length, alarm, (F.pausedDomains || []).length);
+  list.querySelectorAll(".row[data-d]").forEach(function(el){
+    el.addEventListener("click", function(){
+      state.dsel = el.dataset.d; renderSending();
+    });
+  });
+  foot([[nf(F.remaining || 0), "sends left today"],
+        [nf((F.domains || []).length), "domains"]]);
+}
+
+/* A selectable domain row. The mailbox rows under it stay unselectable: the
+   switch is per domain, and a row that highlights but does nothing is the dead
+   link this console keeps having to remove. */
+function drow(d, cells){
+  return '<div class="row' + (d.name === state.dsel ? " on" : "") + '" data-d="'
+    + esc(d.name) + '" role="row" tabindex="0">' + labelled(cells) + '</div>';
+}
+
+function renderSendingDetail(d, mailboxes, alarm, pausedCount){
+  var why = note("Why capacity moves", [
     ["Warm-up.", "A new mailbox earns its cap over the ramp."],
     ["Reputation.", "Engagement raises it; complaints halve it."],
     ["Authentication.", "An unverified domain sends nothing at all."]
-  ]) + block("The fleet", [
-    ["Mailboxes", nf(boxes.length)],
-    ["Not ok", nf(alarm), alarm ? "hi" : ""],
-    ["Domains paused", nf((F.pausedDomains || []).length)]
   ]);
-  foot([[nf(F.remaining || 0), "sends left today"],
-        [nf((F.domains || []).length), "domains"]]);
+  var fleetBlock = block("The fleet", [
+    ["Mailboxes", nf(mailboxes)],
+    ["Not ok", nf(alarm), alarm ? "hi" : ""],
+    ["Domains paused", nf(pausedCount)]
+  ]);
+  if (!d){ detail.innerHTML = why + fleetBlock; return; }
+  detail.innerHTML = switchBlock(d) + why + fleetBlock;
+  wireSendingAction();
+}
+
+/* The control that did not exist. `runtime/breakers.py` was the only writer of
+   this column in the whole repository, so the only actor that could stop a
+   send was a cut-off firing on rates already earned — and `docs/09` calls that
+   resource the one whose damage is not recoverable on the timescale that
+   matters. An operator who knew before the numbers did could watch. */
+function switchBlock(d){
+  var head = '<div class="block"><div class="blabel">'
+    + esc(d.paused ? "Let " + d.name + " send again" : "Stop " + d.name + " sending")
+    + '</div>';
+  var says = d.paused ? resumeNote(d)
+    : [["Stops immediately.", "Every mailbox on this domain, including the "
+        + "healthy ones: reputation is scored per domain, so letting a clean "
+        + "mailbox keep sending is how the rest of the fleet follows."]];
+  var body = says.map(function(l){
+    return '<p class="pnote"><b>' + esc(l[0]) + '</b> ' + esc(l[1]) + '</p>';
+  }).join("");
+  if (!LIVE){
+    return head + body + '<p class="pnote"><b>Static preview.</b> '
+      + 'The switch works on the served console.</p></div>';
+  }
+  return head + body
+    + '<div class="actf">'
+    + '<label for="sc-reason">Reason, in your own words</label>'
+    + '<input id="sc-reason" type="text" maxlength="500" autocomplete="off"'
+    + ' placeholder="' + esc(d.paused ? "what changed" : "what you saw") + '">'
+    + '<button class="btn ' + (d.paused ? "btn-s" : "btn-p") + '" id="sc-act"'
+    + ' data-domain="' + esc(d.name) + '" data-act="'
+    + (d.paused ? "resume" : "pause") + '">'
+    + (d.paused ? "Let it send" : "Stop sending") + '</button>'
+    + '<p class="pnote" id="sc-msg" hidden></p>'
+    + '</div></div>';
+}
+
+/* What lifting this pause would be, said before the click rather than after.
+   The verdict comes from the same two functions the act itself uses, so the
+   sentence here and the one written into the audit row cannot disagree. */
+function resumeNote(d){
+  var lines = [["Paused because.", d.reason || "reason not recorded"]];
+  if (d.resumption === "will_retrip"){
+    lines.push(["Still over the cut-off.", "The rates say " + (d.rationale || d.rule)
+      + ". Lifting it holds until the next reputation event, and then the "
+      + "breaker takes it back."]);
+  } else if (d.resumption === "override"){
+    lines.push(["Not healthy yet.", "The rates say " + (d.rationale || d.rule)
+      + ". It will not trip again on its own, and capacity stays halved while "
+      + "this is true."]);
+  } else if (d.resumption === "clean"){
+    lines.push(["The rates agree.", "Nothing measured objects to this domain "
+      + "sending again."]);
+  }
+  return lines;
+}
+
+var SC_REFUSAL = {
+  no_reason: "Write why. The row this leaves behind is what somebody reads back during the next incident.",
+  reason_too_short: "Too short to be a reason.",
+  reason_says_nothing: "That restates the action instead of explaining it.",
+  not_registered: "No sending domain by that name.",
+  already_paused: "Already paused.",
+  already_sending: "That domain is not paused."
+};
+
+function wireSendingAction(){
+  var b = document.getElementById("sc-act");
+  var field = document.getElementById("sc-reason");
+  var msg = document.getElementById("sc-msg");
+  if (!b || !field || !LIVE) return;
+  b.addEventListener("click", function(){
+    var label = b.textContent;
+    msg.hidden = true;
+    b.disabled = true;
+    b.textContent = b.dataset.act === "pause" ? "Stopping…" : "Resuming…";
+    act("/v1/sending/domains/" + encodeURIComponent(b.dataset.domain) + "/"
+        + b.dataset.act, "POST", {reason: field.value}).then(function(res){
+      if (res.ok){ window.location.reload(); return; }
+      b.disabled = false;
+      b.textContent = label;
+      /* Named, never swallowed. The refusal an operator most needs to read is
+         the one about their reason, and a generic failure would send them
+         looking for a bug in the button. */
+      return res.json().then(function(body){
+        var key = body && body.detail && body.detail.refused;
+        msg.textContent = SC_REFUSAL[key]
+          || (res.status === 403 ? "Not permitted." : "Failed (" + res.status + ").");
+        msg.hidden = false;
+      }).catch(function(){
+        msg.textContent = "Failed (" + res.status + ").";
+        msg.hidden = false;
+      });
+    }).catch(function(){
+      b.disabled = false;
+      b.textContent = label;
+      msg.textContent = "Failed (network).";
+      msg.hidden = false;
+    });
+  });
 }
 
 /* ── prospects ─────────────────────────────────────────────────────────

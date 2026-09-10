@@ -795,7 +795,7 @@ None is load-bearing before the first paying customers, and each is a contained 
 
 ## Tests
 
-1701 tests. 504 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
+1730 tests. 516 of them run against a real Postgres (`pytest -m db`) and are skipped, never faked, when one is absent — an isolation property verified against a stub is not verified. CI fails a run that skipped them.
 
 Both figures were wrong until a test measured them. README put the second figure at 302; the real one was barely over half that. Nobody wrote it dishonestly — a `skipif` cannot be selected for, so the number was never re-measurable and so was never re-measured. Collection is now marked by fixture closure, which counts a test that requests the `db` fixture as well as one carrying the decorator, and a test asserts both figures against the documents.
 

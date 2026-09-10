@@ -37,6 +37,10 @@ WORDS = {
     # The register crossed a hundred rows. A total the map cannot read is a
     # count nobody is checking, which is what this test exists to prevent.
     "hundred": 100,
+    # And then past it, where English needs a joining word. Zero rather than a
+    # special case in the parser: "and" contributes nothing to a total, and a
+    # word worth nothing is the honest way to say so.
+    "and": 0,
 }
 
 
@@ -90,7 +94,7 @@ def test_the_finding_method_table_is_a_count_and_not_a_memory():
 
 def test_the_prose_total_matches_the_rows():
     text = DEFECTS.read_text()
-    stated = re.search(r"of the ([a-z]+(?:-[a-z]+)?) are one defect", text)
+    stated = re.search(r"of the ([a-z]+(?:-[a-z]+)*) are one defect", text)
     assert stated, "the register no longer states how many defects it holds"
     assert _numeral(stated.group(1)) == len(_rows(DEFECTS))
 
@@ -117,7 +121,7 @@ def test_the_readme_counts_the_register():
 
     shape = re.search(r"([A-Z][a-z]+(?:-[a-z]+)?) of them were the same shape", readme)
     assert shape, "the README no longer says how many defects share the recurring shape"
-    register = re.search(r"([A-Z][a-z]+(?:-[a-z]+)?) of the [a-z]+(?:-[a-z]+)? are one defect",
+    register = re.search(r"([A-Z][a-z]+(?:-[a-z]+)*) of the [a-z]+(?:-[a-z]+)* are one defect",
                          DEFECTS.read_text())
     assert register, "the register no longer states the recurring-shape count"
     assert _numeral(shape.group(1)) == _numeral(register.group(1)), (

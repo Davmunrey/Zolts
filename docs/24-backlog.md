@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1701 | 504 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1730 | 516 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -100,6 +100,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **An operator can stop a burning domain.** `runtime/breakers.py` was the only writer of the paused column in the repository, so the only actor that could stop a send was a cut-off firing on rates already earned — and `docs/09` calls that resource the one whose damage is not recoverable on the timescale that matters. Lifting a pause was worse: a flag on the command that registers a domain, so saying the cause was fixed meant restating four authentication facts correctly. Both are now narrow acts on the Sending screen, each requiring a written reason, each recorded. A resume reads the rates first and says whether it agrees with the measurement or overrides a live cut-off, before the click and again in the audit row (ADR-061, D-101).
 
 - **The console opens on the work.** Nine screens answered *what is the state of X*; none answered *what do I do now*, so an operator had to open all nine and join them by hand. Today collects every judgement the runtime already makes — a draft waiting, a task past its SLA, a mailbox in alarm, a tier missing its contractual p95, a cost per contact over target, a programme never activated — ranks them by what ignoring each one costs, and sends the click to the screen that owns the action. Built from the views it summarises rather than from its own queries, so the summary cannot drift from them (ADR-060). The view now also survives a reload, so no action loses your place.
 

@@ -21,12 +21,13 @@ from runtime.api.auth import CurrentPrincipal, Principal
 from runtime.api.schemas import (AccountIn, BaselineIn, EnrichIn, EnrollmentOut,
                                  HealthOut, IngestOut, KeyIn, MeasurementOut,
                                  PersonIn, ProgramIn, ProgramOut, ResearchIn,
-                                 SessionIn, SignalIn, SignupIn)
+                                 SendingActIn, SessionIn, SignalIn, SignupIn)
 from runtime.api.throttle import Throttle, caller_of
 from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
+from runtime import sendingcontrol
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
@@ -952,6 +953,73 @@ def create_app(db: Database, *, install_connectors: bool = True,
                                  "late": bool(row["due_at"]
                                               and row["completed_at"] > row["due_at"])})
         return _task(row)
+
+    # -- the sending switch ----------------------------------------------
+
+    # `runtime/breakers.py` was the only writer of `sending_domain.paused`, so
+    # the only actor that could ever stop a send was a cut-off firing on rates
+    # already earned. An operator who knew before the numbers did could watch.
+    # These are the two acts, each narrow: one column, nothing else in the same
+    # statement. The `approve` scope, because stopping a customer's outbound
+    # mail and starting it again are both a person taking responsibility for
+    # something the runtime cannot decide.
+
+    _SENDING_REFUSALS = {
+        "no_reason": "a reason is required: an audit row that records who "
+                     "stopped the sending and not why is the row somebody "
+                     "reads back during the next incident",
+        "reason_too_short": "the reason is too short to be a reason",
+        "reason_says_nothing": "the reason restates the action instead of "
+                               "explaining it",
+        "not_registered": "no sending domain by that name is registered",
+        "already_paused": "that domain is already paused",
+        "already_sending": "that domain is not paused",
+    }
+
+    def _sending_refusal(outcome: Any) -> HTTPException:
+        key = outcome.refusal.value
+        # 422 as the literal: starlette renamed the constant and keeping the
+        # old name emits a deprecation warning on every refusal, which is noise
+        # in the one place an operator's mistake is being reported.
+        code = (status.HTTP_409_CONFLICT
+                if key in ("not_registered", "already_paused", "already_sending")
+                else 422)
+        return HTTPException(code, {"refused": key,
+                                    "message": _SENDING_REFUSALS[key]})
+
+    @app.post("/v1/sending/domains/{name}/pause")
+    def pause_domain(name: str, body: SendingActIn,
+                     principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Stop this domain sending, now."""
+        principal.require("approve")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            outcome = sendingcontrol.pause(
+                cur, principal.tenant_id, name, reason=body.reason,
+                actor=f"key:{principal.key_id}")
+            if not outcome.done:
+                raise _sending_refusal(outcome)
+        return {"domain": name, "paused": True, "reason": body.reason.strip()}
+
+    @app.post("/v1/sending/domains/{name}/resume")
+    def resume_domain(name: str, body: SendingActIn,
+                      principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Let this domain send again, and say which kind of act that was.
+
+        `resumption` is returned as well as recorded: an operator who has just
+        overridden a live cut-off should be told so by the thing they pressed,
+        not only by a log they will not open.
+        """
+        principal.require("approve")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            outcome = sendingcontrol.resume(
+                cur, principal.tenant_id, name, reason=body.reason,
+                actor=f"key:{principal.key_id}")
+            if not outcome.done:
+                raise _sending_refusal(outcome)
+        return {"domain": name, "paused": False,
+                "resumption": outcome.resumption.value,
+                "rule": outcome.verdict.rule_key,
+                "rationale": outcome.verdict.rationale}
 
     # -- the console -----------------------------------------------------
 

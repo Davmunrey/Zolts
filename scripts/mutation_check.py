@@ -367,6 +367,40 @@ MUTATIONS = (
         find='    return sorted(items, key=lambda item: RANK[kind(item["kind"]).key])',
         replace="    return list(items)",
         tests="tests/test_attention.py"),
+    Mutation(
+        id="a-live-cut-off-is-never-called-a-clean-resume",
+        claim="`assess` reads metrics and never reads the paused column, so its "
+              "PAUSED is a rate still at or over one of docs/09's two cut-offs "
+              "— the strongest objection there is, not a restatement of state. "
+              "Reading it the other way makes the most dangerous resume in the "
+              "product the one the console calls ordinary",
+        path="zolts/sendingcontrol.py",
+        find="    if verdict.health is Health.PAUSED:\n"
+             "        return Resumption.WILL_RETRIP",
+        replace="    if verdict.health is Health.PAUSED:\n"
+                "        return Resumption.CLEAN",
+        tests="tests/test_sending_control.py"),
+    Mutation(
+        id="pausing-a-mailbox-cannot-launder-the-domains-history",
+        claim="the rate that decides a resume counts every mailbox on the "
+              "domain, so a domain that tripped the complaint cut-off cannot "
+              "read as recovered the moment somebody pauses the mailbox that "
+              "did it",
+        path="runtime/sendingcontrol.py",
+        find='        " where m.domain = %s",',
+        replace='        " where m.domain = %s and not m.paused",',
+        tests="tests/test_sending_control.py"),
+    Mutation(
+        id="stopping-a-send-requires-a-written-reason",
+        claim="a stop records who and why, because an audit row that says "
+              "somebody stopped the sending and not why is the row read back "
+              "during the next incident by a person who needs the missing half",
+        path="runtime/sendingcontrol.py",
+        find="    refusal = refuse_reason(reason)\n"
+             "    if refusal is not None:\n"
+             "        return Outcome(Act.PAUSE, name, refusal=refusal)",
+        replace="    refusal = None",
+        tests="tests/test_sending_control.py"),
 )
 
 def _dirty() -> bool:
