@@ -1,7 +1,7 @@
 """Blueprint resolution: company profile to archetype.
 
 Claim under test (docs/05): adaptability to any company type comes from a
-deterministic decision table over 12 profile dimensions, not from an open
+deterministic decision table over 13 profile dimensions, not from an open
 consulting interview and not from a per-customer fork.
 
 The resolver is deliberately boring. It scores every blueprint against the

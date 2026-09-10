@@ -13,6 +13,33 @@ class VersionIsImmutable(ValueError):
     """A published version was republished with different content."""
 
 
+def _inherited_policy(cur, tenant_id: str) -> dict[str, Any] | None:
+    """The policy of the archetype this tenant resolved to, or None.
+
+    The *tenant's* blueprint, not the one the programme's metadata names. A
+    programme may tighten what its archetype permits and never widen it, so the
+    ceiling belongs to the archetype the customer signed up under — the same
+    reading `runtime.engine.generate` takes for the discount authority
+    (ADR-052).
+
+    None for a tenant that declares no blueprint, or one naming an archetype
+    this release does not ship. Neither is a ceiling of zero: there is simply
+    nothing to inherit from, and refusing every programme of such a tenant
+    would make the overlay a gate rather than an inheritance.
+    """
+    from zolts.blueprint import load_blueprints
+
+    cur.execute("select blueprint_id from tenant where id = %s", (tenant_id,))
+    row = cur.fetchone()
+    declared = (row or {}).get("blueprint_id")
+    if not declared:
+        return None
+    for blueprint in load_blueprints():
+        if blueprint.key == declared:
+            return blueprint.policy or None
+    return None
+
+
 def publish(cur, tenant_id: str, *, key: str, version: str, spec: dict[str, Any],
             spec_hash: str, status: str = "draft", created_by: str | None = None,
             metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -40,7 +67,7 @@ def publish(cur, tenant_id: str, *, key: str, version: str, spec: dict[str, Any]
     resolves, and an enrichment field the price list does not carry was
     accepted and activated. See `runtime.engine.admission`.
     """
-    admission.check(spec, key)
+    admission.check(spec, key, _inherited_policy(cur, tenant_id))
     cur.execute(
         "insert into program (tenant_id, key, version, spec, spec_hash, status, created_by,"
         " metadata) values (%s,%s,%s,%s,%s,%s,%s,%s)"

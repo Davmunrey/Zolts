@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1577 | 464 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1591 | 475 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -47,7 +47,11 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | ID | Item | Why | Size |
 |---|---|---|---|
 | **VER-1** | Mutation coverage across the runtime | **Done, and measured.** `zolts/` catches 39 of 40 sampled mutants — 97.5%, 95% CI 87-100%, from 512 possible. `runtime/` catches **27 of 30 — 90%, 95% CI 74-97%, from 1,473 possible** on a fresh draw at seed `20260908`, against 22 of 30 on the earlier sample the guards were written from. The improvement is **not statistically significant** at thirty mutants (two-proportion `z` 1.67, *p* 0.095) and `docs/22` says so beside the number. Each mutant costs a full Postgres suite run. Every real survivor from both samples is guarded and every equivalent one annotated where it lives, each verified by re-applying its own mutation. CI samples eight on every push to keep the sampler honest, and the measurement now runs against its own database so a suite and a mutation pass no longer contend | S |
-| **VER-4** | The thirteen documents no test reads | Fourteen of the twenty-eight files under `docs/` were named by no test and no script, so every number in them could drift from the product without anything noticing — the shape ADR-017 fixed for the price list and ADR-053 has now fixed for `docs/09`, which went first because its thresholds, wrong, burn a sending domain and cannot be corrected afterwards. That first pass found a documented alarm the runtime had never implemented (D-87), which is the yield to expect. **Not every document should be read by a test:** a market thesis has nothing checkable in it, and a test that parsed one would assert prose. The item is to triage the remaining thirteen into *has checkable claims* and *does not*, and to write the check where it does — `docs/03` (the data model against the migrations), `docs/06` (the signal library against the catalogue) and `docs/07` (the waterfall's providers and hit rates) are the candidates | M |
+| **VER-4** | The documents no test reads | **Done, and triaged rather than left open.** Fourteen of the twenty-eight files under `docs/` were named by no test and no script, so every number in them could drift from the product with nothing noticing. Six were audited and **eight defects came out of them**: `docs/09` (D-87), `docs/03` (D-88), `docs/11` (D-89 and D-90, and fixing D-90 exposed D-91), `docs/06` (D-92), `docs/08` (D-93) and `docs/05` (D-94). Seven of the eight were a documented capability with no implementation, and two — the frequency cap and the overlay resolver — were controls a customer was relying on. Each audited document now carries a status per claim and a test that fails in **both** directions (ADR-053, ADR-054, ADR-057). The remaining ten are triaged below rather than forced: a test that parses a market thesis asserts prose, and writing one would be the same defect this item exists to catch | — |
+| | `docs/07`, `docs/19` | **No new check needed.** Both already read as corrected documents that cite their own defect numbers and name the code that implements them. Re-auditing found nothing |
+| | `docs/00`, `docs/01`, `docs/13`, `docs/15`, `docs/16`, `docs/17` | **No checkable claims.** Executive summary, market thesis, roadmap, risk register, team plan and buyer sequencing. They describe intent, market and sequence, not runtime behaviour. `docs/13` and `docs/15` carry dates and sizes that a test could parse and could not falsify |
+| | `docs/21` | **Covered indirectly.** The demo script is executed by `scripts/smoke_runtime.py` and `scripts/seed_demo.py` on every push; a document describing what they do is checked by them failing |
+| | `docs/05` | Audited. D-94 |
 
 ### Compliance
 
