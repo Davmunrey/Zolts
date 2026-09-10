@@ -40,6 +40,28 @@ def in_cooldown(cur, program_id: str, entity_id: str, cooldown_days: int) -> boo
     return cur.fetchone() is not None
 
 
+def tier_counts_since(cur, program_id: str, days: int) -> dict[str, int]:
+    """How many accounts entered each tier of this program in the last `days`.
+
+    Every variant, not only treatment. A cap applied after the holdout split
+    would truncate one arm and not the other, so the treatment arm would be the
+    early arrivals and the control arm everybody — which biases the very
+    comparison the product exists to make. The cap is therefore on accounts
+    *routed to a tier*, and the holdout is drawn from what the cap admits.
+
+    Rolling, not aligned to a calendar week: a tenant declares no timezone, so
+    an aligned week has no anchor to align to, and it would release the whole
+    allowance in a burst every Monday.
+    """
+    cur.execute(
+        "select tier, count(*) as n from enrollment"
+        " where program_id = %s and tier is not null"
+        "   and entered_at > now() - make_interval(days => %s)"
+        " group by tier",
+        (program_id, days))
+    return {row["tier"]: int(row["n"]) for row in cur.fetchall()}
+
+
 def get(cur, enrollment_id: str) -> dict[str, Any] | None:
     cur.execute("select * from enrollment where id = %s", (enrollment_id,))
     return one(cur)

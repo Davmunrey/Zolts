@@ -66,12 +66,50 @@ def holdout_pct(spec: dict[str, Any], program_key: str) -> float:
     return pct
 
 
-def resolve_tier(spec: dict[str, Any], variables: dict[str, Any]) -> str | None:
-    """First tier whose predicate holds, in declaration order."""
+#: The window `capacity_per_week` is counted over. Rolling rather than aligned
+#: to a calendar week: a tenant declares no timezone, so an aligned week has no
+#: anchor, and it would release the whole allowance in a burst every Monday.
+CAPACITY_WINDOW_DAYS = 7
+
+
+def resolve_tier(spec: dict[str, Any], variables: dict[str, Any],
+                 occupancy: dict[str, int] | None = None) -> str | None:
+    """The tier this account is routed to, or None when none will take it.
+
+    In declaration order, the first tier whose predicate holds **and whose
+    declared weekly capacity is not already spent**. `docs/04` has said since
+    the first draft that human capacity is a finite resource and is modelled as
+    one; it was not modelled at all, because `capacity_per_week` was read by
+    nothing (D-81). The flagship programme caps t1 at 25 with the comment *the
+    team's real human capacity*, and t1 of a 1:1 motion is the human-reviewed
+    tier — `zolts/dsl.py` refuses a t1 play that auto-sends. Over-admitting to
+    it fills a queue past what anybody can work, so proposals age out or are
+    approved unread, which is the failure the propose-then-dispose invariant
+    exists to prevent.
+
+    **A full tier falls through to the next one the account also qualifies
+    for**, rather than being refused. The account is still worked, by a cheaper
+    play, which is what a routing capacity means; refusing would throw away a
+    signal that was already paid for. Tiers are not experiment arms — the
+    holdout is assigned by a hash of the entity, independently — so moving an
+    account between tiers changes which play it gets and never which arm it is
+    in. It falls out of the programme only when no tier it qualifies for has
+    room.
+
+    `occupancy` is how many enrolments each tier already holds in the window,
+    and is omitted by callers with no database — `zolts.programtest` evaluates
+    predicates alone, so a programme test reports the tier a predicate selects
+    rather than the tier a loaded runtime would have room for.
+    """
     for tier in (spec.get("route") or {}).get("tiers", []):
         when = tier.get("when")
-        if when is None or expr.evaluate(when, variables):
-            return tier.get("key")
+        if when is not None and not expr.evaluate(when, variables):
+            continue
+        key = tier.get("key")
+        cap = tier.get("capacity_per_week")
+        if cap is not None and occupancy is not None and occupancy.get(key, 0) >= int(cap):
+            continue
+        return key
     return None
 
 
@@ -158,8 +196,21 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
         floor = (spec.get("score") or {}).get("floor")
         if floor is not None and effective_score < float(floor):
             continue
-        tier = resolve_tier(spec, {"score": effective_score, **(payload or {})})
+        occupancy = enrollments.tier_counts_since(
+            cur, str(program["id"]), CAPACITY_WINDOW_DAYS)
+        tier = resolve_tier(spec, {"score": effective_score, **(payload or {})},
+                            occupancy=occupancy)
         if tier is None:
+            # Distinguished from *no tier matched*: the operator declared the
+            # ceiling and is entitled to know it is what stopped this account,
+            # rather than reading a silent non-enrolment as a scoring problem.
+            if _would_have_matched(spec, {"score": effective_score, **(payload or {})}):
+                ledger.audit(cur, tenant_id, actor="engine",
+                             action="enrollment.at_capacity",
+                             subject=str(program["id"]),
+                             detail={"program": program["key"],
+                                     "entity_id": str(entity_id),
+                                     "occupancy": occupancy})
             continue
 
         row = enrollments.enroll(
@@ -181,3 +232,13 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
                                 effective_score, tier, reason))
     return IngestResult(signal_id=str(signal["id"]), enrollments=results,
                         warnings=warnings)
+
+
+def _would_have_matched(spec: dict[str, Any], variables: dict[str, Any]) -> bool:
+    """Whether any tier's predicate held, ignoring capacity.
+
+    The difference between *nothing wanted this account* and *everything that
+    wanted it is full* is the difference between a scoring problem and a
+    staffing one, and an operator reading a flat non-enrolment cannot tell.
+    """
+    return resolve_tier(spec, variables) is not None

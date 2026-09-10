@@ -136,16 +136,23 @@ CONTROLS: tuple[Control, ...] = (
     Control(
         "spec.route.tiers.capacity_per_week",
         "how many accounts a tier may take in a week",
-        enforced_by=None,
-        consequence=(
-            "Routing admits without counting. Sending is still bounded by the "
-            "mailbox fleet's own daily caps (ADR-020), so this over-enrolls rather "
-            "than over-sends: the queue grows and the work arrives late")),
+        enforced_by="runtime/engine/enroll.py, in resolve_tier at the routing choke point",
+        consequence=""),
     Control(
         "spec.route.tiers.capacity_per_week_per_rep",
         "how many accounts one representative may take in a week",
         enforced_by=None,
-        consequence="A human's queue can be filled past what they can work"),
+        consequence=(
+            "A human's queue can be filled past what they can work — and unlike every "
+            "other entry here, this one cannot be enforced by writing code against the "
+            "schema as it stands. **There is no representative anywhere in the data "
+            "model.** No `user` or `seat` table exists; identity is a tenant and an API "
+            "key, and the review queue records `approved_by` as `key:<uuid>`, a "
+            "credential rather than a person. `account` and `enrollment` carry no owner "
+            "column; only `opportunity` does, filled from the CRM's owner long after "
+            "routing. So the count has nothing to count against. It shares a root cause "
+            "with `spec.route.strategy` — `owner_of_record` and `territory_round_robin` "
+            "route to somebody the system cannot name — and both wait on decision 50")),
     Control(
         "spec.plays.*.steps.sla_hours",
         "how long a step may wait before it is late",

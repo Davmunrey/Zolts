@@ -195,15 +195,25 @@ def test_the_registry_matches_real_program_paths_and_not_only_itself():
     programs do trip it.
     """
     seen: set[str] = set()
+    declared: set[str] = set()
     for path in PROGRAMS:
         spec = yaml.safe_load(path.read_text())["spec"]
         seen.update(c.path for c in controls.unenforced(spec))
+        declared.update(controls.declared_paths(spec))
     assert len(seen) >= 5, (
         f"only {sorted(seen)} matched across every shipped program; the registry's "
         f"paths are probably shaped wrong")
-    assert "spec.route.tiers.capacity_per_week" in seen, (
+    # Asserted against what the walker *finds*, not against what is unenforced.
+    # It used to name `capacity_per_week` in the unenforced set, which made the
+    # canary go out the moment that control was honoured — a test that fails
+    # because a defect was fixed. The claim is about the shape of the path, so
+    # the walker is what answers it.
+    assert "spec.route.tiers.capacity_per_week" in declared, (
         "a field inside a list of tiers is not being matched, which is how the "
         "patterns were wrong the first time")
+    assert "spec.route.tiers.capacity_per_week" in controls.BY_PATH, (
+        "and the registry has to name it, or the walker is finding a path "
+        "nothing is registered against")
 
 
 def test_a_program_declaring_nothing_reports_nothing():
