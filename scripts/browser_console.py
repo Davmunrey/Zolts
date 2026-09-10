@@ -94,6 +94,19 @@ def _seed() -> tuple[str, str]:
                 "insert into mailbox (tenant_id, address, domain, provider,"
                 " warmup_started_on) values (%s,%s,'outbound.example',%s,"
                 " current_date - %s)", (tenant_id, address, provider, age))
+
+        # One human task, past its deadline. A step on the task channel is
+        # work the runtime cannot do and cannot close, so a person has to see
+        # it and say it is done. Seeded past due on purpose: the empty state
+        # proves the screen exists, and only a row proves it works.
+        cur.execute(
+            "insert into touch (tenant_id, channel, step_key, idempotency_key,"
+            " status, content, due_at, direction)"
+            " values (%s,'task','call_revops',%s,'queued',%s,"
+            " now() - interval '3 hours','out')",
+            (tenant_id, f"task-{uuid.uuid4().hex}",
+             json.dumps({"awaiting": "human_review",
+                         "brief": "Call the RevOps lead about the new role."})))
     db.close()
     return signed_up["api_key"], tenant_id
 
@@ -233,6 +246,20 @@ def main() -> int:
                 .evaluate("el => el.parentElement.innerText")
             page.click("#approve")
             page.wait_for_selector("#approve", state="detached", timeout=15_000)
+
+            # 4b. The work waiting for a person. `GET /v1/tasks` has answered
+            #     this since a human task could be closed at all, and no screen
+            #     asked: a queue nobody can see is a queue nobody works, and
+            #     the SLA the step declares is then a deadline measured against
+            #     nothing.
+            page.click('nav a[data-view="tasks"]')
+            page.wait_for_selector("#done", timeout=15_000)
+            report["tasks_rendered"] = page.locator("#list .row").count()
+            report["task_rail"] = page.locator("#nav-tasks").inner_text()
+            report["task_detail"] = page.locator("#detail").inner_text()[:400]
+            report["task_list"] = page.locator("#list").inner_text()[:300]
+            page.click("#done")
+            page.wait_for_selector("#done", state="detached", timeout=15_000)
 
             # 5. The sending fleet. This is the surface whose errors do not
             #    surface as a failing test: a burned domain shows up weeks
@@ -401,6 +428,11 @@ def main() -> int:
             report["newest_program"] = dict(one) if (one := cur.fetchone()) else None
             cur.execute("select state, approved_by from proposal order by created_at")
             report["proposals_in_database"] = [dict(r) for r in cur.fetchall()]
+            # Read back rather than trusted: the button reported success once
+            # before for a proposal and the row had not moved.
+            cur.execute("select count(*) as n from touch where channel = 'task'"
+                        "  and completed_at is not null and completed_by is not null")
+            report["task_completed"] = int(cur.fetchone()["n"])
         db.close()
 
         print(json.dumps(report, indent=2))
@@ -471,6 +503,28 @@ def main() -> int:
         if "Tokens per contact" not in cost_panel or "Target" not in cost_panel:
             print("::error::the spend view does not carry the cost per contact "
                   "docs/08 targets:", json.dumps(cost_panel)[:400], file=sys.stderr)
+            return 1
+
+        if not report.get("tasks_rendered"):
+            print("::error::the human task queue rendered no row on a tenant that "
+                  "has one waiting", file=sys.stderr)
+            return 1
+        detail_text = report.get("task_detail") or ""
+        # "3 h late", not merely a red dot: the lateness is computed from the
+        # deadline the step stamped, and a label that does not carry the amount
+        # is a label somebody has to go and work out.
+        if "late" not in detail_text or "call_revops" not in detail_text:
+            print("::error::a task three hours past its deadline is not shown as "
+                  "late, or has no step:", json.dumps(detail_text)[:300],
+                  file=sys.stderr)
+            return 1
+        if "past due" not in (report.get("task_list") or ""):
+            print("::error::the task row does not say it is past due:",
+                  json.dumps(report.get("task_list"))[:300], file=sys.stderr)
+            return 1
+        if not report.get("task_completed"):
+            print("::error::Mark done reported success and no task was completed "
+                  "in the database", file=sys.stderr)
             return 1
 
         live = [p for p in report["programs_in_database"] if p["status"] == "live"]

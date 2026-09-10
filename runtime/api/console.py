@@ -12,6 +12,7 @@ whether it is looking at a demo or a tenant.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from runtime import fleet
@@ -670,6 +671,42 @@ def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def tasks_view(cur, limit: int = 100) -> dict[str, Any]:
+    """The work waiting for a person, and what is late.
+
+    `GET /v1/tasks` has answered this since D-83 gave a human task a way to be
+    closed, and no screen asked it. A queue an operator cannot see is a queue
+    nobody works, and the SLA `docs/09` gives the task channel is then a
+    deadline measured against nothing — the shape this repository keeps
+    finding, on the one surface where the person doing the work sits.
+
+    The deadline was stamped when the task was created, from the step's own
+    `sla_hours`, so republishing the programme with a longer SLA does not make
+    a late task punctual. *Late* is computed here rather than stored: a stored
+    copy of a comparison is a second answer waiting to disagree with the two
+    timestamps beside it.
+    """
+    from runtime.repo import tasks as tasks_repo
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for row in tasks_repo.open_tasks(cur, limit):
+        due = row.get("due_at")
+        rows.append({
+            "id": str(row["id"]),
+            "channel": row["channel"],
+            "step": row["step_key"],
+            "program": row.get("program_key"),
+            "createdAt": row["created_at"].isoformat(),
+            "dueAt": due.isoformat() if due else None,
+            # Minutes rather than a timestamp, because the question is how late
+            # rather than when: negative is time left, positive is time past.
+            "lateMinutes": (int((now - due).total_seconds() // 60) if due else None),
+            "late": bool(due and now > due),
+        })
+    return {"tasks": rows, "counts": tasks_repo.counts(cur)}
+
+
 def review_view(cur, limit: int = 50) -> list[dict[str, Any]]:
     """What is waiting for a person, and what each gate said about it.
 
@@ -790,6 +827,7 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "fleet": fleet.health(cur),
         "prospects": prospects_view(cur),
         "signalsView": signals_view(cur),
+        "tasksView": tasks_view(cur),
         "spendView": spend_view(cur, tenant),
         "policyView": policy_view(cur),
         "auditView": audit_view(cur),

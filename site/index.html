@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="f949113f66c2">
+<meta name="zolts-build" content="ede47dfe660e">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -479,6 +479,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       <a href="#" data-view="signals"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
       <a href="#" data-view="prospects"><svg viewBox="0 0 13 13" fill="none"><circle cx="5" cy="4.4" r="2.2" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 11.2c0-1.9 1.6-3.2 3.5-3.2s3.5 1.3 3.5 3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M9.6 5.2h2.4M10.8 4v2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Prospects<span class="c" id="nav-prospects">0</span></a>
       <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
+      <a href="#" data-view="tasks"><svg viewBox="0 0 13 13" fill="none"><rect x="1.7" y="2.2" width="9.6" height="8.6" rx="1.4" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.4l1.6 1.6 3-3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Human tasks<span class="c" id="nav-tasks">0</span></a>
       <a href="#" data-view="sending"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
       <a href="#" data-view="spend"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend<span class="c" id="nav-spend">0</span></a>
       <p class="sec">Prove</p>
@@ -575,7 +576,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "programs", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -675,6 +676,11 @@ function renderChrome(){
   // Drafts waiting for a person, not actions waiting to be sent. Those are
   // different queues and only one of them is somebody's job.
   put("nav-review", D.queue ? (D.queue.review != null ? D.queue.review : D.queue.pending) : null);
+  // Open, not overdue. The rail says how much work is waiting; whether any of
+  // it is late is a tone on the screen itself, because a count that silently
+  // means two different things is worse than two counts.
+  put("nav-tasks", (D.tasksView && D.tasksView.counts)
+        ? D.tasksView.counts.open : null);
   // Sends left today, not mailboxes owned. An operator needs the number that
   // runs out, and an unmanaged fleet shows a dash rather than a zero: no
   // capacity and no control over capacity are opposite situations.
@@ -1474,6 +1480,11 @@ var VIEWS = {
     cols: "22px minmax(140px,1.35fr) minmax(120px,.95fr) 70px 78px 58px 56px 26px",
     head: ["", "Program", "Blueprint", "r:Enrolled", "r:Lift", "r:Holdout", "r:p95", ""]
   },
+  tasks: {
+    title: "Human tasks",
+    cols: "22px minmax(150px,1.3fr) minmax(120px,.9fr) 90px minmax(96px,.6fr) 1fr",
+    head: ["", "Step", "Program", "Channel", "r:Due in", "w:State"]
+  },
   review: {
     title: "Review queue",
     cols: "22px minmax(160px,1.4fr) 110px 90px 1fr",
@@ -1876,6 +1887,117 @@ function costPerContactBlock(c){
   return block("Cost per contact (docs/08)", rows);
 }
 
+/* ── human tasks ───────────────────────────────────────────────────────
+   A step on the task or voice channel is real work for a person. The runtime
+   created it and, until D-83, nothing could ever close it. GET /v1/tasks has
+   answered this since, and no screen asked: a queue an operator cannot see is
+   a queue nobody works, and the SLA docs/09 gives the channel is then a
+   deadline measured against nothing. */
+function renderTasks(){
+  var T = D.tasksView || {tasks: [], counts: {}};
+  var tasks = T.tasks || [], counts = T.counts || {};
+  document.getElementById("shown").textContent = tasks.length;
+
+  var overdue = counts.overdue || 0;
+  kpis([
+    {label: "Open", value: nf(counts.open || 0)},
+    {label: "Past due", value: nf(overdue),
+     unit: overdue ? "the SLA the step declared" : "none late",
+     tone: overdue ? "warn" : ""},
+    {label: "Oldest waiting", value: tasks.length ? dueText(tasks[0]) : "—"},
+    {label: "Channel", value: tasks.length ? tasks[0].channel : "—",
+     unit: "a person, not a provider"}
+  ]);
+
+  if (!tasks.length){
+    list.innerHTML = empty("Nothing is waiting for a person. A step on the "
+      + "task or voice channel appears here the moment the runtime creates it.");
+    detail.innerHTML = block("Human tasks", [["Open", "0"], ["Past due", "0"]]);
+    foot([]);
+    return;
+  }
+
+  /* Selectable rows carry their id the way the review queue's do, so the
+     detail panel follows the click rather than always showing the first. */
+  list.innerHTML = tasks.map(function(t){
+    return '<div class="row' + (t.id === state.tsel ? " on" : "") + '" data-t="'
+      + esc(t.id) + '" role="row" tabindex="0">'
+      + labelled([dot(t.late ? "warn" : "live"), cell(stepName(t), "k"),
+                  cell(t.program || "—", "m"), cell(t.channel, "m"),
+                  cell(dueText(t), "n" + (t.late ? " warnt" : "")),
+                  cell(t.late ? "past due" : "waiting", "w m")])
+      + '</div>';
+  }).join("");
+
+  var chosen = tasks.filter(function(t){ return t.id === state.tsel; })[0] || tasks[0];
+  state.tsel = chosen.id;
+  renderTaskDetail(chosen);
+  list.querySelectorAll(".row[data-t]").forEach(function(el){
+    el.addEventListener("click", function(){
+      state.tsel = el.dataset.t; renderTasks();
+    });
+  });
+  foot([[nf(counts.open || 0), "open"], [nf(overdue), "past due"]]);
+}
+
+/* A task the worker wrote always names its step, and the column is nullable.
+   One that does not still needs a name: an empty heading is a panel nobody can
+   identify, and an empty cell is a row nobody can click on purpose. */
+function stepName(t){ return t.step || ("a " + t.channel + " task"); }
+
+/* Minutes, signed: negative is time left, positive is time past. Kept short
+   because the detail column does not wrap (D-38). */
+function dueText(t){
+  if (t.lateMinutes === null || t.lateMinutes === undefined) return "no SLA";
+  var m = Math.abs(t.lateMinutes);
+  var span = m < 90 ? m + " min" : Math.round(m / 60) + " h";
+  return t.late ? span + " late" : "in " + span;
+}
+
+function renderTaskDetail(t){
+  /* The detail header the other views use: a mono kicker, an h2, then the
+     actions. Two classes of my own would have been two rules nobody styled. */
+  detail.innerHTML = '<div class="dhead">'
+    + '<div class="k">' + esc(t.program || "no programme") + ' · '
+    + esc(t.channel) + '</div>'
+    + '<h2>' + esc(stepName(t)) + '</h2>'
+    + '<div class="dactions">'
+    + (LIVE ? '<button class="btn btn-p" id="done" data-id="' + esc(t.id) + '">Mark done</button>'
+            : '<button class="btn btn-p" disabled title="Static preview">Mark done</button>')
+    + '</div></div>'
+    + block("This task", [
+        ["Due", dueText(t), t.late ? "warnt" : ""],
+        ["Created", String(t.createdAt).slice(0, 10)],
+        ["Deadline", t.dueAt ? String(t.dueAt).slice(0, 10) : "none declared"],
+        ["Channel", t.channel]
+      ])
+    + note("Why a person", [
+        ["The runtime cannot do it.", "A call or a manual step has no provider "
+         + "to report back, so nobody but a person can close it."],
+        ["The deadline is frozen.", "Stamped from the step's SLA when the task "
+         + "was created, so republishing the programme does not make it punctual."]
+      ]);
+  wireTaskAction();
+}
+
+function wireTaskAction(){
+  var b = document.getElementById("done");
+  if (!b || !LIVE) return;
+  b.addEventListener("click", function(){
+    b.disabled = true;
+    b.textContent = "Marking…";
+    act("/v1/tasks/" + b.dataset.id + "/complete", "POST").then(function(res){
+      if (res.ok){ window.location.reload(); return; }
+      b.disabled = false;
+      b.textContent = res.status === 409 ? "Already done"
+        : res.status === 403 ? "Not permitted" : "Failed (" + res.status + ")";
+    }).catch(function(){
+      b.disabled = false;
+      b.textContent = "Failed (network)";
+    });
+  });
+}
+
 /* ── spend ─────────────────────────────────────────────────────────────
    The number the customer is charged on. GET /v1/billing/current answered it
    from the day billing existed and no screen asked. */
@@ -2039,6 +2161,7 @@ function render(){
   if (state.view === "audit"){ renderAudit(); return; }
   if (state.view === "sending"){ renderSending(); return; }
   if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
+  if (state.view === "tasks"){ renderTasks(); return; }
   renderList();
   renderDetail();
 }

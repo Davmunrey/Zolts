@@ -349,6 +349,15 @@ MUTATIONS = (
         find='        "select count(distinct t.person_id) as contacts,"',
         replace='        "select count(t.person_id) as contacts,"',
         tests="tests/test_agent_cost_per_contact.py"),
+    Mutation(
+        id="the-human-task-queue-has-a-screen-that-reaches-it",
+        claim="the rail entry for the human task queue reaches its renderer, "
+              "without which the queue is a link to nothing and the work nobody "
+              "can see is work nobody does",
+        path="design/console.html",
+        find='  if (state.view === "tasks"){ renderTasks(); return; }',
+        replace='  if (state.view === "tasks"){ return; }',
+        tests="tests/test_task_queue_view.py"),
 )
 
 def _dirty() -> bool:
