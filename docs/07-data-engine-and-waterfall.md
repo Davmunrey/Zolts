@@ -25,6 +25,8 @@ E[coverage] = 1 - Π_i (1 - h_i)
 
 The router solves for an ordering that **minimises E[cost] subject to E[coverage] ≥ target and weighted accuracy ≥ accuracy_sla**. Because `h_i` depends on the segment (country, size, sector, seniority), a hit-rate matrix is maintained per *cohort* and updated on every call.
 
+**What ships, against that.** The accuracy constraint is applied: a provider whose *measured* accuracy is below the declared floor is excluded before the ordering is computed, and a field no provider meets is reported as an excluded floor rather than as a miss — two different answers to a customer, and reporting the second when the first is true sends an operator looking for data that is there (ADR-049). It was not applied at all until D-79: `zolts.waterfall.optimise` took the floor as a keyword argument, and `runtime/enrichment.py` called it without one, so the exclusion this section describes excluded nobody. `E[coverage] ≥ target` is **not** applied and cannot be: the programme schema has no field for a coverage target, so there is nothing to apply. Early stop on SLA (mechanism 4 below) is implicit in the sequential model rather than a separate rule — a later provider is only paid for when every earlier one missed.
+
 **Measured consequence.** `scripts/benchmark_waterfall.py` runs the optimiser against a static premium-first waterfall over 15 geography-and-size cohorts with four providers. Reproduce with `PYTHONPATH=. python3 scripts/benchmark_waterfall.py`.
 
 | Statistic | Saving on cost per verified contact |

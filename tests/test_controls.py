@@ -15,6 +15,7 @@ that the console never offers a dial the runtime does not honour.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -115,6 +116,60 @@ def test_the_console_never_offers_a_dial_the_runtime_does_not_honour():
     assert not offered_but_dead, (
         f"the console offers {sorted(offered_but_dead)}, which the runtime does not "
         f"honour. Enforce it, or take it out of the tunable set")
+
+
+# A name in a document is taken out of it by name, so code that reads a dial
+# carries that dial's key as a string literal. A parameter *called*
+# `accuracy_sla` is not that: `zolts.waterfall.optimise` had the parameter,
+# documented the exclusion it performs, and no caller ever supplied one, so the
+# floor a programme declared reached nothing (D-79). Two of the shipped dials
+# pass their key as a variable — `_cap(block, "max_cost_per_account")` — which
+# is why the literal is what is searched for and not the call shape.
+_READS = re.compile(r"""["'](%s)["']""")
+_SOURCE = [path for directory in ("runtime", "zolts")
+           for path in Path(directory).rglob("*.py")
+           if path.name != "dsl.py" and "__pycache__" not in str(path)]
+
+
+def _runtime_reads(leaf: str) -> list[str]:
+    pattern = re.compile(_READS.pattern % re.escape(leaf))
+    return [str(path) for path in _SOURCE if pattern.search(path.read_text())]
+
+
+def test_the_console_never_offers_a_dial_no_code_reads():
+    """The same rule as above, and the hole underneath it.
+
+    That test compares the dial list against the *registered* controls, so a
+    dial escapes it entirely by not being registered — which is how
+    `spec.route.strategy` was offered for the life of the product while its
+    only occurrence in the shipped codebase was the line offering it, and how
+    `spec.enrich.*.accuracy_sla` was offered while the router was never told
+    it (D-80). A guard that passes when you break what it guards, sitting on
+    the guard written for the previous instance of that shape.
+
+    This one asks the code rather than the registry, so nothing escapes by
+    omission.
+    """
+    dead = [path for path, _ in dsl.TUNABLE if not _runtime_reads(path.split(".")[-1])]
+    assert not dead, (
+        f"the console offers {sorted(dead)}, and no code under runtime/ or zolts/ "
+        f"takes {'it' if len(dead) == 1 else 'them'} out of a document by name. "
+        f"Read it, or take it out of the tunable set")
+
+
+def test_that_check_can_tell_a_read_dial_from_an_unread_one():
+    """Otherwise it passes for whatever the source happens to contain.
+
+    Both halves matter. A leaf nothing mentions must come back empty, and the
+    two dials whose key is passed as a variable must not — a check that flagged
+    those would fail on correct code, and a suite that fails on correct code
+    teaches the team to press re-run.
+    """
+    assert not _runtime_reads("invented_dial_nothing_reads")
+    assert _runtime_reads("max_cost_per_account"), (
+        "this key reaches the runtime as `_cap(block, \"max_cost_per_account\")`, "
+        "so a check looking for `.get(...)` would call correct code dead")
+    assert _runtime_reads("accuracy_sla"), "the floor now reaches the optimiser"
 
 
 @pytest.mark.parametrize("path", [p for p in PROGRAMS], ids=lambda p: p.name)

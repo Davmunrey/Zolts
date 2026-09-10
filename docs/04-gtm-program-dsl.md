@@ -41,7 +41,7 @@ spec:
 |---|---|---|
 | `trigger` | `events: [signal.type]` plus `window` and `dedupe` | Event-driven by default; `schedule` only for reconciliation |
 | `audience` | SQL over the semantic layer, or a `Segment` reference | Compiled and explained (`EXPLAIN`) before publishing |
-| `enrich` | Required fields plus accuracy SLA and a cost ceiling | The *router* picks providers, not the user |
+| `enrich` | Required fields plus accuracy SLA and a cost ceiling | The *router* picks providers, not the user — and until D-79 it picked them without the SLA: `optimise` took the floor as a keyword argument and no caller ever supplied one, so the exclusion it documents excluded nobody. The floor now reaches the router (ADR-049); a field nobody meets is reported as an excluded floor rather than as a miss |
 | `score` | Declarative PIT-R formula or a trained model (`model_ref`) | Must return per-factor contribution (explainability) |
 | `route` | Thresholds to tier (t1/t2/t3) plus per-tier capacity | Human capacity is a finite resource and is modelled as one |
 | `plays` | Channel step sequence with waits and branching | Every step emits a `proposed_action`; it never executes directly |

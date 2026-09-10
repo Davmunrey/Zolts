@@ -148,7 +148,13 @@ def _buy_all(cur, tenant, block, *, entity, account, legal_basis, secret_key,
             cur, tenant, field_name=name, entity=entity, account=account,
             legal_basis=legal_basis, secret_key=secret_key,
             budget_micros=None if remaining is None
-            else int(remaining * Decimal("1000000")))
+            else int(remaining * Decimal("1000000")),
+            # The declared accuracy floor, down the same path as the cap and
+            # for the same reason: only the code that knows each provider's
+            # measured accuracy can apply it. It went nowhere at all until
+            # D-79 — `optimise` took it as a keyword argument and no caller
+            # ever supplied one.
+            accuracy_sla=float(block.get("accuracy_sla") or 0.0))
         if "over-budget" in " ".join(result.attempts):
             bought.capped = True
         bought.fields.append(name)

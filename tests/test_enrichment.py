@@ -631,3 +631,94 @@ def test_an_unusable_answer_is_not_bought_again_tomorrow(db, tenant):
 
     assert len(source.calls) == calls_after_collision, "the same nothing was bought twice"
     assert "still unresolved" in again.reason
+
+
+# -- the accuracy floor a programme declares (D-79) ---------------------------
+
+@requires_db
+def test_a_provider_below_the_declared_accuracy_is_not_asked(db, tenant):
+    """`zolts.waterfall.optimise` states the contract in its own docstring: a
+    provider whose measured accuracy is below the SLA is excluded outright,
+    because a hit from it would deliver a value the program promised not to
+    send. It excluded nobody, because `runtime/enrichment.py` called it with
+    the parameter at its default of zero and no caller ever supplied one."""
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        sloppy = _register(cur, "sloppy", cost_micros=10_000, accuracy=0.60, hit_rate=0.9)
+        careful = _register(cur, "careful", cost_micros=200_000, accuracy=0.97, hit_rate=0.5)
+        person = _person(cur, tid)
+        result = enrichment.resolve(
+            cur, _tenant_row(cur, tid), field_name="email", entity=dict(person),
+            legal_basis="legitimate_interest", accuracy_sla=0.95)
+
+    assert result.hit and result.provider == "careful"
+    assert result.attempts == ("careful",)
+    assert sloppy.calls == [], (
+        "the cheaper provider measures 0.60 against a declared floor of 0.95 and "
+        "was asked anyway")
+
+
+@requires_db
+def test_without_a_declared_floor_the_cheapest_provider_still_wins(db, tenant):
+    """The premise the test above rests on: with no SLA the ordering is by
+    expected cost alone, so the exclusion is the only thing that changed."""
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        _register(cur, "sloppy", cost_micros=10_000, accuracy=0.60, hit_rate=0.9)
+        _register(cur, "careful", cost_micros=200_000, accuracy=0.97, hit_rate=0.5)
+        person = _person(cur, tid)
+        result = enrichment.resolve(
+            cur, _tenant_row(cur, tid), field_name="email", entity=dict(person),
+            legal_basis="legitimate_interest")
+
+    assert result.hit and result.provider == "sloppy"
+
+
+@requires_db
+def test_a_floor_no_provider_meets_says_so_rather_than_reporting_a_miss(db, tenant):
+    """Two different answers to the customer. *Nobody had it* sends an operator
+    looking for data that does not exist; *your floor excluded everyone* tells
+    them to lower it or register a better provider. Reporting the first when
+    the second is true is the more expensive mistake."""
+    tid = str(tenant["id"])
+    with db.tenant_tx(tid) as cur:
+        sloppy = _register(cur, "sloppy", cost_micros=10_000, accuracy=0.60, hit_rate=0.9)
+        person = _person(cur, tid)
+        result = enrichment.resolve(
+            cur, _tenant_row(cur, tid), field_name="email", entity=dict(person),
+            legal_basis="legitimate_interest", accuracy_sla=0.95)
+
+    assert not result.hit
+    assert "accuracy SLA" in result.reason
+    assert "0.60" in result.reason, "and what the best registered provider measures"
+    assert sloppy.calls == [], "nothing was bought, so nothing is charged"
+    assert result.cost_micros == 0
+
+
+@requires_db
+def test_the_floor_the_programme_declares_is_the_one_applied(db, tenant):
+    """The wiring, end to end: `enrich_step` reads `accuracy_sla` off the block
+    and passes it down the same path as the cap. It read neither — the
+    parameter existed on `optimise` and nothing ever filled it (D-79)."""
+    from runtime.engine import enrich_step
+
+    tid = str(tenant["id"])
+    # `phone`, not `email`: the fixture's contact already has an address, and a
+    # field the record holds is never bought (`unresolved`). Asking for one it
+    # has would make this test pass with the wiring taken out again.
+    spec = {"enrich": {"person": {"require": ["phone"], "accuracy_sla": 0.95}}}
+    with db.tenant_tx(tid) as cur:
+        sloppy = _register(cur, "sloppy", fields=("phone",), cost_micros=10_000,
+                           accuracy=0.60, hit_rate=0.9)
+        careful = _register(cur, "careful", fields=("phone",), cost_micros=200_000,
+                            accuracy=0.97, hit_rate=0.5)
+        account, person_row = _account_with_contact(cur, tid)
+        assert unresolved(dict(person_row), "phone"), (
+            "the premise: the contact has no phone number, so one is bought")
+        enrich_step.ensure(
+            cur, _tenant_row(cur, tid), spec=spec, program_key="p",
+            entity_type="account", entity_id=str(account["id"]),
+            legal_basis="legitimate_interest", secret_key=SECRET)
+
+    assert careful.calls, "the provider that meets the declared floor was asked"
+    assert sloppy.calls == [], "the one below it was not"

@@ -186,8 +186,15 @@ TUNABLE: tuple[tuple[str, str], ...] = (
      "How long two signals may be apart and still combine."),
     ("spec.trigger.dedupe.cooldown",
      "How long before the same subject may be enrolled again."),
-    ("spec.route.strategy",
-     "Who receives the enrolled account."),
+    # `spec.route.strategy` was here, offering three ways to route an enrolled
+    # account — by score, by territory, to the owner of record — that nothing
+    # at runtime distinguishes. Its only occurrence in the whole shipped
+    # codebase was this line (D-80). It escaped the guard written after D-63 to
+    # refuse exactly this, because that guard compares the dial list against
+    # the *registered* controls and nothing had registered it. It returns when
+    # an enrolment carries a rep for it to assign to; `zolts/controls.py` names
+    # it, and the guard now checks what the runtime reads rather than what this
+    # repository remembered to write down.
     ("spec.budget.monthly_credits",
      "Ceiling on what this program may spend generating copy. Sends, enrichment "
      "and signals are bounded by the tenant's credit ceiling, not by this."),

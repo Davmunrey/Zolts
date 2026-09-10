@@ -225,7 +225,7 @@ def _credential(cur, row: dict[str, Any], secret_key: "str | Keyring | None") ->
 def resolve(cur, tenant: dict[str, Any], *, field_name: str, entity: dict[str, Any],
             account: dict[str, Any] | None = None, legal_basis: str,
             secret_key: "str | Keyring | None" = None, now: datetime | None = None,
-            budget_micros: int | None = None) -> Resolved:
+            budget_micros: int | None = None, accuracy_sla: float = 0.0) -> Resolved:
     """Buy one field for one entity, cheapest expected order first.
 
     Returns rather than raises on a miss: not finding a phone number is an
@@ -236,6 +236,15 @@ def resolve(cur, tenant: dict[str, Any], *, field_name: str, entity: dict[str, A
     honoured by the code that knows the prices — checking it between fields
     permits one purchase that crosses it, and a program declaring a 0.50 cap
     that spends 0.80 has overcharged somebody who can prove it.
+
+    `accuracy_sla` is the floor the programme declared, and it reaches the
+    optimiser here. It did not before: this function called `optimise` with the
+    parameter at its default of zero, so the exclusion that function documents
+    — *a provider whose measured accuracy is below the SLA is excluded
+    outright, because a hit from it would deliver a value the program promised
+    not to send* — excluded nobody (D-79). The flagship programme declares 0.95
+    with the comment *the router picks a waterfall that meets this*, and the
+    router was never told.
     """
     from runtime import metering
 
@@ -274,7 +283,17 @@ def resolve(cur, tenant: dict[str, Any], *, field_name: str, entity: dict[str, A
                         reason=f"no provider is registered for {field_name}")
 
     by_key = {row["key"]: row for row, _ in priced}
-    plan = optimise([p for _, p in priced], cohort)
+    plan = optimise([p for _, p in priced], cohort, accuracy_sla=accuracy_sla)
+    if not plan.order:
+        # Distinguished from *nobody had it*, because they are different
+        # answers to the customer. A provider was registered and could have
+        # been asked; the floor they declared is what stopped it. Reporting
+        # this as a miss would send an operator looking for data that is there.
+        best = max((p.accuracy for _, p in priced), default=0.0)
+        return Resolved(
+            field=field_name, hit=False,
+            reason=(f"no provider meets the declared accuracy SLA of {accuracy_sla:.2f}; "
+                    f"the best registered for {field_name} measures {best:.2f}"))
     lookup = Lookup(field=field_name, entity=entity, account=account)
 
     tried: list[str] = []
