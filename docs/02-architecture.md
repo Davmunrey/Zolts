@@ -807,6 +807,23 @@ The cost per incremental meeting is all in (decision 46): the tenant's own spend
 
 **What this constrains.** `spec.route.strategy` leaves the dial list on the terms `budget.on_exceed` left it: registered as unenforced with what it costs, and returning when an enrolment carries a rep for it to assign to. A new dial has to be read by something before the console may offer it.
 
+**ADR-050 · A full tier falls through to the next one the account qualifies for, and the holdout spends the allowance too.**
+`docs/04` has said since the first draft that human capacity is a finite resource and is modelled as one. It was not modelled: `capacity_per_week` appeared nowhere under `runtime/`, so routing admitted without counting (D-81). It hid behind a real capacity gate — `runtime/fleet.py` does enforce capacity, per mailbox and per domain (ADR-020) — so an operator watching deferrals work concluded the programme's own block was what worked, exactly as the tenant credit ceiling made `spec.budget` look enforced in D-63.
+
+**Counted at the routing choke point.** `resolve_tier` takes the tier occupancy of the last seven days and skips a tier whose declared capacity is spent. One caller, the same place the tier was already chosen.
+
+**A full tier falls through rather than refusing.** The account is still worked, by a cheaper play, which is what a routing capacity means; refusing throws away a signal already paid for. It falls only into a tier whose own predicate it also satisfies — the thresholds descend in every shipped programme, but the schema does not require that, and a cap must not push an account into a tier that refuses it. When no tier it qualifies for has room, it is not enrolled, and the audit log says the ceiling is why: a silent non-enrolment reads as a scoring problem, and the difference between *nothing wanted this account* and *everything that wanted it is full* is the difference between a scoring problem and a staffing one.
+
+**Tiers are not experiment arms.** The holdout is assigned by a hash of the entity, independently of routing, so moving an account between tiers changes which play it gets and never which arm it is in.
+
+**The holdout spends the allowance.** A cap applied after the arm split would truncate the treatment arm and not the control one — treatment would be the early arrivals and control everybody, biasing the comparison this product exists to make. So the count is of accounts *routed to a tier*, every variant, and the holdout is drawn from what the cap admits. The consequence is deliberate and worth stating: a tier capped at 25 with a 10% holdout puts about 22 accounts in front of a person, not 25.
+
+**Rolling seven days, not an aligned week.** A tenant declares no timezone, so an aligned week has no anchor to align to, and it would release the whole allowance in a burst every Monday. An exited enrolment still spent its place: an allowance is spent when an account is routed, or a programme that churns through accounts admits far more than the cap in a week.
+
+**Exact to within one worker.** The count is read inside the enrolling transaction under read-committed isolation, so two concurrent enrolments can both see the same occupancy and exceed the cap by one. The runtime plans one tenant at a time, so the bound is one; making it exact would need a lock on a counting cap, which costs more than the last account is worth.
+
+**What this constrains.** `capacity_per_week_per_rep` is *not* enforced and cannot be against the schema as it stands: there is no representative anywhere in the data model. No `user` or `seat` table exists, identity is a tenant and an API key, the review queue records `approved_by` as a credential rather than a person, and neither `account` nor `enrollment` carries an owner — only `opportunity` does, filled from the CRM long after routing. It shares that root cause with `spec.route.strategy`'s `owner_of_record` and `territory_round_robin`, and both wait on decision 50.
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 

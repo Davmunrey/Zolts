@@ -43,7 +43,7 @@ spec:
 | `audience` | SQL over the semantic layer, or a `Segment` reference | Compiled and explained (`EXPLAIN`) before publishing |
 | `enrich` | Required fields plus accuracy SLA and a cost ceiling | The *router* picks providers, not the user — and until D-79 it picked them without the SLA: `optimise` took the floor as a keyword argument and no caller ever supplied one, so the exclusion it documents excluded nobody. The floor now reaches the router (ADR-049); a field nobody meets is reported as an excluded floor rather than as a miss |
 | `score` | Declarative PIT-R formula or a trained model (`model_ref`) | Must return per-factor contribution (explainability) |
-| `route` | Thresholds to tier (t1/t2/t3) plus per-tier capacity | Human capacity is a finite resource and is modelled as one |
+| `route` | Thresholds to tier (t1/t2/t3) plus per-tier capacity | Human capacity is a finite resource and is modelled as one — and was not, for the life of the product: `capacity_per_week` was read by nothing (D-81). It is counted now, over a rolling seven days and across both arms, and a full tier falls through to the next one the account qualifies for (ADR-050). `capacity_per_week_per_rep` and `strategy` are **not** honoured and cannot be: nothing in the schema models a representative for them to name (decision 50) |
 | `plays` | Channel step sequence with waits and branching | Every step emits a `proposed_action`; it never executes directly |
 | `policy` | Overrides on tenant policy (stricter only) | A program **cannot** relax global policy |
 | `experiment` | Mandatory `holdout_pct` ≥ 5% (a waiver requires justification) | Without it, `zolts apply` refuses |
