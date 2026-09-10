@@ -129,6 +129,12 @@ def test_an_interrupted_run_puts_the_file_back(tmp_path):
 
     target = tmp_path / "subject.py"
     target.write_text("ORIGINAL = 1\n")
+    # The child says when it is ready rather than the parent guessing. Waiting
+    # a fixed fifteen seconds for an interpreter to start and import made this
+    # test's verdict a function of how loaded the machine was: it went red once
+    # in a full-suite run and green in the next, on code that was never wrong,
+    # which is the sixth shape in `docs/22` and the one that teaches a team to
+    # press re-run.
     script = (
         "import sys, time;"
         f"sys.path.insert(0, {str(ROOT / 'scripts')!r});"
@@ -139,19 +145,22 @@ def test_an_interrupted_run_puts_the_file_back(tmp_path):
         "ctx = c._restored_on_signal(p, original);"
         "ctx.__enter__();"
         "p.write_text('MUTATED = 2\\n');"
-        "time.sleep(60)"
+        "sys.stdout.write('ready\\n');"
+        "sys.stdout.flush();"
+        "time.sleep(600)"
     )
-    child = subprocess.Popen([sys.executable, "-c", script])
+    child = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE,
+                             text=True)
     try:
-        deadline = time.monotonic() + 15
-        while target.read_text() == "ORIGINAL = 1\n" and time.monotonic() < deadline:
-            time.sleep(0.05)
+        assert child.stdout.readline() == "ready\n", (
+            "the child never reported that it had written the mutation")
         assert target.read_text() == "MUTATED = 2\n", "the child never wrote the mutation"
         child.send_signal(signal.SIGTERM)
-        child.wait(timeout=15)
+        child.wait(timeout=30)
     finally:
         if child.poll() is None:  # pragma: no cover - only if the wait failed
             child.kill()
+        child.stdout.close()
     assert target.read_text() == "ORIGINAL = 1\n", (
         "an interrupted run left the file mutated")
 

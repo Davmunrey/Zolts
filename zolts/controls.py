@@ -233,13 +233,10 @@ CONTROLS: tuple[Control, ...] = (
     Control(
         "spec.policy.discount_authority",
         "what commercial latitude a generated message may offer",
-        enforced_by=None,
+        enforced_by=("runtime/agents/copywriter.py, at the auto-send gate, "
+                     "from zolts/offers.py"),
         surface="blueprint",
-        consequence=(
-            "Nothing reads it and nothing constrains the copywriter against it, so a "
-            "generated message may offer terms the archetype does not permit. "
-            "Provenance (ADR-012) requires a claim to quote a source; it says nothing "
-            "about an offer")),
+        consequence=""),
 )
 
 HONOURED = tuple(c for c in CONTROLS if c.honoured)

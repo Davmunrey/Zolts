@@ -125,7 +125,12 @@ def run(cur, tenant_id: str, action: dict[str, Any], program: dict[str, Any], *,
         tenant_enabled=bool(play.get("auto_send")),
         consumed_usd=spent_usd, limit_usd=_budget(spec),
         threshold=requires.get("eval_score"),
-        requires_ai_disclosure=requires_ai_disclosure)
+        requires_ai_disclosure=requires_ai_disclosure,
+        # What the archetype permits a message to offer. Read from the
+        # blueprint the tenant signed up under, not from the programme: a
+        # programme may tighten an inherited policy and never loosen it
+        # (`zolts/overlay.py`), so the ceiling belongs to the archetype.
+        authority=_authority(cur, tenant_id))
 
     state = result.state
     proposal = proposals.record(
@@ -196,3 +201,27 @@ def promote(cur, tenant_id: str, proposal: dict[str, Any],
     ledger.audit(cur, tenant_id, actor=approved_by, action="proposal.dispatched",
                  subject=str(proposal["id"]), detail={"action_id": action_id})
     return action_id
+
+
+def _authority(cur, tenant_id: str) -> "offers.Authority | None":
+    """The commercial latitude this tenant's archetype permits.
+
+    None when the tenant names no blueprint, when the blueprint is not one we
+    ship, or when it declares no `discount_authority`. All three are the same
+    answer to the copywriter — nobody set a ceiling — and none of them is a
+    ceiling of zero: reading silence as *offer nothing* would send every
+    message mentioning a discount to a person on a blueprint that never asked
+    for that.
+    """
+    from zolts import offers
+    from zolts.blueprint import load_blueprints
+
+    cur.execute("select blueprint_id from tenant where id = %s", (tenant_id,))
+    row = cur.fetchone()
+    declared = (row or {}).get("blueprint_id")
+    if not declared:
+        return None
+    for blueprint in load_blueprints():
+        if blueprint.key == declared:
+            return offers.Authority.from_policy(blueprint.policy)
+    return None
