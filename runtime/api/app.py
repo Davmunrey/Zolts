@@ -668,9 +668,16 @@ def create_app(db: Database, *, install_connectors: bool = True,
         warnings: list[str] = []
         if not body.dedupe_key:
             warnings.append("no dedupe_key: a replay of this signal will be counted twice")
+        # `docs/06` targets ingestion to signal available, and the moment of
+        # ingestion is this one — before the transaction opens, not inside it.
+        # Taken after, it would measure nothing: the work the stage is about is
+        # the trigger evaluation across every live programme, which happens
+        # between here and the write (SIG-1).
+        received_at = _now()
         with db.tenant_tx(principal.tenant_id) as cur:
             try:
-                result = enroll.ingest(cur, principal.tenant_id, **body.model_dump())
+                result = enroll.ingest(cur, principal.tenant_id, received_at=received_at,
+                                       **body.model_dump())
             except enroll.HoldoutMissing as exc:
                 raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
         # A predicate the payload could not answer is a non-match, not a 500 —

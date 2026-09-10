@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1621 | 483 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1630 | 487 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -95,13 +95,14 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 
 | ID | Item | Why | Size |
 |---|---|---|---|
-| **SIG-1** | Time the ingest path, so `docs/06`'s first SLA column has a probe | Two of the three time-to-touch stages are measured and judged (ADR-058). *Ingestion → signal available* is not: nothing timestamps the moment a payload arrives separately from the moment its signal row is written, so the column with a five-minute Tier A target is reported as unmeasured. The page says so and a test fails in both directions, which stops it going stale but does not fill the gap | S — one timestamp on the ingest path and a third stage in `watch.sla` |
 | **SIG-2** | A signal that does not beat baseline in 90 days downgrades itself to advisory | `docs/06`'s hygiene section states it in the present tense and nothing does it. It needs per-signal lift against holdout, which the measurement layer can compute per programme and not yet per signal | M |
 | **SIG-3** | Per-signal monthly cost and pipeline contribution, and paid signals switched off when they do not cover it | The other two hygiene claims, and they share an instrument with SIG-2. `signal.check` is priced and billed per account-day (`docs/12`), so the cost half is closer than the contribution half | M |
 
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **SIG-1 · The ingest path is timed.** `signal.received_at` (migration 029) records when a payload reached this runtime, so `docs/06`'s first time-to-touch column has a probe and all three stages are judged. The arrival is stamped before the transaction opens at both call sites — the push endpoint and the watching pass — so the stage measures the trigger evaluation across every live programme, the part that grows with the programme count. Rows written before the migration carry no arrival time and are excluded rather than counted as instantaneous.
 
 | Area | What exists | Verified by |
 |---|---|---|

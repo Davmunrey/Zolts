@@ -12,7 +12,8 @@ from runtime.db import one, rows
 def record(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
            strength: float, half_life_h: int, source: str, legal_basis: str,
            payload: dict[str, Any], observed_at: datetime,
-           dedupe_key: str | None = None) -> dict[str, Any] | None:
+           dedupe_key: str | None = None,
+           received_at: datetime | None = None) -> dict[str, Any] | None:
     """Insert one signal. Returns None when the dedupe key already exists.
 
     A None return is the normal outcome of a source replaying its feed, not an
@@ -20,12 +21,13 @@ def record(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
     """
     cur.execute(
         "insert into signal (tenant_id, entity_type, entity_id, type, strength,"
-        " half_life_h, source, legal_basis, payload, observed_at, dedupe_key)"
-        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        " half_life_h, source, legal_basis, payload, observed_at, dedupe_key,"
+        " received_at)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
         " on conflict (tenant_id, dedupe_key) where dedupe_key is not null do nothing"
         " returning *",
         (tenant_id, entity_type, entity_id, type, strength, half_life_h, source,
-         legal_basis, json.dumps(payload), observed_at, dedupe_key),
+         legal_basis, json.dumps(payload), observed_at, dedupe_key, received_at),
     )
     return one(cur)
 

@@ -118,6 +118,7 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
            payload: dict[str, Any], observed_at: datetime,
            dedupe_key: str | None = None,
            score: float | None = None,
+           received_at: datetime | None = None,
            now: datetime | None = None) -> IngestResult:
     """Record a signal and enroll it into every live program it triggers.
 
@@ -130,7 +131,7 @@ def ingest(cur, tenant_id: str, *, entity_type: str, entity_id: str, type: str,
         cur, tenant_id, entity_type=entity_type, entity_id=entity_id, type=type,
         strength=strength, half_life_h=half_life_h, source=source,
         legal_basis=legal_basis, payload=payload, observed_at=observed_at,
-        dedupe_key=dedupe_key)
+        dedupe_key=dedupe_key, received_at=received_at)
     if signal is None:
         # Already seen. A replay is not a new observation, and re-running the
         # trigger on it would enroll from history the caller already sent.
