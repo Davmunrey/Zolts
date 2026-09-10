@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from runtime import fleet, sendingcontrol
+from runtime import fleet, outbox, sendingcontrol
 from runtime.repo import enrollments, programs
 from zolts import attention, dsl
 from zolts.deliverability import assess
@@ -918,6 +918,10 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     signals = signals_view(cur)
     tasks = tasks_view(cur)
     spend = spend_view(cur, tenant)
+    # Named for the view rather than `dead`, which is already the queue's
+    # count of them in this scope. A shadowed name here is a dict where an
+    # integer was expected, three lines from where anybody would look.
+    dead_view = outbox.dead(cur)
 
     return {
         # The one flag that separates the served console from the static build.
@@ -954,6 +958,7 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "prospects": prospects_view(cur),
         "signalsView": signals,
         "tasksView": tasks,
+        "outboxView": dead_view,
         "spendView": spend,
         "policyView": policy_view(cur),
         "auditView": audit_view(cur),

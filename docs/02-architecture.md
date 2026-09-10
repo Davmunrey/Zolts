@@ -930,6 +930,28 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-062 · An action that gave up is recovered one at a time, from a screen, with the error intact.**
+`docs/25`'s outbox runbook told the operator, for a dead action whose error is a `401`, `403` or `invalid_grant`: re-enter the credential, then requeue. The requeue it supplied was a raw SQL `update` to run by hand against production, and it did three things wrong at once (D-102).
+
+| What it did | Why it matters |
+|---|---|
+| `last_error = null` | Destroyed the only record of why each action died, at the moment somebody is deciding what to do about it |
+| `where … and channel = 'email'` | Keyed on channel rather than on cause, so it revives the actions whose cause is still there alongside the ones just fixed. Those spend their retries and die again, now with no error to read |
+| No actor, no reason | The audit log has nothing to say about the largest manual intervention the runtime supports |
+
+Nothing in the product offered an alternative. `actions.dead_letter` had no caller. `GET /v1/actions?state=dead` answered and no screen asked. The worklist ranks a dead action at its second-highest urgency — *nothing will deliver it and nothing else will notice* — and sent the operator to Programs, which does not mention them. Four instances of this register's dominant shape converging on one hole.
+
+| Decision | Why |
+|---|---|
+| **One action at a time** | The bulk statement's appeal was that it cleared a screen; its cost was that it acted on rows nobody had looked at |
+| **The error is kept** | What killed an action is what the operator is deciding about. It stays on the row and is copied into the audit entry |
+| **A revive re-runs with the action's own idempotency key** | Not a new guarantee: `runtime/engine/worker` already relies on it when a lease expires. At-least-once at the runtime, exactly-once at the provider. This is that path with a person as the trigger instead of a timeout |
+| **The attempt budget is restored** | Leaving it at the maximum sends the action back to dead on the first hiccup, which is a requeue that requeues nothing |
+| **Only from `dead`** | A pending action is already coming and a succeeded one is done. Reviving a cancelled one retries a policy decision, which for a suppression is contacting somebody who asked not to be |
+| **`discarded` is its own state** | Not `cancelled`, which is the policy gate's and names the rule that made it. Without a way to retire a dead row nobody will act on, the worklist carries it forever, and a permanent alarm is one the operator learns to scroll past |
+
+**The screen reads the runbook's triage rather than restating it.** `docs/25` keys the next step off the error text — an expired credential is revived after the connection is fixed, a `429` is not revived at all — and a test requires every token the runbook triages on to appear on the screen. Guidance duplicated in prose drifts from the guidance in front of the operator, and only one of the two is read during an incident.
+
 **ADR-061 · A person can stop a send, and both directions of the switch carry a written reason.**
 `runtime/breakers.py` was the only writer of `sending_domain.paused` in this repository. The only actor that could ever stop a send was a cut-off firing on rates already earned, and `docs/09` calls reputable sending capacity the one resource whose damage is not recoverable on the timescale that matters. `runtime/fleet.py` states the product's own job as *stop a send or pause a burning domain*; it could do neither on a person's word. An operator who knew before the numbers did — a list bought rather than built, a misaddressed campaign, a partner on the phone — could only watch and wait for a threshold to agree with them (D-101).
 

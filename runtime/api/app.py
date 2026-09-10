@@ -27,7 +27,7 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime import sendingcontrol
+from runtime import outbox, sendingcontrol
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
@@ -953,6 +953,58 @@ def create_app(db: Database, *, install_connectors: bool = True,
                                  "late": bool(row["due_at"]
                                               and row["completed_at"] > row["due_at"])})
         return _task(row)
+
+    # -- the outbox ------------------------------------------------------
+
+    # `docs/25` told the operator to requeue a dead action after re-entering an
+    # expired credential, and there was no requeue anywhere. A revive re-runs
+    # with the action's own idempotency key, which is the same guarantee an
+    # expired lease already relies on, so it cannot double-send.
+
+    _OUTBOX_REFUSALS = {
+        "no_reason": "a reason is required: the row that says somebody put a "
+                     "failed action back on the wire, and not why, is the row "
+                     "somebody reads back with only it",
+        "reason_too_short": "the reason is too short to be a reason",
+        "reason_says_nothing": "the reason restates the action instead of "
+                               "explaining it",
+        "not_dead": "no action by that id is dead in this tenant",
+    }
+
+    def _outbox_act(action_id: str, body: SendingActIn, principal: Principal,
+                    act: str) -> dict[str, Any]:
+        principal.require("approve")
+        run = outbox.revive if act == "revive" else outbox.discard
+        with db.tenant_tx(principal.tenant_id) as cur:
+            outcome = run(cur, principal.tenant_id, action_id,
+                          reason=body.reason, actor=f"key:{principal.key_id}")
+            if not outcome.done:
+                key = outcome.refusal.value
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT if key == "not_dead" else 422,
+                    {"refused": key, "message": _OUTBOX_REFUSALS[key]})
+            state = outcome.row["state"]
+        return {"id": action_id, "state": state, "reason": body.reason.strip()}
+
+    @app.get("/v1/outbox/dead")
+    def list_dead(limit: int = Query(default=100, le=500),
+                  principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """What gave up, with what killed it."""
+        principal.require("read")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            return outbox.dead(cur, limit)
+
+    @app.post("/v1/outbox/{action_id}/revive")
+    def revive_action(action_id: str, body: SendingActIn,
+                      principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Put it back on the wire, with the idempotency key it already had."""
+        return _outbox_act(action_id, body, principal, "revive")
+
+    @app.post("/v1/outbox/{action_id}/discard")
+    def discard_action(action_id: str, body: SendingActIn,
+                       principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Retire it, so a row nobody will act on stops being an alarm."""
+        return _outbox_act(action_id, body, principal, "discard")
 
     # -- the sending switch ----------------------------------------------
 

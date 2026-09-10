@@ -401,6 +401,29 @@ MUTATIONS = (
              "        return Outcome(Act.PAUSE, name, refusal=refusal)",
         replace="    refusal = None",
         tests="tests/test_sending_control.py"),
+    Mutation(
+        id="a-revived-action-keeps-the-key-it-already-had",
+        claim="a revive re-runs with the action's own idempotency key, which is "
+              "what an expired lease already relies on — a new key would be a "
+              "second send with nothing to deduplicate it against, and "
+              "invariant 2 exists to prevent exactly that",
+        path="runtime/repo/actions.py",
+        find='        " run_after = now(), updated_at = now()"',
+        replace='        " idempotency_key = gen_random_uuid()::text,"\n'
+                '        " run_after = now(), updated_at = now()"',
+        tests="tests/test_outbox_recovery.py"),
+    Mutation(
+        id="only-a-dead-action-can-be-revived",
+        claim="a pending action is already coming and a succeeded one is done, "
+              "so reviving either is a second send with no failure behind it; "
+              "reviving a cancelled one retries a policy decision, which for a "
+              "suppression is contacting somebody who asked not to be",
+        path="runtime/repo/actions.py",
+        find="        \" where id = %s and state = 'dead' returning *\", (action_id,))\n"
+             "    return one(cur)\n\n\ndef discard",
+        replace="        \" where id = %s returning *\", (action_id,))\n"
+                "    return one(cur)\n\n\ndef discard",
+        tests="tests/test_outbox_recovery.py"),
 )
 
 def _dirty() -> bool:

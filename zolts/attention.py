@@ -63,7 +63,7 @@ ORDER: tuple[Kind, ...] = (
     Kind("sending.alarm", Urgency.NOW, "sending",
          "A domain's reputation is being spent while this is true, and it is "
          "the one thing here that cannot be undone by acting later."),
-    Kind("outbox.dead", Urgency.NOW, "programs",
+    Kind("outbox.dead", Urgency.NOW, "outbox",
          "An action gave up after its retries. Nothing will deliver it and "
          "nothing else will notice."),
     Kind("task.overdue", Urgency.NOW, "tasks",

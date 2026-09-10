@@ -45,22 +45,13 @@ from __future__ import annotations
 from enum import Enum
 
 from zolts.deliverability import ADVISORY, Health, Verdict
+from zolts.reasons import (EMPTY_WORDS, MIN_REASON, ReasonRefusal,
+                          refuse_reason)
 
-# Long enough to be a sentence fragment rather than a token. Twelve characters
-# is "list bought" plus a letter: short enough not to obstruct somebody acting
-# in an incident, long enough that the words below are the only way to be
-# under it by accident.
-MIN_REASON = 12
-
-# Words that restate the act instead of explaining it. Compared against the
-# whole reason once punctuation is stripped, never against a substring: "fixed
-# the bounce source in the export" is a reason that happens to contain "fixed".
-EMPTY_WORDS: frozenset[str] = frozenset({
-    "ok", "okay", "fixed", "done", "resume", "resumed", "unpause", "unpaused",
-    "pause", "paused", "stop", "stopped", "start", "started", "test",
-    "testing", "n/a", "na", "none", "asap", "now", "please",
-})
-
+# Re-exported: the reason rule moved to `zolts.reasons` when a second
+# operator act needed it, and it is still part of this module's contract.
+__all__ = ["Act", "EMPTY_WORDS", "MIN_REASON", "Refusal", "Resumption",
+           "judge_resume", "refuse_reason"]
 
 class Act(str, Enum):
     PAUSE = "pause"
@@ -68,16 +59,15 @@ class Act(str, Enum):
 
 
 class Refusal(str, Enum):
-    """Why an act was not performed. Never a silent no-op."""
+    """Why an act was not performed. Never a silent no-op.
 
-    NO_REASON = "no_reason"
-    """Nothing was written, or only whitespace."""
+    Carries the shared reason refusals by value so a caller reads one enum:
+    `zolts.reasons` owns the rule, and this names the states only sending has.
+    """
 
-    REASON_TOO_SHORT = "reason_too_short"
-    """Written, but shorter than a sentence fragment."""
-
-    REASON_SAYS_NOTHING = "reason_says_nothing"
-    """Written and long enough, and restates the act rather than explaining it."""
+    NO_REASON = ReasonRefusal.NO_REASON.value
+    REASON_TOO_SHORT = ReasonRefusal.REASON_TOO_SHORT.value
+    REASON_SAYS_NOTHING = ReasonRefusal.REASON_SAYS_NOTHING.value
 
     ALREADY_PAUSED = "already_paused"
     """Asked to stop a domain that is already stopped."""

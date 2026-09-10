@@ -107,6 +107,16 @@ def _seed() -> tuple[str, str]:
             (tenant_id, f"task-{uuid.uuid4().hex}",
              json.dumps({"awaiting": "human_review",
                          "brief": "Call the RevOps lead about the new role."})))
+
+        # One action that gave up, with the error the runbook's own triage
+        # table keys on. Seeded dead on purpose: an empty state proves the
+        # screen exists, and only a row proves an operator can act on it.
+        cur.execute(
+            "insert into action (tenant_id, kind, channel, step_key,"
+            " idempotency_key, payload, state, attempts, max_attempts,"
+            " last_error) values (%s,'send','email','email_1',%s,%s,'dead',5,5,"
+            " '401 the provider refused the credential: invalid_grant')",
+            (tenant_id, f"dead-{uuid.uuid4().hex}", json.dumps({"step": {}})))
     db.close()
     return signed_up["api_key"], tenant_id
 
@@ -315,6 +325,29 @@ def main() -> int:
             page.wait_for_selector("#sc-act", timeout=15_000)
             report["after_stop"] = page.locator("#detail").inner_text()[:400]
 
+            # 5b. The outbox. The runbook told an operator to requeue a dead
+            #     action and supplied a raw SQL update that nulls `last_error`,
+            #     destroying the only record of why it died at the moment
+            #     somebody is deciding about it. No screen listed them at all.
+            page.click('nav a[data-view="outbox"]')
+            page.wait_for_selector("#ob-revive", timeout=15_000)
+            report["outbox_rail"] = page.locator("#nav-outbox").inner_text()
+            report["outbox_rows"] = page.locator("#list .row").count()
+            #     The screen reads the runbook's triage off the error rather
+            #     than restating it, so an operator is told the credential
+            #     expired rather than left to match the string themselves.
+            report["outbox_detail"] = page.locator("#detail").inner_text()[:500]
+
+            page.fill("#ob-reason", "retry")
+            page.click("#ob-revive")
+            page.wait_for_selector("#ob-msg:not([hidden])", timeout=15_000)
+            report["thin_outbox_reason_refused"] = page.locator("#ob-msg").inner_text()
+
+            page.fill("#ob-reason", "the token was rotated this morning")
+            page.click("#ob-revive")
+            page.wait_for_selector('#list .empty', timeout=15_000)
+            report["outbox_after_revive"] = page.locator("#list").inner_text()[:200]
+
             # 6. The three views that did not exist, and the rail that
             #    offered five links leading nowhere. Every entry is clicked,
             #    because a nav that promises what it cannot do is the defect
@@ -485,6 +518,16 @@ def main() -> int:
             cur.execute("select actor, subject, detail from audit_log"
                         " where action = 'sending.domain.paused'")
             report["stop_audited"] = [dict(r) for r in cur.fetchall()]
+            # The revive, where it has to be true. The state moved, the
+            # attempts were restored, and the error that killed it survived —
+            # the SQL this replaces would have nulled it.
+            cur.execute("select state, attempts, last_error from action"
+                        " where kind = 'send' and channel = 'email'"
+                        " order by updated_at desc limit 1")
+            report["action_revived"] = dict(row) if (row := cur.fetchone()) else None
+            cur.execute("select actor, detail from audit_log"
+                        " where action = 'outbox.revived'")
+            report["revive_audited"] = [dict(r) for r in cur.fetchall()]
         db.close()
 
         print(json.dumps(report, indent=2))
@@ -559,12 +602,40 @@ def main() -> int:
                   "published and never activated is not on Today:",
                   json.dumps(today)[:400], file=sys.stderr)
             return 1
+        # Ranked by what ignoring each item costs. Asserted as the pairwise
+        # claims the ranking actually makes, rather than by pinning the first
+        # row: a check that pins position zero breaks whenever the seed grows
+        # a higher-cost item, which is the check being wrong rather than the
+        # product. Read off the rendered text, never from `zolts.attention` —
+        # comparing the order against the table that produced it would pass on
+        # any table.
         order = report.get("today_order") or []
-        if len(order) < 2 or "past their deadline" not in order[0]:
-            print("::error::Today is not ranked by what ignoring each item costs; "
-                  "a broken SLA has to outrank a programme that has not started:",
-                  json.dumps(order)[:300], file=sys.stderr)
+
+        def rank_of(phrase):
+            for i, row in enumerate(order):
+                if phrase in row:
+                    return i
+            return None
+
+        ladder = [
+            ("gave up", "an action nothing will ever deliver"),
+            ("past their deadline", "a promise already broken"),
+            ("Drafts waiting", "a clock running against a commitment"),
+            ("never activated", "a programme that has not started"),
+        ]
+        seen = [(phrase, what, rank_of(phrase)) for phrase, what in ladder]
+        missing = [phrase for phrase, _, at in seen if at is None]
+        if missing:
+            print("::error::Today is missing work it was seeded with:",
+                  json.dumps(missing), json.dumps(order)[:300], file=sys.stderr)
             return 1
+        for (above, above_is, i), (below, below_is, j) in zip(seen, seen[1:]):
+            if i >= j:
+                print(f"::error::Today is not ranked by what ignoring each item "
+                      f"costs: {above_is} ({above!r}) has to outrank "
+                      f"{below_is} ({below!r}):",
+                      json.dumps(order)[:300], file=sys.stderr)
+                return 1
         if "until somebody presses Activate" not in today:
             print("::error::Today lists the work and not what ignoring it costs:",
                   json.dumps(today)[:400], file=sys.stderr)
@@ -600,6 +671,19 @@ def main() -> int:
         if not report.get("stop_audited"):
             print("a domain was stopped and nothing recorded who or why",
                   file=sys.stderr)
+            return 1
+        revived = report.get("action_revived") or {}
+        if revived.get("state") != "pending":
+            print("the outbox revive reported success over an action that is "
+                  "still dead", file=sys.stderr)
+            return 1
+        if not revived.get("last_error"):
+            print("the revive erased what killed the action, which is the "
+                  "defect it exists to replace", file=sys.stderr)
+            return 1
+        if not report.get("revive_audited"):
+            print("an action was put back on the wire and nothing recorded "
+                  "who or why", file=sys.stderr)
             return 1
         if not report.get("task_completed"):
             print("::error::Mark done reported success and no task was completed "

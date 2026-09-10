@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="87e523bf1d10">
+<meta name="zolts-build" content="874aa2605fc9">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -493,6 +493,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       <a href="#" data-view="prospects"><svg viewBox="0 0 13 13" fill="none"><circle cx="5" cy="4.4" r="2.2" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 11.2c0-1.9 1.6-3.2 3.5-3.2s3.5 1.3 3.5 3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M9.6 5.2h2.4M10.8 4v2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Prospects<span class="c" id="nav-prospects">0</span></a>
       <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
       <a href="#" data-view="tasks"><svg viewBox="0 0 13 13" fill="none"><rect x="1.7" y="2.2" width="9.6" height="8.6" rx="1.4" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.4l1.6 1.6 3-3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Human tasks<span class="c" id="nav-tasks">0</span></a>
+      <a href="#" data-view="outbox"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 7.4h3l.9 1.8h3l.9-1.8h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.8 7.4l1.3-4.6h4.8l1.3 4.6v3H2.8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Outbox<span class="c" id="nav-outbox">0</span></a>
       <a href="#" data-view="sending"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
       <a href="#" data-view="spend"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend<span class="c" id="nav-spend">0</span></a>
       <p class="sec">Prove</p>
@@ -589,7 +590,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, dsel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, osel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -695,6 +696,7 @@ function renderChrome(){
   put("nav-today", D.attention ? (D.attention.items || []).length : null);
   put("nav-tasks", (D.tasksView && D.tasksView.counts)
         ? D.tasksView.counts.open : null);
+  put("nav-outbox", D.outboxView ? D.outboxView.count : null);
   // Sends left today, not mailboxes owned. An operator needs the number that
   // runs out, and an unmanaged fleet shows a dash rather than a zero: no
   // capacity and no control over capacity are opposite situations.
@@ -1499,6 +1501,14 @@ var VIEWS = {
     cols: "22px minmax(180px,1.5fr) minmax(140px,1fr) minmax(84px,.5fr) 1fr",
     head: ["", "What needs you", "Detail", "r:How many", "w:Urgency"]
   },
+  outbox: {
+    title: "Outbox",
+    /* Every column that holds variable-length text is a fraction, not a fixed
+       width: the error is the longest thing here and the one an operator is
+       actually reading. */
+    cols: "22px minmax(120px,.9fr) minmax(90px,.6fr) minmax(84px,.5fr) 1fr",
+    head: ["", "Action", "Channel", "r:Tries", "The error"]
+  },
   tasks: {
     title: "Human tasks",
     cols: "22px minmax(150px,1.3fr) minmax(120px,.9fr) 90px minmax(96px,.6fr) 1fr",
@@ -2267,6 +2277,174 @@ function wireTaskAction(){
   });
 }
 
+/* ── outbox ────────────────────────────────────────────────────────────
+   The runbook told the operator, when a dead action's error is a 401 or an
+   invalid_grant: re-enter the credential, then requeue. There was no requeue —
+   not a command, not a function, not an endpoint — and no screen listed what
+   had died. `actions.dead_letter` had no caller at all. So a customer's
+   outbound action that failed because a token expired was lost permanently,
+   and the product's own runbook pointed at a way out that was not built. */
+function renderOutbox(){
+  var V = D.outboxView || {count: 0, actions: []};
+  var dead = V.actions || [];
+  document.getElementById("shown").textContent = dead.length;
+
+  kpis([
+    {label: "Gave up", value: nf(V.count || 0),
+     unit: V.count ? "waiting on a person" : "nothing dead",
+     tone: V.count ? "bad" : "ok"},
+    {label: "Queued", value: nf((D.queue && D.queue.queued) || 0),
+     unit: "still trying"},
+    {label: "Waiting to send", value: nf((D.queue && D.queue.review) || 0),
+     unit: "drafts for a person"}
+  ]);
+
+  if (!dead.length){
+    list.innerHTML = empty("Nothing gave up. Every action either went out or "
+      + "is still being retried.");
+    detail.innerHTML = note("What lands here", [
+      ["Retries are spent.", "An action backs off from 30 seconds to six "
+       + "hours, and only then dies."],
+      ["A denial never does.", "A policy decision cancels the action and names "
+       + "the rule; retrying one is an attempt to contact somebody who asked "
+       + "not to be contacted."]
+    ]);
+    foot([[nf(V.count || 0), "gave up"]]);
+    return;
+  }
+
+  list.innerHTML = dead.map(function(a){
+    return '<div class="row' + (a.id === state.osel ? " on" : "") + '" data-o="'
+      + esc(a.id) + '" role="row" tabindex="0">'
+      + labelled([dot("deny"), cell(a.kind, "k"), cell(a.channel || "—", "m"),
+                  cell(nf(a.attempts) + "/" + nf(a.maxAttempts), "n"),
+                  cell(shortError(a.lastError), "m")])
+      + '</div>';
+  }).join("");
+
+  var chosen = dead.filter(function(a){ return a.id === state.osel; })[0] || dead[0];
+  state.osel = chosen.id;
+  renderOutboxDetail(chosen);
+  list.querySelectorAll(".row[data-o]").forEach(function(el){
+    el.addEventListener("click", function(){
+      state.osel = el.dataset.o; renderOutbox();
+    });
+  });
+  foot([[nf(V.count || 0), "gave up"]]);
+}
+
+/* The detail column does not wrap (D-38), so the row carries the first line and
+   the panel carries the whole error. A truncation that hides the cause is a
+   list nobody can triage from. */
+function shortError(text){
+  if (!text) return "no error recorded";
+  var first = String(text).split("\n")[0];
+  return first.length > 60 ? first.slice(0, 57) + "…" : first;
+}
+
+/* What the runbook's own table keys on: the error decides the action. It is
+   read here rather than restated, so the guidance cannot drift from docs/25. */
+function errorAdvice(text){
+  var e = String(text || "").toLowerCase();
+  if (/401|403|invalid_grant|unauthor/.test(e)){
+    return ["The credential expired.", "Re-enter it, then revive this. Reviving "
+      + "before the connection is fixed spends the retries again on the same "
+      + "answer."];
+  }
+  if (/429|rate.?limit/.test(e)){
+    return ["The provider is rate-limiting.", "Reviving now earns another 429. "
+      + "The capacity scheduler already spaces sends; this one waits."];
+  }
+  if (/timeout|timed out|connection|network|502|503|504/.test(e)){
+    return ["The provider was unreachable.", "The usual case for a revive: "
+      + "nothing about the action was wrong."];
+  }
+  return ["Read the error first.", "It is what the action will meet again. "
+    + "A revive re-runs the same request, not a different one."];
+}
+
+function renderOutboxDetail(a){
+  var advice = errorAdvice(a.lastError);
+  var head = '<div class="dhead"><span class="k">' + esc(a.kind) + '</span>'
+    + '<h2>' + esc(a.channel || "no channel") + '</h2></div>';
+  var body = block("What died", [
+    ["Step", a.step || "—"],
+    ["Channel", a.channel || "—"],
+    ["Tries", nf(a.attempts) + " of " + nf(a.maxAttempts)],
+    ["Gave up", a.diedAt ? a.diedAt.slice(0, 16).replace("T", " ") : "—"]
+  ]) + note("The error", [[advice[0], advice[1]]])
+    + '<pre class="dsl">' + esc(a.lastError || "no error recorded") + '</pre>';
+
+  var safety = note("Reviving cannot double-send", [
+    ["The key is the action's own.", "It goes back out carrying the "
+     + "idempotency key it already had, which is what an expired lease "
+     + "already relies on: at-least-once here, exactly-once at the provider."]
+  ]);
+
+  if (!LIVE){
+    detail.innerHTML = head + body + safety
+      + '<div class="block"><p class="pnote"><b>Static preview.</b> '
+      + 'Revive and discard work on the served console.</p></div>';
+    return;
+  }
+  detail.innerHTML = head + body + safety
+    + '<div class="block"><div class="blabel">Decide</div>'
+    + '<div class="actf">'
+    + '<label for="ob-reason">Reason, in your own words</label>'
+    + '<input id="ob-reason" type="text" maxlength="500" autocomplete="off"'
+    + ' placeholder="what changed, or why it is not worth recovering">'
+    + '<button class="btn btn-p" id="ob-revive" data-id="' + esc(a.id) + '">'
+    + 'Put it back on the wire</button>'
+    + '<button class="btn btn-s" id="ob-discard" data-id="' + esc(a.id) + '">'
+    + 'Retire it</button>'
+    + '<p class="pnote" id="ob-msg" hidden></p>'
+    + '</div></div>';
+  wireOutboxActions();
+}
+
+var OB_REFUSAL = {
+  no_reason: "Write why. The row this leaves behind is what somebody reads back with only it.",
+  reason_too_short: "Too short to be a reason.",
+  reason_says_nothing: "That restates the action instead of explaining it.",
+  not_dead: "That action is no longer dead — somebody else acted on it."
+};
+
+function wireOutboxActions(){
+  var field = document.getElementById("ob-reason");
+  var msg = document.getElementById("ob-msg");
+  if (!field || !LIVE) return;
+  [["ob-revive", "revive"], ["ob-discard", "discard"]].forEach(function(pair){
+    var b = document.getElementById(pair[0]);
+    if (!b) return;
+    b.addEventListener("click", function(){
+      var label = b.textContent;
+      msg.hidden = true;
+      b.disabled = true;
+      b.textContent = pair[1] === "revive" ? "Queueing…" : "Retiring…";
+      act("/v1/outbox/" + encodeURIComponent(b.dataset.id) + "/" + pair[1],
+          "POST", {reason: field.value}).then(function(res){
+        if (res.ok){ window.location.reload(); return; }
+        b.disabled = false;
+        b.textContent = label;
+        return res.json().then(function(body){
+          var key = body && body.detail && body.detail.refused;
+          msg.textContent = OB_REFUSAL[key]
+            || (res.status === 403 ? "Not permitted." : "Failed (" + res.status + ").");
+          msg.hidden = false;
+        }).catch(function(){
+          msg.textContent = "Failed (" + res.status + ").";
+          msg.hidden = false;
+        });
+      }).catch(function(){
+        b.disabled = false;
+        b.textContent = label;
+        msg.textContent = "Failed (network).";
+        msg.hidden = false;
+      });
+    });
+  });
+}
+
 /* ── spend ─────────────────────────────────────────────────────────────
    The number the customer is charged on. GET /v1/billing/current answered it
    from the day billing existed and no screen asked. */
@@ -2432,6 +2610,7 @@ function render(){
   if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
   if (state.view === "today"){ renderToday(); return; }
   if (state.view === "tasks"){ renderTasks(); return; }
+  if (state.view === "outbox"){ renderOutbox(); return; }
   renderList();
   renderDetail();
 }
