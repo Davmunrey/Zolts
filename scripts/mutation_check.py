@@ -208,6 +208,24 @@ MUTATIONS = (
         find='ADVISORY = frozenset({"reply.alarm"})',
         replace="ADVISORY = frozenset()",
         tests="tests/test_operating_thresholds.py"),
+    Mutation(
+        id="a-compliance-claim-cannot-outrun-the-code",
+        claim="a GDPR obligation docs/11 marks Not built stays unimplemented, "
+              "so the day one ships the page is corrected rather than quietly "
+              "overtaken (D-89)",
+        path="docs/11-compliance-and-governance.md",
+        find="| Retention | **Not built** |",
+        replace="| Retention | **Built** |",
+        tests="tests/test_compliance_claims.py"),
+    Mutation(
+        id="the-disclosure-check-is-off-and-the-page-says-so",
+        claim="requires_ai_disclosure defaults off at every call site, which is "
+              "what docs/11 tells a reader, so switching it on turns the page "
+              "red instead of leaving it wrong (D-90)",
+        path="runtime/engine/generate.py",
+        find="        requires_ai_disclosure: bool = False) -> Generated:",
+        replace="        requires_ai_disclosure: bool = True) -> Generated:",
+        tests="tests/test_compliance_claims.py"),
 )
 
 def _dirty() -> bool:

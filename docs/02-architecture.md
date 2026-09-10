@@ -875,6 +875,24 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **What this constrains.** The table is now the contract in both directions. Relaxing a bound means editing the document and watching the suite go red, which is the point — a threshold that can be loosened in prose is not non-negotiable, whatever the heading says. `docs/09` was the first of fourteen documents no test reads (VER-4); it went first because it is the only one whose numbers, wrong, are unrecoverable.
 
+**ADR-054 · A compliance page states what ships, and a test holds it there in both directions.**
+`docs/11`'s GDPR table was written in the present tense under the heading *Product implementation*, for eleven obligations. Six had no implementation anywhere in the runtime: no privacy notice, no legitimate-interest assessment, no subject-request path, no retention job, no records of processing, no sub-processor register. The AI Act section called the special-category prohibition *a hard engine rule, not a setting* — it is a setting, registered as a control nothing reads. The governance section described five roles, a DPO veto and a recorded sign-off in a product whose only identity is a tenant and an API key (D-89).
+
+**This shape has now cost three times.** ADR-003 claimed zero-copy over a customer warehouse in the present tense (D-21); ADR-011 and `docs/23` claimed a tenant could route model calls through their own gateway (D-42). Both were corrected the same way and both corrections held, because each carries a test. The pattern is the decision, not the individual sentence.
+
+| | |
+|---|---|
+| **Every row carries a status** | *Built*, *Partly built* or *Not built*. Three states rather than two, because a half-built row read as *built* is the one a reviewer finds in the room, and read as *not built* it understates what the product can already show |
+| **Every row has a probe** | A row nobody wrote a probe for is a claim nobody checked, which is how a table came to say eleven things and mean five. The completeness check runs both ways: a row with no probe fails, and a probe with no row fails |
+| **The guard fails in both directions** | A *Not built* row whose mechanism appears in the runtime fails the suite. A correction nothing enforces is a sentence somebody restores next quarter, and the direction that matters more is the one where the product improves and the page goes on apologising |
+| **The count is read, not remembered** | The prose states how many rows had nothing behind them and a test compares it to the table. `docs/22` has twice held a number that had drifted from the rows beneath it |
+
+**Nothing is deleted; the ambition moves to a column that says so.** A row a buyer cannot be shown costs more than a row that says *not yet*: the first is discovered under questioning, the second is a roadmap. Six of these need a founder or counsel before an engineer — which jurisdictions require disclosure, who the sub-processors are, what a first retention job may delete — so `docs/24` sizes each as COMP-1 to COMP-7 and `docs/18` registers the two that have a default.
+
+**Row-level security became a property rather than a list.** `docs/03` said *row-level security on every table*, which was true and true by hand: `003_rls.sql` forces it over a hard-coded array of sixteen names, and every tenant-scoped table added since — thirty-two now — was forced by somebody remembering. That is D-23 again, a fact about a list rather than a property. The check asks `pg_class` for every table carrying a `tenant_id` and requires enabled, forced *and* a policy. Parsing the migrations would have re-read the same list the defect lives in.
+
+**What this constrains.** A new obligation, a new claim or a new mechanism now has to arrive with its probe, and a mechanism that ships turns the page red until somebody edits it. That is the intended cost: the failure mode here is not a wrong line of code, it is a true sentence that stopped being true and nothing noticed for two quarters.
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 
