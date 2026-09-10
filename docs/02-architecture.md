@@ -824,6 +824,21 @@ The cost per incremental meeting is all in (decision 46): the tenant's own spend
 
 **What this constrains.** `capacity_per_week_per_rep` is *not* enforced and cannot be against the schema as it stands: there is no representative anywhere in the data model. No `user` or `seat` table exists, identity is a tenant and an API key, the review queue records `approved_by` as a credential rather than a person, and neither `account` nor `enrollment` carries an owner — only `opportunity` does, filled from the CRM long after routing. It shares that root cause with `spec.route.strategy`'s `owner_of_record` and `territory_round_robin`, and both wait on decision 50.
 
+**ADR-051 · A human task carries its own deadline, and a person closes it.**
+A step on the `task` or `voice` channel is real work for a person. `worker._dispatch` recorded it as a touch with `status = 'queued'` and `content.awaiting = 'human_review'`, and **nothing in the system could ever close it**: every code path that moves a touch off `queued` lives in `inbound.py` and is driven by a provider event — opened, replied, bounced — and a task has no provider (D-83). The work item was write-only.
+
+That is also why `spec.plays.*.steps.sla_hours` was read by nothing and could not have been (D-84). A deadline measured against a state nothing leaves reports every task as breached for ever: a measurement that never measures, which is the shape D-76 found in a guardrail whose control arm is structurally zero. The SLA needed a completion before it could mean anything, which is why the two are one change.
+
+**The deadline is stamped on the work, not computed from the programme.** `due_at` is set when the task is created, from the step's declared `sla_hours`. A task created under a four-hour promise keeps it when the programme is republished with twenty-four — the same reasoning that freezes a metric with the version that declared it (`docs/10`), applied to a promise about response time. Computing it from the current spec would let an operator clear a breach by editing a number. A retry reaching the same idempotency key keeps the original deadline, for the reason the mailbox is kept: re-queuing work must not quietly move the promise made about it.
+
+**Completion is a column, not a status.** `status` describes what a *provider* did with a message and a task has no provider, so the fact and its time go on `completed_at` and `completed_by`, as `complained_at` and `unsubscribed_at` do. It happens once: the predicate requires `completed_at is null`, so the first person to say they did the work is the record and a second call is refused rather than applied.
+
+**Absent is not zero.** A step declaring no `sla_hours` has no deadline and is never late. It is still work; nobody said when it was due. Reading a missing SLA as *due immediately* would report every such task as a breach the moment it was created.
+
+**Reported, never acted on.** An overdue task is listed and nothing escalates it, because escalation needs somebody to escalate to and no representative exists in the data model (decision 50). It is deliberately **not** a liveness signal: `/health/liveness` is what an uptime monitor reads (D-36), and a customer whose reps are slow must not make the deployment look down.
+
+**What this constrains.** A human step does not gate the sequence — the action succeeds when the task is created, and the next step proceeds. That was already true and is now registered rather than implicit (decision 51). The surfaces are the API and the command line; the console view is a follow-up, because the screenshot check that would prove it cannot run in the development container and an unverified screen in that file is how D-38 happened.
+
 **ADR-044 · The jurisdiction pack is a published document, and every decision names the one that produced it.**
 `zolts/policy.py` opened with the sentence *packs are data, not code, so a regulatory change ships without a deployment*, and the only pack in existence was a dict in that same file. So a regulatory change needed a release, and — worse — `policy_decision` recorded a rule key and a reason while the rules behind them moved with every deploy: the question the table exists to answer, *under which rule was this person contacted*, resolved to whatever the code said today (D-53).
 

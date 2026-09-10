@@ -170,11 +170,21 @@ class Worker:
         # a queued touch and the action succeeds; the runtime's job was to
         # create the task, not to perform it.
         if action["kind"] == "manual" or payload.get("requires_human"):
+            step = payload.get("step", {}) or {}
+            # The deadline the step declared, stamped now rather than walked out
+            # of the programme at read time. `sla_hours` was read by nothing at
+            # all (D-84); stamping it here means a task created under a
+            # four-hour promise keeps it when the programme is republished with
+            # twenty-four, which is the same reasoning that freezes a metric
+            # with the version that declared it.
+            sla = step.get("sla_hours")
             ledger.record_touch(
                 cur, tenant_id, enrollment_id=action["enrollment_id"], channel=channel,
                 step_key=action["step_key"], idempotency_key=action["idempotency_key"],
-                content={"step": payload.get("step", {}), "awaiting": "human_review"},
-                provider=None, provider_ref=None, status="queued")
+                content={"step": step, "awaiting": "human_review"},
+                provider=None, provider_ref=None, status="queued",
+                due_at=(None if sla is None
+                        else datetime.now(timezone.utc) + timedelta(hours=int(sla))))
             actions.succeed(cur, str(action["id"]), {"queued_for_human": True})
             tick.succeeded += 1
             return

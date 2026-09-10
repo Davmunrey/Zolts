@@ -28,7 +28,8 @@ from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
-                          ledger, mappings, programs, proposals, reports as reports_repo)
+                          ledger, mappings, programs, proposals, reports as reports_repo,
+                          tasks as tasks_repo)
 from runtime.surface import content_security_policy, document, inject
 from zolts import dsl, experiment
 from zolts import metrics
@@ -896,6 +897,45 @@ def create_app(db: Database, *, install_connectors: bool = True,
                          action="proposal.rejected", subject=proposal_id, detail={})
         return {"id": proposal_id, "state": "rejected"}
 
+    @app.get("/v1/tasks")
+    def list_tasks(overdue: bool = False,
+                   principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """The work waiting for a person, and what is late.
+
+        A step on the `task` or `voice` channel is real work for a human. The
+        runtime created it and, until D-83, nothing could ever close it: every
+        path that moves a touch off `queued` is driven by a provider event, and
+        a task has no provider.
+        """
+        principal.require("read")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            rows = (tasks_repo.overdue(cur) if overdue else tasks_repo.open_tasks(cur))
+            return {"tasks": [_task(row) for row in rows],
+                    "counts": tasks_repo.counts(cur)}
+
+    @app.post("/v1/tasks/{task_id}/complete")
+    def complete_task(task_id: str,
+                      principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Say the work is done. The `approve` scope, because it is the same
+        kind of act as approving a proposal: a person taking responsibility for
+        something the runtime cannot verify."""
+        principal.require("approve")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            row = tasks_repo.complete(cur, task_id, by=f"key:{principal.key_id}")
+            if row is None:
+                # One 409 for both, on purpose: whether a task id belongs to
+                # another tenant, to no task at all, or to one already done is
+                # not something an unauthenticated guess should be able to
+                # tell apart.
+                raise HTTPException(status.HTTP_409_CONFLICT,
+                                    "task not found or already completed")
+            ledger.audit(cur, principal.tenant_id, actor=f"key:{principal.key_id}",
+                         action="task.completed", subject=task_id,
+                         detail={"step": row["step_key"],
+                                 "late": bool(row["due_at"]
+                                              and row["completed_at"] > row["due_at"])})
+        return _task(row)
+
     # -- the console -----------------------------------------------------
 
     @app.get("/console", response_class=Response)
@@ -957,3 +997,28 @@ def create_app(db: Database, *, install_connectors: bool = True,
             return console.build(cur, cur.fetchone())
 
     return app
+
+
+def _task(row: dict[str, Any]) -> dict[str, Any]:
+    """One human task, as an operator surface reads it."""
+    due, completed = row.get("due_at"), row.get("completed_at")
+    return {
+        "id": str(row["id"]),
+        "channel": row["channel"],
+        "step": row["step_key"],
+        "program": row.get("program_key"),
+        "createdAt": row["created_at"],
+        "dueAt": due,
+        "completedAt": completed,
+        "completedBy": row.get("completed_by"),
+        # Computed here rather than stored: *late* is a comparison, and a
+        # stored copy of one is a second answer waiting to disagree with the
+        # two timestamps beside it.
+        "late": bool(due and (completed or _now()) > due),
+    }
+
+
+def _now():
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc)
