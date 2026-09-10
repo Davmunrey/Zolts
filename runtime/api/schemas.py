@@ -147,6 +147,18 @@ class BaselineIn(BaseModel):
     signed_by: str = Field(min_length=1, max_length=200)
 
 
+class SendingActIn(BaseModel):
+    """Stopping a domain sending, or letting it send again.
+
+    The reason is the whole body, and it is required rather than optional.
+    `zolts.sendingcontrol` decides whether what was written is a reason: this
+    only refuses what is plainly absent, so the operator gets the specific
+    message about *why* their text was not accepted rather than a schema error
+    that says a field is missing when they filled it in.
+    """
+    reason: str = Field(min_length=1, max_length=500)
+
+
 class KeyIn(BaseModel):
     """A new API key. Scopes narrow it; an empty list is full tenant access."""
     name: str = Field(min_length=1, max_length=120)

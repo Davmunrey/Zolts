@@ -15,9 +15,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from runtime import fleet
+from runtime import fleet, sendingcontrol
 from runtime.repo import enrollments, programs
 from zolts import attention, dsl
+from zolts.deliverability import assess
+from zolts.sendingcontrol import judge_resume
 from zolts.catalog import load_catalog
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, minimum_detectable_effect
 from zolts.report import BASELINE_RATE_FLOOR, SIGNIFICANT, Comparison
@@ -671,6 +673,28 @@ def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def with_resumption(cur, health: dict[str, Any]) -> dict[str, Any]:
+    """Say what lifting each pause would be, before anybody presses it.
+
+    `fleet.load` drops a paused domain, so the fleet view could report that a
+    domain was paused and nothing at all about whether the cause was still
+    true. An operator lifting a cut-off could not tell, from the screen, the
+    difference between agreeing with the measurement and overriding a live one
+    that would take the domain back on the next reputation event.
+
+    Computed here rather than in `runtime/fleet`, which `runtime/sendingcontrol`
+    imports: putting it there would close an import cycle. Read-only, and it
+    reuses the same two functions the act itself uses, so the sentence on the
+    screen and the verdict written into the audit row cannot disagree.
+    """
+    for paused in (health.get("pausedDomains") or []):
+        verdict = assess(sendingcontrol.domain_metrics(cur, paused["name"]))
+        paused["resumption"] = judge_resume(verdict).value
+        paused["rule"] = verdict.rule_key
+        paused["rationale"] = verdict.rationale
+    return health
+
+
 def attention_view(*, programs, queue, fleet_health, tasks, spend,
                    signals) -> dict[str, Any]:
     """What needs a person, from the judgements the other views already made.
@@ -890,7 +914,7 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
 
     # Computed once and shared with the worklist below. Two calls would be two
     # answers, and the one an operator reads first is the summary.
-    fleet_health = fleet.health(cur)
+    fleet_health = with_resumption(cur, fleet.health(cur))
     signals = signals_view(cur)
     tasks = tasks_view(cur)
     spend = spend_view(cur, tenant)

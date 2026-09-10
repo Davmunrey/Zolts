@@ -290,6 +290,31 @@ def main() -> int:
             report["sending_rows"] = page.locator("#list .row").count()
             report["sending_view"] = page.locator("#list").inner_text()[:200]
 
+            # 5a. The switch nothing in this repository had. `runtime/breakers`
+            #     was the only writer of the paused column, so the only actor
+            #     that could stop a send was a cut-off firing on rates already
+            #     earned, and `docs/09` calls that resource the one whose damage
+            #     is not recoverable on the timescale that matters.
+            page.locator('#list .row[data-d]').first.click()
+            page.wait_for_selector("#sc-act", timeout=15_000)
+            report["stop_offered"] = page.locator("#sc-act").inner_text()
+
+            #     A reason that restates the act is refused, and the refusal is
+            #     named on the screen rather than shown as a generic failure —
+            #     an operator reading "Failed (422)" goes looking for a bug in
+            #     the button instead of rewriting their reason.
+            page.fill("#sc-reason", "ok")
+            page.click("#sc-act")
+            page.wait_for_selector("#sc-msg:not([hidden])", timeout=15_000)
+            report["thin_reason_refused"] = page.locator("#sc-msg").inner_text()
+
+            page.fill("#sc-reason", "bought list found in the import")
+            page.click("#sc-act")
+            page.wait_for_selector('#list .row[data-d]', timeout=15_000)
+            page.locator('#list .row[data-d]').first.click()
+            page.wait_for_selector("#sc-act", timeout=15_000)
+            report["after_stop"] = page.locator("#detail").inner_text()[:400]
+
             # 6. The three views that did not exist, and the rail that
             #    offered five links leading nowhere. Every entry is clicked,
             #    because a nav that promises what it cannot do is the defect
@@ -451,6 +476,15 @@ def main() -> int:
             cur.execute("select count(*) as n from touch where channel = 'task'"
                         "  and completed_at is not null and completed_by is not null")
             report["task_completed"] = int(cur.fetchone()["n"])
+            # The stop, where it has to be true. A button that reported success
+            # over a row that never moved is a defect this check has caught
+            # before, so the column and the audit row are both read back.
+            cur.execute("select paused, paused_reason from sending_domain"
+                        " where name = 'outbound.example'")
+            report["domain_stopped"] = dict(row) if (row := cur.fetchone()) else None
+            cur.execute("select actor, subject, detail from audit_log"
+                        " where action = 'sending.domain.paused'")
+            report["stop_audited"] = [dict(r) for r in cur.fetchall()]
         db.close()
 
         print(json.dumps(report, indent=2))
@@ -558,6 +592,14 @@ def main() -> int:
         if "past due" not in (report.get("task_list") or ""):
             print("::error::the task row does not say it is past due:",
                   json.dumps(report.get("task_list"))[:300], file=sys.stderr)
+            return 1
+        if not (report.get("domain_stopped") or {}).get("paused"):
+            print("the sending switch reported success over a domain that is "
+                  "still sending", file=sys.stderr)
+            return 1
+        if not report.get("stop_audited"):
+            print("a domain was stopped and nothing recorded who or why",
+                  file=sys.stderr)
             return 1
         if not report.get("task_completed"):
             print("::error::Mark done reported success and no task was completed "

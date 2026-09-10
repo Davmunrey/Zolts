@@ -930,6 +930,24 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-061 · A person can stop a send, and both directions of the switch carry a written reason.**
+`runtime/breakers.py` was the only writer of `sending_domain.paused` in this repository. The only actor that could ever stop a send was a cut-off firing on rates already earned, and `docs/09` calls reputable sending capacity the one resource whose damage is not recoverable on the timescale that matters. `runtime/fleet.py` states the product's own job as *stop a send or pause a burning domain*; it could do neither on a person's word. An operator who knew before the numbers did — a list bought rather than built, a misaddressed campaign, a partner on the phone — could only watch and wait for a threshold to agree with them (D-101).
+
+The reverse direction existed and was worse than absent. Lifting a pause was a flag on the command that *registers* a domain, so the only way to say the cause was fixed was to re-declare SPF, DKIM, DMARC and one-click unsubscribe in the same statement. Getting one wrong does not raise. It arrives weeks later as mail filtered on delivery.
+
+| Decision | Why |
+|---|---|
+| **Two narrow acts, one column each** | Nothing else in the same statement, so an operator acting under time pressure cannot rewrite the authentication record as a side effect of stopping the sending |
+| **A reason is required in both directions** | `zolts/deliverability` already argues that an unexplained pause gets worked around, and it is at least as true in reverse: the audit row that says somebody lifted a cut-off and not why is the row read back during the next incident by a person who needs exactly the missing half |
+| **A reason that restates the act is refused** | "Paused", "resume", "fixed", "ok" pass a non-empty check and carry nothing. A field that accepts them teaches the operator the field is a formality, and a formality is what the next person types |
+| **A resume is classified against the rates and recorded as what it was** | Clean, an override, or a lift that the breaker takes back on the next reputation event. The operator is entitled to override; they are not entitled to have it recorded as though the domain were healthy |
+| **The screen says which before the click** | The verdict on the paused domain is computed by the same two functions the act uses, so the sentence on the screen and the one in the audit row cannot disagree |
+| **Audit, not policy decision** | Invariant 3 binds external actions and nothing leaves the building. Writing it as a policy decision would need a rule key and a pack digest that name nothing, and would put a row in the Policy view that is not a policy decision |
+
+**An advisory alarm is not an objection.** `reply.alarm` fires under a 2% reply rate, and `zolts/deliverability` says in as many words that cold outreach lives just under 2% on a good day — which is why that rule alone does not halve a mailbox. The first draft read the health rather than the rule and would have called an ordinary reply rate an override, which makes the word mean nothing. It is the same defect as calling a live cut-off clean, pointed the other way, and the first draft had that one too: `assess` never reads the paused column, so its `PAUSED` is a rate still over one of the two cut-offs, not a restatement of state.
+
+**The rate that decides a resume counts every mailbox on the domain, paused ones included.** `fleet.load` drops a hand-paused mailbox so its metrics do not dilute the fleet, which is right for capacity and wrong here: a domain that tripped the complaint cut-off would read as recovered the moment somebody paused the mailbox that did it. The sends that burned the domain are the domain's sends.
+
 **ADR-060 · The console opens on the work, and the work is ranked by what ignoring it costs.**
 The console had nine screens and they were the same screen nine times: a row of stat tiles, a table, a detail panel, each answering *what is the state of X* for a different X. None answered the question an operator actually arrives with — **what do I do now** — so answering it meant opening nine screens and joining them in your head. A surface that makes the reader do the joining is a surface that does not help them work, which is what the founder said about it in exactly those terms.
 
