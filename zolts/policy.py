@@ -67,6 +67,14 @@ class JurisdictionRule:
     blocked_channels: frozenset[str] = frozenset()
     suppression_lists: tuple[str, ...] = ()
     quiet_hours: tuple[time, time] = (time(20, 0), time(8, 0))
+    # Whether a generated message must carry an AI-disclosure marker here. The
+    # EU AI Act's transparency obligation is the one a limited-risk GTM system
+    # is actually subject to, and it is territorial, so it belongs in the pack
+    # rather than in code: counsel changes the list by publishing a document
+    # (ADR-044), not by waiting for a deployment. `evals.compliance_checks` has
+    # refused a draft with no marker since the agent layer shipped and nothing
+    # ever asked it to (D-90); this is what asks. Decision 55.
+    ai_disclosure: bool = False
 
 
 @dataclass
@@ -101,16 +109,19 @@ PACK_V1: dict[str, JurisdictionRule] = {
             "whatsapp": Basis.CONSENT,
         },
         suppression_lists=("robinson_list_es",),
+        ai_disclosure=True,
     ),
     "DE": JurisdictionRule(
         country="DE",
         required_basis={"email": Basis.CONSENT, "linkedin": Basis.LEGITIMATE_INTEREST},
         blocked_channels=frozenset({"voice"}),
+        ai_disclosure=True,
     ),
     "FR": JurisdictionRule(
         country="FR",
         required_basis={"email": Basis.LEGITIMATE_INTEREST, "voice": Basis.LEGITIMATE_INTEREST},
         suppression_lists=("bloctel",),
+        ai_disclosure=True,
     ),
     "GB": JurisdictionRule(
         country="GB",
@@ -130,13 +141,16 @@ PACK_V1: dict[str, JurisdictionRule] = {
 # The shipped pack's version. A pack published later carries its own; this is
 # the one a deployment falls back to when nothing has been published, so a
 # fresh database is never running unversioned rules (D-53).
-PACK_V1_VERSION = "1"
+PACK_V1_VERSION = "2"
 
 # An unknown jurisdiction is not an implicit allow. Consent is required until a
-# pack exists, which is the whole point of a default-deny posture.
+# pack exists, which is the whole point of a default-deny posture — and the
+# disclosure marker is required for the same reason, in the same direction: the
+# marker costs a sentence, and its absence where the law wanted it is a breach.
 UNKNOWN_JURISDICTION = JurisdictionRule(
     country="__unknown__",
     required_basis={},
+    ai_disclosure=True,
 )
 
 
@@ -166,6 +180,7 @@ def to_document(pack: dict[str, JurisdictionRule]) -> dict[str, Any]:
                 "suppression_lists": list(rule.suppression_lists),
                 "quiet_hours": [rule.quiet_hours[0].isoformat(),
                                 rule.quiet_hours[1].isoformat()],
+                "ai_disclosure": bool(rule.ai_disclosure),
             }
             for country, rule in sorted(pack.items())
         }
@@ -194,6 +209,10 @@ def from_document(document: dict[str, Any]) -> dict[str, JurisdictionRule]:
                 suppression_lists=tuple(raw.get("suppression_lists") or ()),
                 quiet_hours=(time.fromisoformat(raw["quiet_hours"][0]),
                              time.fromisoformat(raw["quiet_hours"][1])),
+                # Absent means false: a pack published before this field
+                # existed did not require the marker, and reading its silence
+                # as *required* would change what an old document meant.
+                ai_disclosure=bool(raw.get("ai_disclosure", False)),
             )
         except (KeyError, TypeError, ValueError, IndexError) as exc:
             raise PackDocumentError(f"rule for {country!r} cannot be read: {exc}") from exc
@@ -391,6 +410,25 @@ def tighten(rule: JurisdictionRule, overrides: dict[str, Any]) -> JurisdictionRu
 
     return replace(rule, required_basis=basis, quiet_hours=quiet,
                    suppression_lists=lists)
+
+
+def disclosure_required(country: str,
+                        pack: dict[str, JurisdictionRule] | None = None,
+                        overrides: dict[str, Any] | None = None) -> bool:
+    """Whether a generated message for a contact here must carry the marker.
+
+    Its own function rather than a field on `PolicyDecision`, because it is not
+    a decision: nothing is allowed or denied by it, and `evaluate` returns from
+    a dozen branches that would each have to remember to carry it. A gate that
+    denied the send never generates a message, so the question only arises on
+    the allow path and is asked once, there.
+
+    It goes through `tighten` for the same reason every other rule does: a
+    programme may demand the marker where the jurisdiction does not, and may
+    never drop it where the jurisdiction does — `tighten` preserves the pack's
+    value through `replace`, so silence in an override cannot switch it off.
+    """
+    return tighten(rule_for(country, pack), overrides or {}).ai_disclosure
 
 
 def _basis_satisfies(held: Basis, required: Basis) -> bool:

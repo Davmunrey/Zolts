@@ -35,6 +35,12 @@ class GateResult:
     rationale: str
     jurisdiction: str | None
     decision_id: str
+    # Whether this contact's jurisdiction requires a generated message to carry
+    # an AI-disclosure marker. It rides on the gate result rather than being
+    # resolved again at generation, because the gate is the one place that
+    # reads the *published* pack — a second lookup would be a second answer the
+    # day an operator publishes their own (D-90, decision 55).
+    requires_ai_disclosure: bool = False
 
 
 def _basis(value: Any) -> policy.Basis | None:
@@ -115,4 +121,6 @@ def check(cur, tenant_id: str, *, person: dict[str, Any], channel: str,
     return GateResult(
         allowed=verdict.allowed, decision=verdict.decision.value,
         rule_key=verdict.rule_key, rationale=verdict.rationale,
-        jurisdiction=verdict.jurisdiction, decision_id=decision_id)
+        jurisdiction=verdict.jurisdiction, decision_id=decision_id,
+        requires_ai_disclosure=policy.disclosure_required(
+            contact.country, policy_packs.rules_of(pack_row), overrides))

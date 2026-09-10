@@ -334,6 +334,10 @@ class Worker:
             cur, tenant_id, action, program, client=self.model_client,
             guard=self.spend_guard, signals=recent[:5], person=person, account=account,
             policy_allows=verdict.allowed,
+            # The jurisdiction's own answer, carried from the gate that read
+            # the published pack. Until this line the flag was a keyword no
+            # caller ever set (D-90).
+            requires_ai_disclosure=verdict.requires_ai_disclosure,
             opt_out=(spec.get("policy") or {}).get("opt_out_text")
                     or "Reply unsubscribe and I will stop.")
 
