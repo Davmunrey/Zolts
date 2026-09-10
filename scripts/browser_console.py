@@ -295,6 +295,11 @@ def main() -> int:
                     "() => [...document.querySelectorAll('#kpis .k')]"
                     ".map(e => e.textContent)")
                 report[f"{view}_view"] = page.locator("#list").inner_text()[:120]
+                if view == "spend":
+                    # docs/08's margin target, on the screen a CFO opens. A
+                    # number computed and never rendered is the defect this
+                    # script exists for (AGENT-4).
+                    report["cost_panel"] = page.locator("#detail").inner_text()[:700]
                 if view == "signals":
                     # `docs/06` calls the per-tier p95 the contractual SLA of
                     # two plans, and the console printed the measurement with
@@ -460,6 +465,12 @@ def main() -> int:
             print("::error::the signals view does not carry the time-to-touch "
                   "verdict docs/06 publishes:", json.dumps(sla_panel)[:400],
                   file=sys.stderr)
+            return 1
+
+        cost_panel = report.get("cost_panel") or ""
+        if "Tokens per contact" not in cost_panel or "Target" not in cost_panel:
+            print("::error::the spend view does not carry the cost per contact "
+                  "docs/08 targets:", json.dumps(cost_panel)[:400], file=sys.stderr)
             return 1
 
         live = [p for p in report["programs_in_database"] if p["status"] == "live"]

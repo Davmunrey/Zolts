@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="fad9000ed7de">
+<meta name="zolts-build" content="f949113f66c2">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -1851,6 +1851,31 @@ function renderSignals(){
         [mins(L.totalP95Minutes), "signal to touch, p95"]]);
 }
 
+/* The margin number of the agent layer. docs/08 targets under two cents of
+   tokens per contact reached, and nothing computed it: a product reaching a
+   contact for two cents and one reaching them for twenty looked identical on
+   every screen this console had (AGENT-4). Values stay short — this column
+   does not wrap (D-38). */
+function costPerContactBlock(c){
+  if (!c) return "";
+  var says = {meets: "under target", misses: "over target",
+              no_data: "nobody reached yet"};
+  var value = c.eurPerContact === null || c.eurPerContact === undefined
+    ? says[c.verdict] || c.verdict
+    : "€" + c.eurPerContact.toFixed(4) + ", " + (says[c.verdict] || c.verdict);
+  var rows = [
+    ["Tokens per contact", value, c.verdict === "misses" ? "warnt" : ""],
+    ["Target", "under €" + c.targetEurPerContact.toFixed(2)],
+    ["Contacts reached", nf(c.contactsTouched)],
+    ["Token spend", "€" + c.tokenSpendEur.toFixed(4)]
+  ];
+  /* A denominator missing rows reads high, and the reader is owed the reason
+     rather than left to wonder why the number moved. */
+  if (c.touchesNamingNobody)
+    rows.push(["Touches naming nobody", nf(c.touchesNamingNobody), "warnt"]);
+  return block("Cost per contact (docs/08)", rows);
+}
+
 /* ── spend ─────────────────────────────────────────────────────────────
    The number the customer is charged on. GET /v1/billing/current answered it
    from the day billing existed and no screen asked. */
@@ -1886,7 +1911,7 @@ function renderSpend(){
     ["Consumed", nf(S.consumed), "hi"],
     ["Remaining", nf(S.remaining)],
     ["Of the ceiling", pct + "%", S.alerting ? "hi" : ""]
-  ]) + note("The ceiling", [
+  ]) + costPerContactBlock(S.costPerContact) + note("The ceiling", [
     ["Alerts at 80%.", "Finding out at the ceiling is finding out too late."],
     ["Above the plan.", "Overage is graduated over the overage alone."],
     ["Raising it is deliberate.", "Nobody overspends by accident."]

@@ -333,6 +333,22 @@ MUTATIONS = (
         find="    rendered = document(inject(source, fixture), build=build_id(source),",
         replace="    rendered = document(inject(source, fixture),",
         tests="tests/test_deploy_drift.py"),
+    Mutation(
+        id="a-token-target-counts-only-token-spend",
+        claim="docs/08's cost per contact counts the model kinds only, so a data "
+              "supplier's invoice cannot reach a target about tokens (AGENT-4)",
+        path="zolts/agentcost.py",
+        find='MODEL_KINDS: frozenset[str] = frozenset({"agent.generate", "agent.dossier"})',
+        replace='MODEL_KINDS: frozenset[str] = frozenset({"agent.generate", "agent.dossier", "enrich.email"})',
+        tests="tests/test_agent_cost_per_contact.py"),
+    Mutation(
+        id="the-cost-denominator-is-a-person-not-a-touch",
+        claim="a contact reached three times is one contact touched, so the "
+              "margin number cannot be divided down by sending more (AGENT-4)",
+        path="runtime/metering.py",
+        find='        "select count(distinct t.person_id) as contacts,"',
+        replace='        "select count(t.person_id) as contacts,"',
+        tests="tests/test_agent_cost_per_contact.py"),
 )
 
 def _dirty() -> bool:

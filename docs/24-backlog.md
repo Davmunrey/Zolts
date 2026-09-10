@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1654 | 487 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1671 | 495 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -74,7 +74,6 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 | ID | Item | Why | Size |
 |---|---|---|---|
 | **AGENT-6** | A golden set that blocks a deployment | 200-500 cases per tenant, run on every prompt or model change. It is first here because it is the instrument three other items need: decision 56 cannot be closed without it, P-3 cannot be evaluated without it, and a prompt change ships today on nobody's evidence | M |
-| **AGENT-4** | Cost per contact touched, measured against the target | `docs/08` targets under €0.02 in tokens. Every call is priced before it is made and recorded after, so the number is computable per programme and per period — nothing computes it and nothing compares it | S |
 | **AGENT-5** | Prompt caching | A cost and latency lever at volume, and there is no volume yet. It moves up the moment a tenant's dossiers are stable and re-read | S |
 | **AGENT-3** | The Analyst | The incrementality report states the finding; nothing writes the post-mortem an operator acts on (ADR-043). The constraint is the one the role carries: it may only conclude from a valid experiment | M |
 | **AGENT-1** | The Strategist | Recommends a programme and a tier from a dossier. Needs a minimum population size and a prior test, or it is a segmentation machine with no brake | M |
@@ -101,6 +100,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **AGENT-4 · Cost per contact touched is measured.** `runtime.metering.cost_per_contact` divides the token spend of the model kinds by the distinct people reached and reads the quotient against `docs/08`'s target of under €0.02, per programme or across all of them, over a window that narrows both halves together. In `cost_micros`, what the calls cost this business, not the credits the customer is charged. On the spend screen, because it is the margin number of the agent layer and it was on no screen at all.
 
 - **SIG-1 · The ingest path is timed.** `signal.received_at` (migration 029) records when a payload reached this runtime, so `docs/06`'s first time-to-touch column has a probe and all three stages are judged. The arrival is stamped before the transaction opens at both call sites — the push endpoint and the watching pass — so the stage measures the trigger evaluation across every live programme, the part that grows with the programme count. Rows written before the migration carry no arrival time and are excluded rather than counted as instantaneous.
 

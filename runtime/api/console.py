@@ -660,6 +660,13 @@ def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "alerting": budget.alerting,
         "periodEnd": period["ends_at"].isoformat(),
         "byKind": by_kind,
+        # The margin number of the agent layer. `docs/08` targets under two
+        # cents of tokens per contact reached and nothing computed it, so a
+        # product reaching a contact for two cents and one reaching them for
+        # twenty looked identical on every screen (AGENT-4). Counted over this
+        # period, so both halves move together.
+        "costPerContact": metering.cost_per_contact(
+            cur, since=period["starts_at"], until=period["ends_at"]),
     }
 
 
