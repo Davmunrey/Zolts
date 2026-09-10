@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="f949113f66c2">
+<meta name="zolts-build" content="49e624926109">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -475,10 +475,12 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 
     <nav aria-label="Primary">
       <p class="sec">Run</p>
-      <a href="#" data-view="programs" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
+      <a href="#" data-view="today" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><path d="M2 6.5h3l1.4-3 1.8 6 1.3-3H11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today<span class="c" id="nav-today">0</span></a>
+      <a href="#" data-view="programs"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
       <a href="#" data-view="signals"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
       <a href="#" data-view="prospects"><svg viewBox="0 0 13 13" fill="none"><circle cx="5" cy="4.4" r="2.2" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 11.2c0-1.9 1.6-3.2 3.5-3.2s3.5 1.3 3.5 3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M9.6 5.2h2.4M10.8 4v2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Prospects<span class="c" id="nav-prospects">0</span></a>
       <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
+      <a href="#" data-view="tasks"><svg viewBox="0 0 13 13" fill="none"><rect x="1.7" y="2.2" width="9.6" height="8.6" rx="1.4" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.4l1.6 1.6 3-3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Human tasks<span class="c" id="nav-tasks">0</span></a>
       <a href="#" data-view="sending"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
       <a href="#" data-view="spend"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend<span class="c" id="nav-spend">0</span></a>
       <p class="sec">Prove</p>
@@ -574,8 +576,8 @@ var ICON_SIG = '<svg viewBox="0 0 14 14" fill="none"><path d="M2.4 7.6l2.6 2.6 6
 var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="9.8" r=".7" fill="currentColor"/></svg>';
 
 var R = D.review || [];
-var state = { view: "programs", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              live: false, onlySig: false, jur: "ES", tuning: false };
+var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
+              tsel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -675,6 +677,12 @@ function renderChrome(){
   // Drafts waiting for a person, not actions waiting to be sent. Those are
   // different queues and only one of them is somebody's job.
   put("nav-review", D.queue ? (D.queue.review != null ? D.queue.review : D.queue.pending) : null);
+  // Open, not overdue. The rail says how much work is waiting; whether any of
+  // it is late is a tone on the screen itself, because a count that silently
+  // means two different things is worse than two counts.
+  put("nav-today", D.attention ? (D.attention.items || []).length : null);
+  put("nav-tasks", (D.tasksView && D.tasksView.counts)
+        ? D.tasksView.counts.open : null);
   // Sends left today, not mailboxes owned. An operator needs the number that
   // runs out, and an unmanaged fleet shows a dash rather than a zero: no
   // capacity and no control over capacity are opposite situations.
@@ -1474,6 +1482,16 @@ var VIEWS = {
     cols: "22px minmax(140px,1.35fr) minmax(120px,.95fr) 70px 78px 58px 56px 26px",
     head: ["", "Program", "Blueprint", "r:Enrolled", "r:Lift", "r:Holdout", "r:p95", ""]
   },
+  today: {
+    title: "Today",
+    cols: "22px minmax(180px,1.5fr) minmax(140px,1fr) minmax(84px,.5fr) 1fr",
+    head: ["", "What needs you", "Detail", "r:How many", "w:Urgency"]
+  },
+  tasks: {
+    title: "Human tasks",
+    cols: "22px minmax(150px,1.3fr) minmax(120px,.9fr) 90px minmax(96px,.6fr) 1fr",
+    head: ["", "Step", "Program", "Channel", "r:Due in", "w:State"]
+  },
   review: {
     title: "Review queue",
     cols: "22px minmax(160px,1.4fr) 110px 90px 1fr",
@@ -1527,7 +1545,24 @@ function chrome(view){
   });
 }
 
+/* Every action in this console reloads the page — activate, publish, approve,
+   mark done — and every one of them used to drop the operator back on the
+   landing screen. Losing your place on every action is the console making you
+   navigate rather than work, and it hid D-43's activation note the moment the
+   landing screen stopped being Programs. The view survives the reload. */
+function rememberView(view){
+  try { sessionStorage.setItem("zolts.view", view); } catch (e) {}
+}
+
+function rememberedView(){
+  try {
+    var v = sessionStorage.getItem("zolts.view");
+    return (v && VIEWS[v]) ? v : null;
+  } catch (e) { return null; }
+}
+
 function show(view){
+  rememberView(view);
   state.view = view;
   document.querySelectorAll("nav a[data-view]").forEach(function(a){
     if (a.dataset.view === view) a.setAttribute("aria-current", "page");
@@ -1876,6 +1911,215 @@ function costPerContactBlock(c){
   return block("Cost per contact (docs/08)", rows);
 }
 
+/* ── today ─────────────────────────────────────────────────────────────
+   The console had nine screens and they were the same screen nine times: stat
+   tiles, a table, a detail panel, each answering what is the state of X. None
+   answered the question an operator arrives with — what do I do now — so
+   answering it meant opening nine screens and joining them in your head.
+
+   Every judgement here was already being made and rendered somewhere else.
+   This collects them, ranks them by what ignoring each one costs, and sends
+   the click to the screen where the action lives. Built from the same numbers
+   those screens render, so the summary cannot disagree with them. */
+function renderToday(){
+  var A = D.attention || {items: [], counts: {}, unattended: {}};
+  var items = A.items || [], counts = A.counts || {}, idle = A.unattended || {};
+  document.getElementById("shown").textContent = items.length;
+
+  kpis([
+    {label: "Needs you now", value: nf(counts.now || 0),
+     unit: counts.now ? "irreversible or already broken" : "nothing urgent",
+     tone: counts.now ? "bad" : ""},
+    {label: "Today", value: nf(counts.today || 0),
+     unit: "a clock is running", tone: counts.today ? "warn" : ""},
+    {label: "Soon", value: nf(counts.soon || 0), unit: "costs if left a week"},
+    {label: "Running unattended", value: nf(idle.live || 0),
+     unit: nf(idle.queued || 0) + " queued · " + nf(idle.watching || 0) + " watched"}
+  ]);
+
+  if (!items.length){
+    /* An empty state that says nothing is indistinguishable from a screen
+       that failed to load, so it says what the runtime is doing instead. */
+    list.innerHTML = empty("Nothing needs a person. " + nf(idle.live || 0)
+      + " programme(s) are live, " + nf(idle.queued || 0) + " action(s) are queued "
+      + "and " + nf(idle.watching || 0) + " signal(s) are being watched.");
+    detail.innerHTML = block("Nothing waiting", [
+      ["Live programmes", nf(idle.live || 0)],
+      ["Queued actions", nf(idle.queued || 0)],
+      ["Signals watched", nf(idle.watching || 0)]
+    ]) + note("What this screen is", [
+      ["Ranked by cost, not recency.", "A newest-first list is an inbox, and an "
+       + "inbox rewards whoever shouted last."],
+      ["Every item names its cost.", "A worklist without reasons is a to-do "
+       + "list somebody else wrote."]
+    ]);
+    foot([]);
+    return;
+  }
+
+  var TONE = {now: "deny", today: "warn", soon: ""};
+  list.innerHTML = items.map(function(it, i){
+    return '<div class="row' + (i === todayIndex(items) ? " on" : "") + '" data-a="'
+      + i + '" role="row" tabindex="0">'
+      + labelled([dot(TONE[it.urgency] || ""), cell(it.title, "k"),
+                  cell(it.detail, "m"), cell(nf(it.count), "n"),
+                  cell(it.urgency, "w m" + (it.urgency === "now" ? " warnt" : ""))])
+      + '</div>';
+  }).join("");
+
+  renderTodayDetail(items[todayIndex(items)]);
+  list.querySelectorAll(".row[data-a]").forEach(function(el){
+    el.addEventListener("click", function(){
+      state.asel = Number(el.dataset.a); renderToday();
+    });
+  });
+  foot([[nf(counts.now || 0), "now"], [nf(counts.today || 0), "today"],
+        [nf(counts.soon || 0), "soon"]]);
+}
+
+function todayIndex(items){
+  var i = state.asel;
+  return (typeof i === "number" && i >= 0 && i < items.length) ? i : 0;
+}
+
+function renderTodayDetail(it){
+  if (!it) { detail.innerHTML = ""; return; }
+  var LABEL = {now: "Now", today: "Today", soon: "Soon"};
+  detail.innerHTML = '<div class="dhead">'
+    + '<div class="k">' + esc(LABEL[it.urgency] || it.urgency) + '</div>'
+    + '<h2>' + esc(it.title) + '</h2>'
+    + '<div class="dactions"><button class="btn btn-p" id="goto" data-view="'
+    + esc(it.view) + '">Open ' + esc((VIEWS[it.view] || {}).title || it.view)
+    + '</button></div></div>'
+    + block("What this is", [
+        ["How many", nf(it.count)],
+        ["Where", (VIEWS[it.view] || {}).title || it.view],
+        ["Urgency", LABEL[it.urgency] || it.urgency,
+         it.urgency === "now" ? "warnt" : ""]
+      ])
+    /* The row's own detail, in full. The table cell ellipsises it because a
+       column has a width; this panel does not, and truncated text an operator
+       cannot expand anywhere is text nobody wrote. */
+    + note("What it is", [["This item.", it.detail + "."]])
+    /* The cost of ignoring it. This is the sentence that makes the row a
+       decision rather than a number, and it is not the detail again: the two
+       said the same thing twice until they were separated. */
+    + note("What it costs to leave it", [["If nobody acts.", it.cost]]);
+  var go = document.getElementById("goto");
+  if (go) go.addEventListener("click", function(){ show(go.dataset.view); });
+}
+
+/* ── human tasks ───────────────────────────────────────────────────────
+   A step on the task or voice channel is real work for a person. The runtime
+   created it and, until D-83, nothing could ever close it. GET /v1/tasks has
+   answered this since, and no screen asked: a queue an operator cannot see is
+   a queue nobody works, and the SLA docs/09 gives the channel is then a
+   deadline measured against nothing. */
+function renderTasks(){
+  var T = D.tasksView || {tasks: [], counts: {}};
+  var tasks = T.tasks || [], counts = T.counts || {};
+  document.getElementById("shown").textContent = tasks.length;
+
+  var overdue = counts.overdue || 0;
+  kpis([
+    {label: "Open", value: nf(counts.open || 0)},
+    {label: "Past due", value: nf(overdue),
+     unit: overdue ? "the SLA the step declared" : "none late",
+     tone: overdue ? "warn" : ""},
+    {label: "Oldest waiting", value: tasks.length ? dueText(tasks[0]) : "—"},
+    {label: "Channel", value: tasks.length ? tasks[0].channel : "—",
+     unit: "a person, not a provider"}
+  ]);
+
+  if (!tasks.length){
+    list.innerHTML = empty("Nothing is waiting for a person. A step on the "
+      + "task or voice channel appears here the moment the runtime creates it.");
+    detail.innerHTML = block("Human tasks", [["Open", "0"], ["Past due", "0"]]);
+    foot([]);
+    return;
+  }
+
+  /* Selectable rows carry their id the way the review queue's do, so the
+     detail panel follows the click rather than always showing the first. */
+  list.innerHTML = tasks.map(function(t){
+    return '<div class="row' + (t.id === state.tsel ? " on" : "") + '" data-t="'
+      + esc(t.id) + '" role="row" tabindex="0">'
+      + labelled([dot(t.late ? "warn" : "live"), cell(stepName(t), "k"),
+                  cell(t.program || "—", "m"), cell(t.channel, "m"),
+                  cell(dueText(t), "n" + (t.late ? " warnt" : "")),
+                  cell(t.late ? "past due" : "waiting", "w m")])
+      + '</div>';
+  }).join("");
+
+  var chosen = tasks.filter(function(t){ return t.id === state.tsel; })[0] || tasks[0];
+  state.tsel = chosen.id;
+  renderTaskDetail(chosen);
+  list.querySelectorAll(".row[data-t]").forEach(function(el){
+    el.addEventListener("click", function(){
+      state.tsel = el.dataset.t; renderTasks();
+    });
+  });
+  foot([[nf(counts.open || 0), "open"], [nf(overdue), "past due"]]);
+}
+
+/* A task the worker wrote always names its step, and the column is nullable.
+   One that does not still needs a name: an empty heading is a panel nobody can
+   identify, and an empty cell is a row nobody can click on purpose. */
+function stepName(t){ return t.step || ("a " + t.channel + " task"); }
+
+/* Minutes, signed: negative is time left, positive is time past. Kept short
+   because the detail column does not wrap (D-38). */
+function dueText(t){
+  if (t.lateMinutes === null || t.lateMinutes === undefined) return "no SLA";
+  var m = Math.abs(t.lateMinutes);
+  var span = m < 90 ? m + " min" : Math.round(m / 60) + " h";
+  return t.late ? span + " late" : "in " + span;
+}
+
+function renderTaskDetail(t){
+  /* The detail header the other views use: a mono kicker, an h2, then the
+     actions. Two classes of my own would have been two rules nobody styled. */
+  detail.innerHTML = '<div class="dhead">'
+    + '<div class="k">' + esc(t.program || "no programme") + ' · '
+    + esc(t.channel) + '</div>'
+    + '<h2>' + esc(stepName(t)) + '</h2>'
+    + '<div class="dactions">'
+    + (LIVE ? '<button class="btn btn-p" id="done" data-id="' + esc(t.id) + '">Mark done</button>'
+            : '<button class="btn btn-p" disabled title="Static preview">Mark done</button>')
+    + '</div></div>'
+    + block("This task", [
+        ["Due", dueText(t), t.late ? "warnt" : ""],
+        ["Created", String(t.createdAt).slice(0, 10)],
+        ["Deadline", t.dueAt ? String(t.dueAt).slice(0, 10) : "none declared"],
+        ["Channel", t.channel]
+      ])
+    + note("Why a person", [
+        ["The runtime cannot do it.", "A call or a manual step has no provider "
+         + "to report back, so nobody but a person can close it."],
+        ["The deadline is frozen.", "Stamped from the step's SLA when the task "
+         + "was created, so republishing the programme does not make it punctual."]
+      ]);
+  wireTaskAction();
+}
+
+function wireTaskAction(){
+  var b = document.getElementById("done");
+  if (!b || !LIVE) return;
+  b.addEventListener("click", function(){
+    b.disabled = true;
+    b.textContent = "Marking…";
+    act("/v1/tasks/" + b.dataset.id + "/complete", "POST").then(function(res){
+      if (res.ok){ window.location.reload(); return; }
+      b.disabled = false;
+      b.textContent = res.status === 409 ? "Already done"
+        : res.status === 403 ? "Not permitted" : "Failed (" + res.status + ")";
+    }).catch(function(){
+      b.disabled = false;
+      b.textContent = "Failed (network)";
+    });
+  });
+}
+
 /* ── spend ─────────────────────────────────────────────────────────────
    The number the customer is charged on. GET /v1/billing/current answered it
    from the day billing existed and no screen asked. */
@@ -2039,12 +2283,28 @@ function render(){
   if (state.view === "audit"){ renderAudit(); return; }
   if (state.view === "sending"){ renderSending(); return; }
   if (state.view === "review"){ renderReviewList(); renderReviewDetail(); return; }
+  if (state.view === "today"){ renderToday(); return; }
+  if (state.view === "tasks"){ renderTasks(); return; }
   renderList();
   renderDetail();
 }
 
 document.querySelectorAll("nav a[data-view]").forEach(function(a){
   a.addEventListener("click", function(e){ e.preventDefault(); show(a.dataset.view); });
+});
+
+/* Restored here rather than beside `state`, because `rememberedView` reads
+   `VIEWS` to refuse a view this build no longer has — and `VIEWS` is declared
+   further down. Called earlier it threw, its own catch swallowed the throw,
+   and the restore silently never happened. A guard that catches its own bug
+   is worse than no guard: this one is placed where its dependency exists.
+
+   The rail is marked to match. A rail that says Today while the table shows
+   Spend is a surface an operator cannot trust about anything else either. */
+state.view = rememberedView() || state.view;
+document.querySelectorAll("nav a[data-view]").forEach(function(a){
+  if (a.dataset.view === state.view) a.setAttribute("aria-current", "page");
+  else a.removeAttribute("aria-current");
 });
 
 render();

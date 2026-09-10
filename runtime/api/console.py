@@ -12,11 +12,12 @@ whether it is looking at a demo or a tenant.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from runtime import fleet
 from runtime.repo import enrollments, programs
-from zolts import dsl
+from zolts import attention, dsl
 from zolts.catalog import load_catalog
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, minimum_detectable_effect
 from zolts.report import BASELINE_RATE_FLOOR, SIGNIFICANT, Comparison
@@ -670,6 +671,137 @@ def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def attention_view(*, programs, queue, fleet_health, tasks, spend,
+                   signals) -> dict[str, Any]:
+    """What needs a person, from the judgements the other views already made.
+
+    Built from the rendered views rather than from its own queries, on purpose.
+    A home screen that counts the review queue with a second query is a second
+    answer waiting to disagree with the first, and the day they diverge the
+    operator believes the summary — that is how a dashboard starts lying.
+
+    Every item carries three things: what it is, what ignoring it costs, and
+    which screen the action lives on. A worklist without the cost is a to-do
+    list somebody else wrote, and an operator reading one has no way to decide
+    what to skip.
+    """
+    items: list[dict[str, Any]] = []
+
+    def add(kind: str, title: str, detail: str, count: int = 1, view: str | None = None):
+        rule = attention.kind(kind)
+        items.append({
+            "kind": kind, "title": title, "detail": detail, "count": count,
+            "urgency": rule.urgency.value, "view": view or rule.view,
+            "cost": rule.cost,
+        })
+
+    # Irreversible first. A burned domain is not undone by acting tomorrow.
+    for domain in (fleet_health.get("domains") or []):
+        alarmed = [b for b in domain.get("mailboxes", [])
+                   if b.get("health") == "alarm"]
+        if domain.get("health") == "alarm" or alarmed:
+            add("sending.alarm", f"{domain['name']} is in alarm",
+                domain.get("rationale") or f"{len(alarmed)} mailbox(es) in alarm",
+                count=max(1, len(alarmed)))
+    for paused in (fleet_health.get("pausedDomains") or []):
+        add("sending.alarm", f"{paused['name']} is paused",
+            paused.get("pausedReason") or "paused, reason not recorded")
+
+    if queue.get("dead"):
+        add("outbox.dead", "Actions gave up after their retries",
+            "Nothing will deliver them and nothing else will notice",
+            count=int(queue["dead"]))
+
+    counts = tasks.get("counts") or {}
+    if counts.get("overdue"):
+        add("task.overdue", "Human tasks past their deadline",
+            "The SLA the step stamped has already passed",
+            count=int(counts["overdue"]))
+
+    if queue.get("review"):
+        add("review.waiting", "Drafts waiting for a person",
+            "A gate declined to send them unattended",
+            count=int(queue["review"]))
+
+    if spend and spend.get("alerting"):
+        share = round((spend.get("shareUsed") or 0) * 100)
+        add("spend.ceiling", f"{share}% of the ceiling used",
+            f"{spend.get('remaining', 0):,.0f} credits left this period")
+
+    for row in (signals.get("sla") or []):
+        missed = [name for name, stage in (row.get("stages") or {}).items()
+                  if stage.get("verdict") == "misses"]
+        if missed:
+            add("sla.missed", f"Tier {row['tier']} is missing its time-to-touch SLA",
+                "Missing: " + ", ".join(sorted(missed)), count=len(missed))
+
+    open_not_late = int(counts.get("open", 0)) - int(counts.get("overdue", 0))
+    if open_not_late > 0:
+        add("task.due", "Human tasks waiting", "Still inside the SLA they declared",
+            count=open_not_late)
+
+    cost = (spend or {}).get("costPerContact") or {}
+    if cost.get("verdict") == "misses":
+        add("cost.over", "Cost per contact is over target",
+            f"€{cost['eurPerContact']:.4f} against €"
+            f"{cost['targetEurPerContact']:.2f} in tokens")
+
+    drafts = [p for p in programs if p.get("status") in ("draft", "staged")]
+    if drafts:
+        add("program.draft", "Programmes published and never activated",
+            ", ".join(sorted(p["key"] for p in drafts))[:120], count=len(drafts))
+
+    ranked = attention.rank(items)
+    return {
+        "items": ranked,
+        "counts": attention.urgency_counts(ranked),
+        # What the runtime is doing unattended, so an empty worklist reads as
+        # working rather than as broken. An empty state that says nothing is
+        # indistinguishable from a screen that failed to load.
+        "unattended": {
+            "queued": int(queue.get("pending") or 0),
+            "watching": len(signals.get("watched") or []),
+            "live": len([p for p in programs if p.get("status") == "live"]),
+        },
+    }
+
+
+def tasks_view(cur, limit: int = 100) -> dict[str, Any]:
+    """The work waiting for a person, and what is late.
+
+    `GET /v1/tasks` has answered this since D-83 gave a human task a way to be
+    closed, and no screen asked it. A queue an operator cannot see is a queue
+    nobody works, and the SLA `docs/09` gives the task channel is then a
+    deadline measured against nothing — the shape this repository keeps
+    finding, on the one surface where the person doing the work sits.
+
+    The deadline was stamped when the task was created, from the step's own
+    `sla_hours`, so republishing the programme with a longer SLA does not make
+    a late task punctual. *Late* is computed here rather than stored: a stored
+    copy of a comparison is a second answer waiting to disagree with the two
+    timestamps beside it.
+    """
+    from runtime.repo import tasks as tasks_repo
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for row in tasks_repo.open_tasks(cur, limit):
+        due = row.get("due_at")
+        rows.append({
+            "id": str(row["id"]),
+            "channel": row["channel"],
+            "step": row["step_key"],
+            "program": row.get("program_key"),
+            "createdAt": row["created_at"].isoformat(),
+            "dueAt": due.isoformat() if due else None,
+            # Minutes rather than a timestamp, because the question is how late
+            # rather than when: negative is time left, positive is time past.
+            "lateMinutes": (int((now - due).total_seconds() // 60) if due else None),
+            "late": bool(due and now > due),
+        })
+    return {"tasks": rows, "counts": tasks_repo.counts(cur)}
+
+
 def review_view(cur, limit: int = 50) -> list[dict[str, Any]]:
     """What is waiting for a person, and what each gate said about it.
 
@@ -756,6 +888,13 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
     cur.execute("select coalesce(sum(cost_micros),0) as m from cost_event where kind = 'llm'")
     llm_micros = int(cur.fetchone()["m"])
 
+    # Computed once and shared with the worklist below. Two calls would be two
+    # answers, and the one an operator reads first is the summary.
+    fleet_health = fleet.health(cur)
+    signals = signals_view(cur)
+    tasks = tasks_view(cur)
+    spend = spend_view(cur, tenant)
+
     return {
         # The one flag that separates the served console from the static build.
         # The static build inlines a fixture and keeps connect-src at 'none',
@@ -787,11 +926,19 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         # members and a tenant whose provider owns the mailboxes look identical
         # in a summary and are opposite in consequence, so the surface has to
         # say which one this is.
-        "fleet": fleet.health(cur),
+        "fleet": fleet_health,
         "prospects": prospects_view(cur),
-        "signalsView": signals_view(cur),
-        "spendView": spend_view(cur, tenant),
+        "signalsView": signals,
+        "tasksView": tasks,
+        "spendView": spend,
         "policyView": policy_view(cur),
         "auditView": audit_view(cur),
         "spend": {"llm_usd": round(llm_micros / 1_000_000, 4)},
+        # The worklist, built from the views above rather than from queries of
+        # its own, so the home screen and the screen it links to cannot
+        # disagree about what is waiting.
+        "attention": attention_view(
+            programs=views,
+            queue={"pending": queued, "dead": dead, "review": review},
+            fleet_health=fleet_health, tasks=tasks, spend=spend, signals=signals),
     }

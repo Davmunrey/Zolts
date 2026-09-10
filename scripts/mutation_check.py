@@ -349,6 +349,24 @@ MUTATIONS = (
         find='        "select count(distinct t.person_id) as contacts,"',
         replace='        "select count(t.person_id) as contacts,"',
         tests="tests/test_agent_cost_per_contact.py"),
+    Mutation(
+        id="the-human-task-queue-has-a-screen-that-reaches-it",
+        claim="the rail entry for the human task queue reaches its renderer, "
+              "without which the queue is a link to nothing and the work nobody "
+              "can see is work nobody does",
+        path="design/console.html",
+        find='  if (state.view === "tasks"){ renderTasks(); return; }',
+        replace='  if (state.view === "tasks"){ return; }',
+        tests="tests/test_task_queue_view.py"),
+    Mutation(
+        id="the-worklist-is-ranked-by-cost-not-by-recency",
+        claim="Today ranks what needs a person by what ignoring it costs, so an "
+              "irreversible sending alarm cannot be pushed below a draft "
+              "waiting for approval by arriving earlier",
+        path="zolts/attention.py",
+        find='    return sorted(items, key=lambda item: RANK[kind(item["kind"]).key])',
+        replace="    return list(items)",
+        tests="tests/test_attention.py"),
 )
 
 def _dirty() -> bool:
