@@ -58,11 +58,13 @@ def record_touch(cur, tenant_id: str, *, enrollment_id: str | None, channel: str
                  step_key: str | None, idempotency_key: str, content: dict[str, Any],
                  provider: str | None, provider_ref: str | None, status: str,
                  cost_micros: int = 0, sent_at: datetime | None = None,
-                 mailbox_id: str | None = None) -> dict[str, Any] | None:
+                 mailbox_id: str | None = None,
+                 due_at: datetime | None = None) -> dict[str, Any] | None:
     cur.execute(
         "insert into touch (tenant_id, enrollment_id, channel, step_key, idempotency_key,"
-        " content, provider, provider_ref, status, cost_micros, sent_at, mailbox_id)"
-        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        " content, provider, provider_ref, status, cost_micros, sent_at, mailbox_id,"
+        " due_at)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
         " on conflict (tenant_id, idempotency_key) do update set"
         "   status = excluded.status, provider_ref ="
         "   coalesce(excluded.provider_ref, touch.provider_ref), sent_at ="
@@ -70,11 +72,15 @@ def record_touch(cur, tenant_id: str, *, enrollment_id: str | None, channel: str
         # A redelivered send keeps the mailbox that actually sent it. Letting a
         # retry rewrite it would move the reputation consequence to whichever
         # mailbox happened to be free the second time.
-        "   coalesce(touch.mailbox_id, excluded.mailbox_id)"
+        "   coalesce(touch.mailbox_id, excluded.mailbox_id),"
+        # The deadline a human task was created under, kept across a retry for
+        # the same reason the mailbox is: re-queuing the same work must not
+        # quietly move the promise made about when it would be done.
+        "   due_at = coalesce(touch.due_at, excluded.due_at)"
         " returning *",
         (tenant_id, enrollment_id, channel, step_key, idempotency_key,
          json.dumps(content), provider, provider_ref, status, cost_micros, sent_at,
-         mailbox_id),
+         mailbox_id, due_at),
     )
     return one(cur)
 

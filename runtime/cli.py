@@ -298,6 +298,17 @@ def main(argv: list[str] | None = None) -> int:
     caps = sub.add_parser("capacity", help="what the sending fleet can do today")
     caps.add_argument("--tenant", required=True)
 
+    work = sub.add_parser("tasks", help="the work a programme handed to a person")
+    work.add_argument("--tenant", required=True)
+    work.add_argument("--overdue", action="store_true",
+                      help="only the ones past the deadline their step declared")
+
+    done = sub.add_parser("task-done", help="record that a person did the work")
+    done.add_argument("--tenant", required=True)
+    done.add_argument("--task", required=True, help="the task id from `zolts tasks`")
+    done.add_argument("--by", required=True,
+                      help="who did it, in words an audit will accept")
+
     terms = sub.add_parser(
         "set-terms",
         help="change a tenant's plan or raise its credit ceiling (provisioning)")
@@ -926,6 +937,44 @@ def main(argv: list[str] | None = None) -> int:
 
         with db.tenant_tx(args.tenant) as cur:
             print(json.dumps(fleet.health(cur), indent=2))
+        return 0
+
+    if args.command == "tasks":
+        from runtime.repo import tasks
+
+        with db.tenant_tx(args.tenant) as cur:
+            rows = tasks.overdue(cur) if args.overdue else tasks.open_tasks(cur)
+            print(json.dumps({
+                "counts": tasks.counts(cur),
+                "note": ("a task with no `sla_hours` has no deadline and is never "
+                         "late; it is still work"),
+                "tasks": [{"id": str(r["id"]), "channel": r["channel"],
+                           "step": r["step_key"], "program": r["program_key"],
+                           "createdAt": str(r["created_at"]),
+                           "dueAt": None if r["due_at"] is None else str(r["due_at"])}
+                          for r in rows]}, indent=2, default=str))
+        return 0
+
+    if args.command == "task-done":
+        from runtime.repo import ledger as ledger_repo
+        from runtime.repo import tasks
+
+        with db.tenant_tx(args.tenant) as cur:
+            row = tasks.complete(cur, args.task, by=args.by)
+            if row is None:
+                # Refused rather than reported done. A second completion that
+                # printed success would let an operator believe they had
+                # recorded something they had not.
+                print(json.dumps({"error": "no open task with that id"}, indent=2))
+                return 1
+            late = bool(row["due_at"] and row["completed_at"] > row["due_at"])
+            ledger_repo.audit(cur, args.tenant, actor=args.by, action="task.completed",
+                              subject=str(row["id"]),
+                              detail={"step": row["step_key"], "late": late})
+            print(json.dumps({"id": str(row["id"]), "step": row["step_key"],
+                              "completedAt": str(row["completed_at"]),
+                              "completedBy": row["completed_by"], "late": late},
+                             indent=2))
         return 0
 
     if args.command == "liveness":

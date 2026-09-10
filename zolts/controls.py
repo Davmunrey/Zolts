@@ -157,7 +157,14 @@ CONTROLS: tuple[Control, ...] = (
         "spec.plays.*.steps.sla_hours",
         "how long a step may wait before it is late",
         enforced_by=None,
-        consequence="Nothing measures step latency against it, and nothing reports a breach"),
+        reported_by="runtime/repo/tasks.py, as the deadline on the work item itself",
+        consequence=(
+            "Measured and reported, never acted on: an overdue task is listed and "
+            "nothing escalates it, because escalation needs somebody to escalate to "
+            "and no representative exists in the data model (decision 50). It was "
+            "measured by nothing at all until D-84, and could not have been: the work "
+            "item it timed had no completion path, so a deadline against it would "
+            "have reported every task as breached for ever (D-83)")),
     Control(
         "spec.enrich.*.accuracy_sla",
         "the measured accuracy a provider must reach before it may be asked",
