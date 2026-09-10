@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="874aa2605fc9">
+<meta name="zolts-build" content="dd28bfca227c">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -590,7 +590,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, dsel: null, osel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, osel: null, psel: [], basis: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -1886,7 +1886,7 @@ function wireSendingAction(){
 function renderProspects(){
   var P2 = D.prospects || {accounts: [], people: [], missingCounts: {}};
   var people = P2.people || [], accounts = P2.accounts || [];
-  var m = P2.missingCounts || {}, R2 = P2.research || {};
+  var m = P2.missingCounts || {}, R2 = P2.research || {}, price = P2.prices || {};
   document.getElementById("shown").textContent = people.length + accounts.length;
 
   if (!people.length && !accounts.length){
@@ -1897,19 +1897,33 @@ function renderProspects(){
     return;
   }
 
+  /* Only a contact with something buyable can be selected. A row that
+     highlights and then buys nothing is a control that lies about what it
+     will spend. */
+  var buyable = {};
+  people.forEach(function(c){ if (c.missing.length) buyable[c.id] = c; });
+  state.psel = (state.psel || []).filter(function(id){ return buyable[id]; });
+
   var rows = sect("Contacts", nf(people.length)) + people.map(function(c){
-    var state = c.optedOut ? "opted out" : (c.missing.length ? "needs " + c.missing.join(", ")
-                                                             : "complete");
-    return rowOf([dot(c.optedOut ? "deny" : c.missing.length ? "warn" : "live"),
-                  cell(c.name || "(no name)", "k"), cell(c.email, "m"), cell(c.phone, "m"),
-                  cell(state, "m" + (c.optedOut ? " bad" : c.missing.length ? " warnt" : ""))]);
+    var state2 = c.optedOut ? "opted out" : (c.missing.length ? "needs " + c.missing.join(", ")
+                                                              : "complete");
+    var open = !!buyable[c.id];
+    var on = state.psel.indexOf(c.id) >= 0;
+    return '<div class="row' + (on ? " on" : "") + '"'
+      + (open ? ' data-p="' + esc(c.id) + '" tabindex="0"' : "")
+      + ' role="row">'
+      + labelled([dot(c.optedOut ? "deny" : c.missing.length ? "warn" : "live"),
+                  cell(c.name || "(no name)", "k"), cell(c.email, "m"),
+                  cell(c.phone, "m"),
+                  cell(state2, "m" + (c.optedOut ? " bad" : c.missing.length ? " warnt" : ""))])
+      + '</div>';
   }).join("");
 
   rows += sect("Accounts", nf(accounts.length)) + accounts.map(function(a){
-    var state = a.dossier ? "dossier " + a.dossier : "no dossier";
+    var state2 = a.dossier ? "dossier " + a.dossier : "no dossier";
     return rowOf([dot(a.missing.length ? "warn" : "live"), cell(a.name, "k"),
                   cell(a.domain, "m"), cell(nf(a.contacts) + (a.contacts === 1 ? " contact" : " contacts"), "m"),
-                  cell(state, "m" + (a.dossier ? "" : " warnt"))], "sub");
+                  cell(state2, "m" + (a.dossier ? "" : " warnt"))], "sub");
   }).join("");
 
   var missing = (m.email || 0) + (m.phone || 0) + (m.firmographics || 0);
@@ -1927,17 +1941,149 @@ function renderProspects(){
   ]);
 
   list.innerHTML = rows;
-  detail.innerHTML = block("Missing fields", [
+  detail.innerHTML = buyBlock(buyable, price) + block("Missing fields", [
     ["Need an email", nf(m.email || 0), m.email ? "hi" : ""],
     ["Need a phone", nf(m.phone || 0), m.phone ? "hi" : ""],
     ["Need firmographics", nf(m.firmographics || 0), m.firmographics ? "hi" : ""]
   ]) + block("Research", [
     ["Accounts researched", nf(R2.withDossier || 0) + " of " + nf(R2.accounts || 0)],
     ["Stale", nf(R2.stale || 0), R2.stale ? "hi" : ""],
-    ["Cost per dossier", "20 credits"]
+    /* Read off the price list rather than printed here. The literal that used
+       to sit in this line was wrong the day the list changed, and nothing
+       would have failed. */
+    ["Cost per dossier", nf(price.dossier || 0) + " credits"]
   ]);
+  list.querySelectorAll(".row[data-p]").forEach(function(el){
+    el.addEventListener("click", function(){
+      var id = el.dataset.p, at = state.psel.indexOf(id);
+      if (at >= 0) state.psel.splice(at, 1); else state.psel.push(id);
+      renderProspects();
+    });
+  });
+  wireProspectActions();
   foot([[nf(accounts.length), "accounts"], [nf(people.length), "contacts"],
-        [nf((m.email || 0) + (m.phone || 0) + (m.firmographics || 0)), "fields missing"]]);
+        [nf(missing), "fields missing"]]);
+}
+
+/* `POST /v1/enrich` has existed since enrichment was executable, and its own
+   docstring says "the console sends the rows the operator selected". The
+   console sent nothing: the screen computed what was missing, using the same
+   rule the engine uses to decide whether to spend money, and offered no way to
+   buy any of it. */
+function buyBlock(buyable, price){
+  var chosen = state.psel.map(function(id){ return buyable[id]; });
+  if (!chosen.length){
+    return note("Buying a missing field", [
+      ["Select the contacts.", "Named rows, never everything unresolved: this "
+       + "spends a data budget, and a purchase whose size depends on how much "
+       + "happened to be missing is one nobody can predict the bill for."],
+      ["The price is per field.", "An email is " + nf(price.email || 0)
+       + " credits and a phone number is " + nf(price.phone || 0) + "."]
+    ]);
+  }
+  var buttons = ["email", "phone"].map(function(field){
+    var n = chosen.filter(function(c){ return c.missing.indexOf(field) >= 0; }).length;
+    if (!n) return "";
+    var cost = n * (price[field] || 0);
+    return '<button class="btn btn-p" id="buy-' + field + '" data-field="' + field
+      + '" data-n="' + n + '">Buy ' + nf(n) + " " + field + (n === 1 ? "" : "s")
+      + " · " + nf(cost) + ' credits</button>';
+  }).join("");
+
+  return '<div class="block"><div class="blabel">'
+    + esc(nf(chosen.length) + (chosen.length === 1 ? " contact" : " contacts")
+          + " selected") + '</div>'
+    + '<p class="pnote"><b>A miss is paid for and not billed.</b> The provider '
+    + 'charges for a lookup that finds nothing; the tenant is charged only for '
+    + 'a value that arrives.</p>'
+    + basisChoice()
+    + (LIVE ? '<div class="actf">' + buttons
+              + '<p class="pnote" id="buy-msg" hidden></p></div>'
+            : '<p class="pnote"><b>Static preview.</b> Buying works on the '
+              + 'served console.</p>')
+    + '</div>';
+}
+
+/* Recorded against every value bought and not reconstructable later, so it is
+   chosen rather than defaulted: a recorded field the screen fills in silently
+   records the screen's default, not a decision. Nothing is preselected and the
+   buttons do not work until one is.
+
+   `docs/11` marks the legitimate interest assessment Not built (COMP-5) — the
+   basis may be declared and no assessment is captured, stored or versioned.
+   That is said here rather than in a footnote, because this is where somebody
+   is about to assert it. */
+function basisChoice(){
+  var options = [
+    ["consent", "The contact agreed, and the provenance is on the record."],
+    ["contract", "Processing is necessary for a contract with them."],
+    ["legitimate_interest", "No assessment is stored for this basis yet "
+     + "(docs/11, COMP-5). Asserting it here does not create one."]
+  ];
+  /* The segmented control the console already uses to pick one of several,
+     rather than a new pressed state: `[aria-pressed]` is styled for `.seg
+     button` and `.chipbtn` only, so a plain button carrying it would show the
+     operator nothing and this choice would look like it had not been made. */
+  var chosen = options.filter(function(o){ return o[0] === state.basis; })[0];
+  return '<div class="actf"><label>Legal basis for this purchase</label>'
+    + '<span class="seg" id="basis">'
+    + options.map(function(o){
+        return '<button data-basis="' + o[0] + '" aria-pressed="'
+          + (state.basis === o[0] ? "true" : "false") + '">'
+          + esc(o[0].replace("_", " ")) + '</button>';
+      }).join("")
+    + '</span>'
+    + '<p class="why">' + esc(chosen ? chosen[1]
+        : "Nothing is chosen. It is recorded against every value bought and "
+          + "cannot be reconstructed later, so the screen does not pick one "
+          + "for you.") + '</p></div>';
+}
+
+var BUY_REFUSAL = {
+  403: "Not permitted.",
+  422: "The runtime refused those rows."
+};
+
+function wireProspectActions(){
+  var basis = document.getElementById("basis");
+  if (basis) basis.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-basis]");
+    if (!b) return;
+    state.basis = b.dataset.basis;
+    renderProspects();
+  });
+
+  var msg = document.getElementById("buy-msg");
+  if (!msg || !LIVE) return;
+  ["email", "phone"].forEach(function(field){
+    var b = document.getElementById("buy-" + field);
+    if (!b) return;
+    b.addEventListener("click", function(){
+      if (!state.basis){
+        msg.textContent = "Choose a legal basis first. It is recorded against "
+          + "every value bought and cannot be reconstructed later.";
+        msg.hidden = false;
+        return;
+      }
+      var label = b.textContent;
+      msg.hidden = true;
+      b.disabled = true;
+      b.textContent = "Buying…";
+      act("/v1/enrich", "POST", {field: field, ids: state.psel,
+                                 legal_basis: state.basis}).then(function(res){
+        if (res.ok){ state.psel = []; window.location.reload(); return; }
+        b.disabled = false;
+        b.textContent = label;
+        msg.textContent = BUY_REFUSAL[res.status] || ("Failed (" + res.status + ").");
+        msg.hidden = false;
+      }).catch(function(){
+        b.disabled = false;
+        b.textContent = label;
+        msg.textContent = "Failed (network).";
+        msg.hidden = false;
+      });
+    });
+  });
 }
 
 /* The tier's own target beside the tier's own number. Per tier and never per
