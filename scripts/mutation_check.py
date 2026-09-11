@@ -464,6 +464,24 @@ MUTATIONS = (
         find='    return sorted(events, key=lambda e: (e["at"], BY_KEY[e["kind"]].rank),',
         replace='    return sorted(events, key=lambda e: (e["at"], 0),',
         tests="tests/test_timeline.py"),
+    Mutation(
+        id="an-unanswerable-audience-is-never-previewed-as-zero",
+        claim="an audience the runtime cannot evaluate is reported as that, "
+              "never as zero: a quiet programme and a broken one look identical "
+              "on a tile and are opposite in consequence",
+        path="runtime/preview.py",
+        find="    except audience.AudienceError as exc:\n        return unanswerable(as_of, str(exc))",
+        replace="    except audience.AudienceError as exc:\n        subjects = []",
+        tests="tests/test_preview.py"),
+    Mutation(
+        id="the-holdout-is-held-out-of-the-forecast",
+        claim="only the treatment arm is reached, so a forecast that counted "
+              "the control arm as sends would overstate the week by exactly the "
+              "number the measurement is built on",
+        path="runtime/preview.py",
+        find="        sends_at_most=sends_in_week_one(steps, treatment),",
+        replace="        sends_at_most=sends_in_week_one(steps, len(subjects)),",
+        tests="tests/test_preview.py"),
 )
 
 def _dirty() -> bool:

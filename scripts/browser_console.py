@@ -266,6 +266,13 @@ def main() -> int:
             page.click("#goto")
             page.wait_for_selector("#activate", timeout=15_000)
 
+            # 2c. What activating it would do today, before the click. The
+            #     number comes from the functions that will enrol, with the
+            #     insert taken out; an audience the runtime cannot evaluate
+            #     says so rather than reading as zero.
+            page.wait_for_selector("#pv dl, #pv-unanswerable, #pv-error", timeout=20_000)
+            report["preview_before_activate"] = page.locator("#pv").inner_text()[:500]
+
             # 3. The first action after signup: activate the draft.
             report["activate_offered"] = page.locator("#activate").inner_text()
             page.click("#activate")
@@ -775,6 +782,15 @@ def main() -> int:
         if not report.get("stop_audited"):
             print("a domain was stopped and nothing recorded who or why",
                   file=sys.stderr)
+            return 1
+        forecast = report.get("preview_before_activate") or ""
+        if "forecast as of" not in forecast and "cannot be evaluated" not in forecast:
+            print("::error::the programme has no forecast beside Activate:",
+                  json.dumps(forecast)[:400], file=sys.stderr)
+            return 1
+        if "Would enrol now" in forecast and "Held out" not in forecast:
+            print("::error::the forecast counts enrolments without saying who is held out:",
+                  json.dumps(forecast)[:400], file=sys.stderr)
             return 1
         story = report.get("timeline_text") or ""
         for needle, what in (("b2b.legitimate_interest", "the rule key"),

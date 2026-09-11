@@ -930,6 +930,18 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-065 · A programme is previewed by the functions that will run it, with the insert taken out.**
+Activate was the scariest click in the product and the one with no preview: a programme went live, its audience was evaluated on the next signal, and the operator found out what it did by watching the outbox (`docs/28`, OX-2). The number beside the button is now a forecast — how many would enrol, how many are held out, the steps inside week one with sends and credits as an upper bound, the capacity left per tier, and which policy rule would refuse a sample of the contacts.
+
+| Decision | Why |
+|---|---|
+| **The same functions, not a model of them** | The audience SQL under membership's own savepoint, timeout and deals refusal; `experiment.assign`; the cooldown; `tier_counts_since`. A test previews a programme and then really enrols every subject and requires the same count and the same arm. A preview computed by a second model of the programme is a second answer waiting to disagree, and the day it did the operator would believe the preview |
+| **An unanswerable audience is a refusal in the shape of the answer** | Zero enrolments and a broken audience look identical on a tile and are opposite in consequence. The refusal carries no count, so a screen renders one or the other and never a zero for the second |
+| **Only the treatment arm is reached** | A forecast that counted the holdout as sends would overstate the week by exactly the number the measurement is built on |
+| **Week one is an upper bound and says so** | Every reached contact through every step whose cumulative wait falls inside seven days. Guessing at reply-driven exits would be a second model of the programme |
+| **The policy sample names the rule, not the count** | Fifty contacts through `policy.evaluate` under the active pack for the first sending step. What an operator needs before Activate is the rule that will refuse most of them |
+| **`gate.local_hour` is public** | The preview evaluates the same quiet-hours rule for the same contact without recording a decision, and a second copy of that arithmetic is the hour the two would disagree on |
+
 **ADR-064 · One contact, one timeline, built from the six tables that already held it.**
 Six tables held a contact's story. A signal on the person or on their account. An enrolment. A policy decision with the rule that made it and the digest of the pack that held the rule (D-53). A proposal with the evidence behind every sentence and the claims removed for having none. A touch with its provider and its cost. An outcome. An audit entry. Each was rendered on its own screen, and no screen read one contact across all six (D-104). A customer's DPO answering a subject access request and a customer's CRO asking *why did this person get this email* are asking the same question, and the product could not answer it without a SQL client.
 
