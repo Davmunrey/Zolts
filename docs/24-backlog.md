@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1765 | 530 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1782 | 537 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -32,6 +32,10 @@ What is built, what is next, and what is blocked on a decision rather than on en
 |---|---|---|---|
 | **B-5** | Repository visibility | Open. `docs/12` (pricing, COGS, margins) and `docs/15` (risk matrix) are world-readable, and `zolts.vercel.app` serves the demo with no authentication | **Founder**, `docs/23` |
 | **B-6** | Data residency per tenant | Single region: `fra1` in `vercel.json`, beside a Neon database the founder creates in `eu-central-1`; `mad` in `fly.toml` | `docs/18` |
+
+## Product depth — the road to enviable
+
+Thirteen rows in `docs/28`, three levels, each with a binary exit criterion. Built in leverage order: OX-1 (why this person), OX-2 (what a programme would do today), then the day, then the polish. Each ships as its own pull request against the same bar as everything above.
 
 ## Then — engineering, unblocked, ordered by what being wrong costs
 
@@ -100,6 +104,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **Why this person.** One timeline per contact from the six tables that already held it: signal, enrolment, policy decision with rule and pack digest, proposal with evidence and dropped claims, touch with provider and cost, outcome, audit. Newest first, effect above cause, account events through the membership join the worker uses, read on demand. The first half of COMP-2 (ADR-064, D-104, `docs/28` OX-1).
 
 - **A missing field can be bought from the screen that shows it is missing.** `POST /v1/enrich` named the console as its caller and the console never called it: Prospects computed what was missing with the engine's own rule and offered nothing. It now sells the selected rows with the cost on the button, every price read from the price list rather than restated, and a legal basis that is chosen rather than defaulted — including the sentence saying no assessment backs legitimate interest yet (ADR-063, D-103).
 

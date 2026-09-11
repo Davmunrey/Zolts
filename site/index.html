@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="dd28bfca227c">
+<meta name="zolts-build" content="fffec02a9d11">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -185,6 +185,16 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .actf input::placeholder{color:var(--ink-tertiary)}
 .actf .btn{justify-self:start}
 .actf #sc-msg{color:var(--deny);margin:0}
+/* The per-contact timeline. A kind chip and a time, then the row; the
+   sentence that says what a row proves lives under it in `.why`. */
+.tlrow{display:block;padding:6px 0;border-top:1px solid var(--hairline)}
+.tlrow:first-of-type{border-top:0}
+.tlt{color:var(--ink-tertiary);font-size:10.5px}
+.tlk{display:inline-block;padding:1px 6px;border-radius:4px;font:550 10px/1.4 var(--mono);
+     letter-spacing:.3px;text-transform:uppercase;background:var(--surface-2);color:var(--ink-secondary)}
+.tlk.live{color:var(--live)}.tlk.bad{color:var(--deny)}.tlk.warnt{color:var(--review)}
+.tld{color:var(--ink-secondary)}
+.tldrop{opacity:.8}
 .field .why{grid-column:1/-1;margin:0}
 .why{font-size:11px;color:var(--ink-tertiary);line-height:1.45}
 .dsl{margin:0;padding:10px;max-height:240px;overflow:auto;
@@ -580,6 +590,11 @@ function act(path, method, body){
   if (body !== undefined) options.body = JSON.stringify(body);
   return fetch(path, options);
 }
+/* A read the console makes on demand. The session cookie is ambient and a
+   GET changes nothing, so no token; `credentials` keeps it same-origin. */
+function read(path){
+  return fetch(path, {credentials: "same-origin"});
+}
 var P = D.programs;
 
 function sig(p){ return p.significant === true; }
@@ -590,7 +605,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, dsel: null, osel: null, psel: [], basis: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -1908,10 +1923,10 @@ function renderProspects(){
     var state2 = c.optedOut ? "opted out" : (c.missing.length ? "needs " + c.missing.join(", ")
                                                               : "complete");
     var open = !!buyable[c.id];
-    var on = state.psel.indexOf(c.id) >= 0;
+    var on = state.psel.indexOf(c.id) >= 0 || state.csel === c.id;
     return '<div class="row' + (on ? " on" : "") + '"'
-      + (open ? ' data-p="' + esc(c.id) + '" tabindex="0"' : "")
-      + ' role="row">'
+      + ' data-c="' + esc(c.id) + '"' + (open ? ' data-p="' + esc(c.id) + '"' : "")
+      + ' tabindex="0" role="row">'
       + labelled([dot(c.optedOut ? "deny" : c.missing.length ? "warn" : "live"),
                   cell(c.name || "(no name)", "k"), cell(c.email, "m"),
                   cell(c.phone, "m"),
@@ -1941,7 +1956,7 @@ function renderProspects(){
   ]);
 
   list.innerHTML = rows;
-  detail.innerHTML = buyBlock(buyable, price) + block("Missing fields", [
+  detail.innerHTML = timelineBlock(people) + buyBlock(buyable, price) + block("Missing fields", [
     ["Need an email", nf(m.email || 0), m.email ? "hi" : ""],
     ["Need a phone", nf(m.phone || 0), m.phone ? "hi" : ""],
     ["Need firmographics", nf(m.firmographics || 0), m.firmographics ? "hi" : ""]
@@ -1953,17 +1968,112 @@ function renderProspects(){
        would have failed. */
     ["Cost per dossier", nf(price.dossier || 0) + " credits"]
   ]);
-  list.querySelectorAll(".row[data-p]").forEach(function(el){
+  list.querySelectorAll(".row[data-c]").forEach(function(el){
     el.addEventListener("click", function(){
-      var id = el.dataset.p, at = state.psel.indexOf(id);
-      if (at >= 0) state.psel.splice(at, 1); else state.psel.push(id);
+      /* One gesture, two meanings that do not conflict: the row becomes the
+         contact whose story the panel shows, and if it has something
+         buyable it also toggles in the purchase selection. */
+      if (el.dataset.p){
+        var at = state.psel.indexOf(el.dataset.p);
+        if (at >= 0) state.psel.splice(at, 1); else state.psel.push(el.dataset.p);
+      }
+      state.csel = el.dataset.c;
+      state.tl = null;
       renderProspects();
+      loadTimeline(el.dataset.c);
     });
   });
   wireProspectActions();
   foot([[nf(accounts.length), "accounts"], [nf(people.length), "contacts"],
         [nf(missing), "fields missing"]]);
 }
+
+/* ── why this person ───────────────────────────────────────────────────
+   Six tables held a contact's story — signal, enrolment, policy decision,
+   proposal, touch, outcome — each on its own screen, and no screen read one
+   contact across all six. A DPO answering a subject access request and a
+   CRO asking why an email went are asking the same question. This is the
+   one answer, read on demand from GET /v1/people/{id}/timeline. */
+function loadTimeline(id){
+  if (!LIVE){ return; }
+  read("/v1/people/" + encodeURIComponent(id) + "/timeline").then(function(res){
+    if (!res.ok){ state.tl = {error: "Failed (" + res.status + ")."}; renderProspects(); return; }
+    return res.json().then(function(body){
+      if (state.csel !== id) return;   /* the operator moved on */
+      state.tl = body; renderProspects();
+    });
+  }).catch(function(){ state.tl = {error: "Failed (network)."}; renderProspects(); });
+}
+
+function timelineBlock(people){
+  if (!state.csel) return "";
+  var c = people.filter(function(x){ return x.id === state.csel; })[0];
+  if (!c) return "";
+  var head = '<div class="dhead"><span class="k">' + esc(c.account || "no account")
+    + '</span><h2>' + esc(c.name || "(no name)") + '</h2></div>';
+  if (!LIVE){
+    return head + '<div class="block"><p class="pnote"><b>Static preview.</b> '
+      + 'The timeline reads live rows on the served console.</p></div>';
+  }
+  var t = state.tl;
+  if (!t) return head + '<div class="block"><p class="pnote" id="tl-loading">Reading everything that touched them…</p></div>';
+  if (t.error) return head + '<div class="block"><p class="pnote" id="tl-error"><b>' + esc(t.error) + '</b></p></div>';
+  var ev = t.events || [];
+  if (!ev.length){
+    return head + '<div class="block" id="tl"><p class="pnote">'
+      + 'Nothing has touched this person yet: no signal, no programme, no send. '
+      + 'The first row will be a signal.</p></div>';
+  }
+  return head + '<div class="block" id="tl"><div class="blabel">'
+    + esc(nf(ev.length) + (ev.length === 1 ? " event" : " events") + ", newest first")
+    + '</div>' + ev.map(timelineRow).join("") + '</div>';
+}
+
+/* Minutes and dates stay short because the detail column does not wrap
+   (D-38); the sentence that says what a row proves is on the row itself. */
+function timelineRow(e){
+  var when = (e.at || "").slice(0, 16).replace("T", " ");
+  var tone = e.kind === "decision.deny" || e.kind === "touch.failed" ? "bad"
+           : e.kind === "decision.allow" || e.kind === "touch.sent" ? "live"
+           : e.kind === "outcome.recorded" ? "warnt" : "";
+  var html = '<div class="ev tlrow" data-kind="' + esc(e.kind) + '">'
+    + '<span class="mono tlt">' + esc(when) + '</span> '
+    + '<span class="tlk ' + tone + '">' + esc(kindLabel(e.kind)) + '</span> '
+    + '<b>' + esc(e.title || "") + '</b> '
+    + '<span class="tld">' + esc(e.detail || "") + '</span>';
+  if (e.rule){
+    html += '<div class="why">Rule <span class="mono">' + esc(e.rule) + '</span>'
+      + (e.jurisdiction ? " in " + esc(e.jurisdiction) : "")
+      + (e.packDigest ? ', pack <span class="mono">' + esc(String(e.packDigest).slice(0, 12)) + '</span>'
+                         + (e.packVersion ? " v" + esc(e.packVersion) : "") : ", pack not recorded")
+      + '</div>';
+  }
+  if (e.kind === "proposal.drafted"){
+    var ev = (e.evidence || []);
+    html += '<div class="why">' + (ev.length ? nf(ev.length) + (ev.length === 1 ? " piece" : " pieces")
+      + " of evidence" : "no evidence attached")
+      + (e.evalScore != null ? ", eval " + e.evalScore.toFixed(2) : "")
+      + (e.model ? ", " + esc(e.model) : "") + '</div>';
+    (e.droppedClaims || []).forEach(function(claim){
+      html += '<div class="why tldrop"><s>' + esc(claim) + '</s> removed: nothing in the evidence supported it</div>';
+    });
+  }
+  if (e.kind === "touch.sent" && e.costEur){
+    html += '<div class="why">€' + e.costEur.toFixed(4) + ' in cost</div>';
+  }
+  return html + '</div>';
+}
+
+/* The label comes with the kind from the runtime's own table of kinds; the
+   surface only knows the ones it was told about, and says so for the rest. */
+var KIND_LABEL = {
+  "signal.observed": "Signal", "enrollment.entered": "Enrolled",
+  "enrollment.exited": "Left", "decision.allow": "Allowed",
+  "decision.deny": "Refused", "proposal.drafted": "Drafted",
+  "touch.sent": "Sent", "touch.queued": "Waiting", "touch.failed": "Not sent",
+  "outcome.recorded": "Outcome", "audit.entry": "Recorded"
+};
+function kindLabel(k){ return KIND_LABEL[k] || k; }
 
 /* `POST /v1/enrich` has existed since enrichment was executable, and its own
    docstring says "the console sends the rows the operator selected". The

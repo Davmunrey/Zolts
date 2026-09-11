@@ -930,6 +930,22 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-064 · One contact, one timeline, built from the six tables that already held it.**
+Six tables held a contact's story. A signal on the person or on their account. An enrolment. A policy decision with the rule that made it and the digest of the pack that held the rule (D-53). A proposal with the evidence behind every sentence and the claims removed for having none. A touch with its provider and its cost. An outcome. An audit entry. Each was rendered on its own screen, and no screen read one contact across all six (D-104). A customer's DPO answering a subject access request and a customer's CRO asking *why did this person get this email* are asking the same question, and the product could not answer it without a SQL client.
+
+| Decision | Why |
+|---|---|
+| **The rule lives in `zolts.timeline`; the reader in `runtime.timeline`** | The same split as `zolts.attention`: what a timeline *is* — the kinds, what each proves, the order — is product logic and is tested without a database. What it is built *from* is I/O |
+| **Every kind says what a reader may conclude** | Written once for the DPO and the CRO alike, and shown verbatim. A row with no sentence is a row the reader skips, and the row they skip is the one the request was about |
+| **A kind the rule does not know is refused** | Never rendered blank. The surface labels every kind the rule knows and a test fails if one is missing |
+| **Newest first; within one instant, effect above cause** | A decision and the touch it allowed can share a second. Read top-down the touch is what happened and the decision is why. Time alone puts the why first half the time |
+| **Account events belong to the person** | The worker resolves an account enrolment to a contact through `membership`; the timeline follows the same join. Leaving account rows out shows three emails and nothing that explains one |
+| **Older touches are recovered through the enrolment** | `touch.person_id` exists since ADR-056; a touch from before it names nobody. The story does not start on the day the column did |
+| **Read on demand, never inlined** | A contact's story is hundreds of rows and the console model is one payload. `GET /v1/people/{id}/timeline` answers when a contact is chosen, through the same session the page already holds |
+| **Another tenant's person reads as no person** | One 404 for both, on purpose: a difference is a way to enumerate a neighbour's book |
+
+**This is the first half of COMP-2.** `docs/11` marks data subject rights *not built*: nothing resolved a request, exported, erased or issued a certificate. The screen is the resolution; export and erasure remain, and the document now says *partly built* with the remainder named rather than implied.
+
 **ADR-063 · A screen that spends money shows the price, sends only what was selected, and does not choose the legal basis for you.**
 `POST /v1/enrich` has said, since enrichment became executable, that *the console sends the rows the operator selected*. The console sent nothing. The Prospects screen computed which contacts were missing an email or a phone — by its own comment, using the same rule the engine uses to decide whether to spend money — and offered no way to buy any of it (D-103). One panel below, the cost of a dossier was the literal string `20 credits`.
 

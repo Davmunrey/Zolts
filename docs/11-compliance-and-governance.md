@@ -37,7 +37,7 @@ The pack is **data, not code**: a row, published by an operator with `zolts poli
 
 ## GDPR: what ships, and what does not
 
-This table was written in the present tense for eleven obligations, and **6 of them had no
+This table was written in the present tense for eleven obligations, and **5 of them had no
 implementation at all** (D-89). It is the page a data protection
 officer reads in diligence, so every row now carries what the runtime actually
 does today and `tests/test_compliance_claims.py` checks each one against the
@@ -55,7 +55,7 @@ document is corrected rather than quietly overtaken.
 | Security | **Partly built** | TLS in transit, connector secrets sealed at rest with a rotatable key (SEC-1), and an audit log of the actions a person took (ADR-026). There is no per-tenant key, no PII vault and no purpose log; MFA needs an identity model that does not exist (decision 50) |
 | Transparency · privacy notice | **Not built** | Nothing injects a privacy notice into a first contact. COMP-4 |
 | Legitimate interest assessment | **Not built** | `legitimate_interest` is a basis a programme may declare. No assessment is captured, stored or versioned. COMP-5 |
-| Data subject rights | **Not built** | No code resolves a subject request, exports or erases through the identity graph, propagates to a sub-processor or issues a certificate. COMP-2 |
+| Data subject rights | **Partly built** | Access and portability: `runtime.timeline.subject_request` assembles everything held about one person — the record, memberships, consent state, and the full timeline with the legal basis on every signal and the rule and pack digest on every decision — and `GET /v1/people/{id}/subject-request` returns it (ADR-064). Erasure through the identity graph, propagation to a sub-processor and the certificate are still not built. COMP-2 |
 | Retention | **Not built** | Nothing purges a row on age. The windows in `docs/03` are the intended policy, not a running job. COMP-1, decision 54 |
 | Records of processing | **Not built** | No RoPA is generated from configuration. COMP-6 |
 | Sub-processors | **Not built** | No register exists, so nothing alerts when a provider is added. COMP-3 |

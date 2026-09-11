@@ -444,6 +444,26 @@ MUTATIONS = (
              '               for field in ("email", "phone", "firmographics")},',
         replace='            **{"email": 8.0, "phone": 25.0, "firmographics": 4.0},',
         tests="tests/test_enrichment_buying.py"),
+    Mutation(
+        id="an-accounts-signal-belongs-to-its-members",
+        claim="a signal or enrolment on an account is on its members' timeline, "
+              "because that is how the send reached them — leaving account rows "
+              "out shows a contact who received three emails and nothing that "
+              "explains one",
+        path="runtime/timeline.py",
+        find='"    or (s.entity_type = \'account\' and s.entity_id = any(%s::uuid[]))"',
+        replace='"    or false"',
+        tests="tests/test_timeline.py"),
+    Mutation(
+        id="effect-sits-above-cause-within-one-instant",
+        claim="within one instant the touch reads above the decision that "
+              "allowed it, so top-down the reader sees what happened and then "
+              "why; a timeline sorted by time alone puts the why first half the "
+              "time and the reader stops trusting the order",
+        path="zolts/timeline.py",
+        find='    return sorted(events, key=lambda e: (e["at"], BY_KEY[e["kind"]].rank),',
+        replace='    return sorted(events, key=lambda e: (e["at"], 0),',
+        tests="tests/test_timeline.py"),
 )
 
 def _dirty() -> bool:
