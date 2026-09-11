@@ -27,7 +27,7 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime import outbox, sendingcontrol
+from runtime import outbox, sendingcontrol, timeline
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
@@ -953,6 +953,43 @@ def create_app(db: Database, *, install_connectors: bool = True,
                                  "late": bool(row["due_at"]
                                               and row["completed_at"] > row["due_at"])})
         return _task(row)
+
+    # -- why this person -------------------------------------------------
+
+    @app.get("/v1/people/{person_id}/timeline")
+    def person_timeline(person_id: str,
+                        principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Everything that touched one contact, newest first.
+
+        Six tables held the story and no screen read one contact across all
+        six. A DPO answering a subject access request and a CRO asking why an
+        email went are asking the same question, and this is the one answer
+        (docs/28, OX-1; the first half of docs/11 COMP-2).
+        """
+        principal.require("read")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            found = timeline.for_person(cur, person_id)
+        if found is None:
+            # Another tenant's person and no person at all read the same:
+            # a difference here is a way to enumerate somebody else's book.
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such person")
+        return found
+
+    @app.get("/v1/people/{person_id}/subject-request")
+    def person_subject_request(person_id: str,
+                               principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """The access and portability half of a subject access request.
+
+        Built on the timeline so the DPO's export and the operator's screen
+        cannot disagree. Erasure is the other half and is still not built
+        (docs/11, COMP-2).
+        """
+        principal.require("read")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            found = timeline.subject_request(cur, person_id)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such person")
+        return found
 
     # -- the outbox ------------------------------------------------------
 

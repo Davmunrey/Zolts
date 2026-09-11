@@ -116,6 +116,53 @@ def _seed() -> tuple[str, str]:
             "insert into person (tenant_id, full_name, country)"
             " values (%s,'Dana Reyes','ES')", (tenant_id,))
 
+        # One contact with a whole story: enrolled, a policy decision that
+        # allowed the send under a named rule from a versioned pack, a
+        # proposal with evidence and a claim removed for having none, a touch
+        # that went out. Six tables, one person. The screen has to read all
+        # six back, or it is the defect this repository keeps finding.
+        cur.execute("select id from program where status = 'draft' limit 1")
+        program_id = cur.fetchone()["id"]
+        cur.execute(
+            "insert into person (tenant_id, full_name, email, country)"
+            " values (%s,'Iker Sanz','iker@northbeam.example','ES') returning id",
+            (tenant_id,))
+        iker = cur.fetchone()["id"]
+        cur.execute(
+            "insert into enrollment (tenant_id, program_id, entity_type,"
+            " entity_id, variant, tier, state, entered_at)"
+            " values (%s,%s,'person',%s,'treatment','A','active',"
+            " now() - interval '2 days') returning id", (tenant_id, program_id, iker))
+        enrol = cur.fetchone()["id"]
+        cur.execute(
+            "insert into policy_decision (tenant_id, subject_type, subject_id,"
+            " action, decision, rule_key, jurisdiction, rationale, pack_version,"
+            " pack_digest, decided_at) values (%s,'person',%s,'email.send','allow',"
+            " 'b2b.legitimate_interest','ES','business contact at a company "
+            "account, outside quiet hours','1.0.0',"
+            " 'f00dfeedcafe0123456789abcdef', now() - interval '1 day')",
+            (tenant_id, iker))
+        cur.execute(
+            "insert into proposal (tenant_id, enrollment_id, program_id, agent,"
+            " step_key, channel, idempotency_key, model, prompt_version, content,"
+            " evidence, eval, eval_score, spend, cost_micros, state, gate_reason,"
+            " created_at) values (%s,%s,%s,'copywriter','email_1','email',%s,"
+            " 'claude-haiku-4-5-20251001','copywriter-v3',%s,%s,%s,0.91,%s,8200,"
+            " 'approved','eval 0.91 above the auto-send threshold',"
+            " now() - interval '1 day')",
+            (tenant_id, enrol, program_id, f"why-{uuid.uuid4().hex}",
+             json.dumps({"body": "Saw the Series A. Congratulations.",
+                         "dropped_claims": ["They plan to open a Lisbon office."]}),
+             json.dumps([{"ref": "e1", "source": "press release",
+                          "text": "Northbeam raises a $12m Series A."}]),
+             json.dumps({"failures": []}), json.dumps({"verdict": "yes"})))
+        cur.execute(
+            "insert into touch (tenant_id, enrollment_id, person_id, channel,"
+            " direction, step_key, idempotency_key, status, content, provider,"
+            " cost_micros, sent_at) values (%s,%s,%s,'email','out','email_1',%s,"
+            " 'sent','{}','smartlead',1200, now() - interval '1 day')",
+            (tenant_id, enrol, iker, f"why-touch-{uuid.uuid4().hex}"))
+
         # One action that gave up, with the error the runbook's own triage
         # table keys on. Seeded dead on purpose: an empty state proves the
         # screen exists, and only a row proves an operator can act on it.
@@ -164,6 +211,7 @@ DRAWN_OVER = """
 """
 
 def main() -> int:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
 
     api_key, tenant_id = _seed()
@@ -267,8 +315,19 @@ def main() -> int:
             # started (D-96). Wait for the reload itself: a publish the server
             # refuses never navigates, so it fails here, naming this step,
             # instead of surfacing three steps later as a click that hangs.
-            with page.expect_navigation(wait_until="load", timeout=45_000):
-                page.click("#pub")
+            try:
+                with page.expect_navigation(wait_until="load", timeout=45_000):
+                    page.click("#pub")
+            except PlaywrightTimeout:
+                # Name the step and say what the page said. A refusal shows in
+                # `#pubnote`; an empty note with no navigation means the
+                # request never came back, which is the database being held
+                # by something else rather than the product refusing.
+                note = page.locator("#pubnote").inner_text() if page.locator("#pubnote").count() else ""
+                print("::error::publish did not reload the page. The page says:",
+                      json.dumps(note or "(nothing: the request never returned)"),
+                      file=sys.stderr)
+                return 1
             page.wait_for_selector("#tunebtn", timeout=20_000)
             report["publish_reloaded"] = True
 
@@ -380,6 +439,18 @@ def main() -> int:
             page.wait_for_selector('#basis button[aria-pressed="true"]', timeout=15_000)
             report["basis_chosen"] = page.locator(
                 '#basis button[aria-pressed="true"]').inner_text()
+
+            # 5d. Why this person. Six tables held the story and no screen
+            #     read one contact across all six. The exit criterion in
+            #     docs/28 OX-1: read the rule key, the pack digest and a
+            #     dropped claim off the screen for a contact who received a
+            #     gated send.
+            page.locator('#list .row[data-c]', has_text="Iker Sanz").first.click()
+            page.wait_for_selector("#tl", timeout=15_000)
+            report["timeline_rows"] = page.locator("#tl .tlrow").count()
+            report["timeline_kinds"] = [
+                r.get_attribute("data-kind") for r in page.locator("#tl .tlrow").all()]
+            report["timeline_text"] = page.locator("#tl").inner_text()[:900]
 
             # 6. The three views that did not exist, and the rail that
             #    offered five links leading nowhere. Every entry is clicked,
@@ -704,6 +775,20 @@ def main() -> int:
         if not report.get("stop_audited"):
             print("a domain was stopped and nothing recorded who or why",
                   file=sys.stderr)
+            return 1
+        story = report.get("timeline_text") or ""
+        for needle, what in (("b2b.legitimate_interest", "the rule key"),
+                             ("f00dfeedcafe", "the pack digest"),
+                             ("Lisbon office", "the dropped claim")):
+            if needle not in story:
+                print(f"::error::the timeline does not show {what} for a contact "
+                      f"who received a gated send:", json.dumps(story)[:400],
+                      file=sys.stderr)
+                return 1
+        wanted = {"enrollment.entered", "decision.allow", "proposal.drafted", "touch.sent"}
+        if not wanted <= set(report.get("timeline_kinds") or []):
+            print("::error::the timeline is missing kinds the seed wrote:",
+                  json.dumps(report.get("timeline_kinds")), file=sys.stderr)
             return 1
         if "credits" not in (report.get("buy_offered") or ""):
             print("::error::the buy control does not say what it will spend:",
