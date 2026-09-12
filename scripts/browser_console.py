@@ -226,6 +226,41 @@ def _seed() -> tuple[str, str]:
     return signed_up["api_key"], tenant_id
 
 
+def _seed_for_the_phone(tenant_id: str) -> tuple[str, str]:
+    """A draft and a task for the phone, seeded after the desktop steps took
+    the first ones, and returned by id so the read-back is by id."""
+    from runtime.db import Database
+
+    db = Database(os.environ["ZOLTS_DATABASE_URL"],
+                  os.environ.get("ZOLTS_APP_DATABASE_URL"))
+    try:
+        with db.tenant_tx(tenant_id) as cur:
+            cur.execute(
+                "insert into proposal (tenant_id, agent, idempotency_key, channel, step_key,"
+                " model, prompt_version, content, evidence, eval, eval_score, spend,"
+                " cost_micros, state, gate_reason)"
+                " values (%s,'copywriter',%s,'email','email_1','claude-haiku-4-5-20251001',"
+                " 'copywriter-v3', %s, '[]', %s, 0.79, %s, 8800, 'needs_human',"
+                " 'eval 0.79 below the 0.85 auto-send threshold') returning id",
+                (tenant_id, f"browser-phone-{uuid.uuid4().hex}",
+                 json.dumps({"body": "Read on a phone at eleven at night.",
+                             "dropped_claims": []}),
+                 json.dumps({"failures": []}), json.dumps({"verdict": "yes"})))
+            proposal_id = str(cur.fetchone()["id"])
+            cur.execute(
+                "insert into touch (tenant_id, channel, step_key, idempotency_key,"
+                " status, content, due_at, direction)"
+                " values (%s,'task','call_revops',%s,'queued',%s,"
+                " now() + interval '2 hours','out') returning id",
+                (tenant_id, f"task-phone-{uuid.uuid4().hex}",
+                 json.dumps({"awaiting": "human_review",
+                             "brief": "Confirm the call from the road."})))
+            task_id = str(cur.fetchone()["id"])
+    finally:
+        db.close()
+    return proposal_id, task_id
+
+
 def _chromium(pw):
     return pw.chromium.launch(executable_path=CHROME) if CHROME else pw.chromium.launch()
 
@@ -697,6 +732,45 @@ def main() -> int:
                     drawn_over.append({"view": view, "text": covered})
             narrow.append({"horizontal_overflow": page.evaluate(
                 "() => document.documentElement.scrollWidth - window.innerWidth")})
+            # The phone approves (docs/28, OX-9). The person who unblocks the
+            # queue at 11pm is on a phone. The desktop steps took every seeded
+            # draft and the task, so a fresh draft and a fresh task are seeded
+            # now, and the console is opened again at 390px the way a phone
+            # opens it: a load, the remembered view, the rail as a strip.
+            phone_proposal, phone_task = _seed_for_the_phone(tenant_id)
+            page.reload()
+            page.wait_for_function(
+                "() => (document.getElementById('nav-review') || {}).innerText === '1'",
+                timeout=20_000)
+            page.click('nav a[data-view="review"]')
+            page.wait_for_selector("#list .row[data-r]", timeout=15_000)
+            page.click("#list .row[data-r]")
+            # A row tapped at the top of a phone changed something below the
+            # fold, and the tap looked like nothing. The panel with the
+            # decision on it has to come to the thumb.
+            page.wait_for_function(
+                "() => { const r = document.getElementById('detail').getBoundingClientRect();"
+                " return r.top < innerHeight * 0.6 && r.bottom > 0; }", timeout=10_000)
+            report["phone_panel_in_view"] = True
+            report["phone_panel_clipped"] = page.evaluate(
+                "() => [...document.querySelectorAll('#detail .props dd, #detail .pnote,"
+                " #detail .draft, #detail h2')]"
+                ".filter(e => e.scrollWidth > e.clientWidth + 1)"
+                ".map(e => e.textContent.slice(0, 40))")
+            report["phone_approve_height"] = page.evaluate(
+                "() => document.getElementById('approve').getBoundingClientRect().height")
+            page.click("#approve")
+            page.wait_for_function(
+                "() => (document.getElementById('nav-review') || {}).innerText === '0'",
+                timeout=20_000)
+            page.click('nav a[data-view="tasks"]')
+            page.wait_for_selector("#done", timeout=15_000)
+            report["phone_done_height"] = page.evaluate(
+                "() => document.getElementById('done').getBoundingClientRect().height")
+            page.click("#done")
+            page.wait_for_selector("#done", state="detached", timeout=15_000)
+            report["phone_horizontal_overflow"] = page.evaluate(
+                "() => document.documentElement.scrollWidth - window.innerWidth")
             page.set_viewport_size({"width": 1440, "height": 900})
 
             report["rows_that_wrapped"] = wrapped
@@ -735,6 +809,13 @@ def main() -> int:
             cur.execute("select count(*) as n from touch where channel = 'task'"
                         "  and completed_at is not null and completed_by is not null")
             report["task_completed"] = int(cur.fetchone()["n"])
+            # The phone approves (docs/28, OX-9): the draft and the task seeded
+            # for the phone, read back by id rather than trusted to the screen.
+            cur.execute("select state from proposal where id = %s", (phone_proposal,))
+            report["phone_approved"] = row["state"] if (row := cur.fetchone()) else None
+            cur.execute("select completed_at is not null as done from touch where id = %s",
+                        (phone_task,))
+            report["phone_task_done"] = bool(row["done"]) if (row := cur.fetchone()) else False
             # The stop, where it has to be true. A button that reported success
             # over a row that never moved is a defect this check has caught
             # before, so the column and the audit row are both read back.
@@ -1026,6 +1107,21 @@ def main() -> int:
                   json.dumps({k: report.get(k) for k in
                               ("batch_offered", "thin_batch_reason_refused", "batch_approved")}),
                   len(waiting), "still waiting", file=sys.stderr)
+            return 1
+        # The phone approves (docs/28, OX-9): the decision came to the thumb,
+        # the buttons were sized for one, nothing was clipped or drawn off the
+        # edge, and the draft and the task moved in the database.
+        phone_keys = ("phone_panel_in_view", "phone_panel_clipped", "phone_approve_height",
+                      "phone_done_height", "phone_approved", "phone_task_done",
+                      "phone_horizontal_overflow")
+        if (not report.get("phone_panel_in_view") or report.get("phone_panel_clipped")
+                or (report.get("phone_approve_height") or 0) < 40
+                or (report.get("phone_done_height") or 0) < 40
+                or report.get("phone_approved") not in ("approved", "dispatched")
+                or not report.get("phone_task_done")
+                or report.get("phone_horizontal_overflow")):
+            print("::error::the phone did not approve:",
+                  json.dumps({k: report.get(k) for k in phone_keys}), file=sys.stderr)
             return 1
         if errors or violations:
             print("::error::the console raised errors or CSP violations", file=sys.stderr)

@@ -591,6 +591,22 @@ MUTATIONS = (
         find="  return Object.keys(VIEWS).map(function(view){",
         replace='  return ["today", "programs"].map(function(view){',
         tests="tests/test_console_palette.py"),
+    Mutation(
+        id="the-panel-comes-to-the-thumb",
+        claim="after a plain tap on a phone the panel with the decision on it "
+              "scrolls into view instead of changing below the fold",
+        path="design/console.html",
+        find='  detail.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });\n',
+        replace="",
+        tests="tests/test_console_phone.py"),
+    Mutation(
+        id="a-decision-is-sized-for-a-thumb",
+        claim="the buttons that decide are forty pixels tall on a phone, "
+              "not the twenty-six a pointer needs",
+        path="design/console.html",
+        find="  .dactions .btn,.actf .btn,.batch .btn{height:40px; padding:0 16px; font-size:13px}",
+        replace="  .dactions .btn,.actf .btn,.batch .btn{height:26px; padding:0 10px; font-size:12px}",
+        tests="tests/test_console_phone.py"),
 )
 
 def _dirty() -> bool:

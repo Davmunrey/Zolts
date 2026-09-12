@@ -930,6 +930,16 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-072 · The phone approves: the panel comes to the thumb, the buttons that decide are sized for one, and the proof is read back from the database at 390px.**
+The person who unblocks the queue at 11pm is on a phone (`docs/28`, OX-9). The console was measured at 390px — nothing clipped, nothing drawn over text, no horizontal overflow (VER-2) — and nobody had approved anything from one. Below the phone breakpoint the panel sits under the list, so a row tapped at the top of the screen changed something below the fold and the tap looked like nothing; the buttons that decide were 26px tall, a target for a pointer.
+
+| Decision | Why |
+|---|---|
+| **The panel comes to the thumb** | After a plain tap on a row the panel scrolls into view. A modified tap is a batch selection (ADR-070) and stays where the operator is choosing. A guard removes the scroll and requires a test to notice |
+| **One breakpoint** | The script reads the same number the stylesheet turns the rail into a strip at, and a test holds the two together: two numbers drift into a width where the panel scrolls under a desktop layout |
+| **Forty pixels to decide** | Approve, reject, mark done, stop and the batch are 40px tall below the breakpoint; the browser check measures the approve and the done button at 390px |
+| **Proved against the database** | The check seeds a fresh draft and a fresh task after the desktop steps took the first ones, reloads at 390px the way a phone opens the console, approves and completes, and reads both rows back by id. A button that reported success over a row that never moved is a defect this check has caught before |
+
 **ADR-071 · The palette reaches every screen, programme and contact, and a command with nothing behind it is removed rather than left.**
 `New program from blueprint` ran `function(){}`: a command that did nothing, which is D-38 inside the palette. Keyboard-first is what an operator who lives in a tool expects, and the palette listed programmes and three commands, two of them real (`docs/28`, OX-8).
 
