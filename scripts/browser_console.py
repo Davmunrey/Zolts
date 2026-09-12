@@ -226,6 +226,47 @@ def _seed() -> tuple[str, str]:
     return signed_up["api_key"], tenant_id
 
 
+# States that say something (docs/28, OX-12). A tenant with nothing opens the
+# console and every view has to say what the runtime is doing or what is
+# missing, on the list and on the panel, and print no missing value.
+EMPTY_BLUEPRINT = "b2b-enterprise"   # ships no starter programme, so nothing at all exists
+SAYS_SOMETHING = """
+() => {
+  const sentence = /[A-Za-z][^.]{8,}\\./;
+  const bad = /\\bundefined\\b|\\bNaN\\b|\\bnull\\b|\\[object/;
+  const list = document.getElementById('list').innerText.trim();
+  const panel = document.getElementById('detail').innerText.trim();
+  // Rows are data, not prose: a list with rows in it has said something. A
+  // list with none must say what would fill it, and a panel always explains.
+  const rows = document.querySelectorAll('#list .row').length;
+  const listSays = rows > 0 || sentence.test(list);
+  if (listSays && sentence.test(panel) && !bad.test(list + panel)) return null;
+  return {rows: rows, list: list.slice(0, 90), panel: panel.slice(0, 90)};
+}
+"""
+
+
+def _empty_tenant() -> str:
+    """A tenant with nothing: signed up under a blueprint that ships no starter
+    programme, so no programme, no draft, no signal and no task exist, and
+    every screen renders the state it shows when there is nothing to show."""
+    from runtime import onboarding
+    from runtime.db import Database
+
+    db = Database(os.environ["ZOLTS_DATABASE_URL"],
+                  os.environ.get("ZOLTS_APP_DATABASE_URL"))
+    try:
+        invitation = onboarding.mint(db, company_name=f"Empty Co {uuid.uuid4().hex[:6]}",
+                                     blueprint_id=EMPTY_BLUEPRINT)
+        signed_up = onboarding.redeem(db, invitation.token)
+    finally:
+        db.close()
+    if signed_up["programs"]:
+        raise SystemExit(f"{EMPTY_BLUEPRINT} now ships a starter programme, so this "
+                         "tenant is not empty; pick a blueprint that ships none")
+    return signed_up["api_key"]
+
+
 def _seed_for_the_phone(tenant_id: str) -> tuple[str, str]:
     """A draft and a task for the phone, seeded after the desktop steps took
     the first ones, and returned by id so the read-back is by id."""
@@ -760,6 +801,28 @@ def main() -> int:
                     drawn_over.append({"view": view, "text": covered})
             narrow.append({"horizontal_overflow": page.evaluate(
                 "() => document.documentElement.scrollWidth - window.innerWidth")})
+            # States that say something (docs/28, OX-12): a tenant with nothing
+            # opens the console in a second tab, and every view says what the
+            # runtime is doing or what is missing, on the list and on the
+            # panel, never a blank and never a printed missing value.
+            blank = browser.new_page()
+            blank.on("pageerror", lambda e: errors.append("empty tenant: " + str(e)))
+            blank.goto(f"{BASE}/console")
+            blank.wait_for_selector("#f", timeout=15_000)
+            blank.fill("#k", _empty_tenant())
+            blank.click("button[type=submit]")
+            blank.wait_for_selector("#fr-blueprint", timeout=15_000)
+            blanks = []
+            for entry in blank.locator("nav a[data-view]").all():
+                view = entry.get_attribute("data-view")
+                entry.click()
+                blank.wait_for_timeout(150)
+                said = blank.evaluate(SAYS_SOMETHING)
+                if said:
+                    blanks.append({"view": view, **said})
+            report["blank_states"] = blanks
+            blank.close()
+
             # The phone approves (docs/28, OX-9). The person who unblocks the
             # queue at 11pm is on a phone. The desktop steps took every seeded
             # draft and the task, so a fresh draft and a fresh task are seeded
@@ -1146,6 +1209,11 @@ def main() -> int:
                   json.dumps({k: report.get(k) for k in
                               ("batch_offered", "thin_batch_reason_refused", "batch_approved")}),
                   len(waiting), "still waiting", file=sys.stderr)
+            return 1
+        # States that say something (docs/28, OX-12).
+        if report.get("blank_states"):
+            print("::error::a view rendered with nothing in it went blank or printed a "
+                  "missing value:", json.dumps(report["blank_states"])[:600], file=sys.stderr)
             return 1
         # The phone approves (docs/28, OX-9): the decision came to the thumb,
         # the buttons were sized for one, nothing was clipped or drawn off the
