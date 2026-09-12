@@ -623,6 +623,20 @@ MUTATIONS = (
         find="""    return '<div class="kpi"' + defAttrs(tile.label) + '><div class="k">' + esc(tile.label) + '</div>'\n""",
         replace="""    return '<div class="kpi"><div class="k">' + esc(tile.label) + '</div>'\n""",
         tests="tests/test_console_definitions.py"),
+    Mutation(
+        id="the-guide-leaves-when-a-programme-goes-live",
+        claim="the first-run guide is shown until a programme is live and not after",
+        path="zolts/firstrun.py",
+        find='    show = not any(s == "live" for s in statuses)\n',
+        replace="    show = True\n",
+        tests="tests/test_firstrun.py"),
+    Mutation(
+        id="a-connection-in-error-is-not-connected",
+        claim="a credential the provider refused does not count as a connected CRM",
+        path="zolts/firstrun.py",
+        find='    active = [c for c in connections if c.get("status") == CONNECTED]\n',
+        replace='    active = [c for c in connections if c.get("status") in (CONNECTED, "error")]\n',
+        tests="tests/test_firstrun.py"),
 )
 
 def _dirty() -> bool:
