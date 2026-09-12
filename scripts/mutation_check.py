@@ -482,6 +482,32 @@ MUTATIONS = (
         find="        sends_at_most=sends_in_week_one(steps, treatment),",
         replace="        sends_at_most=sends_in_week_one(steps, len(subjects)),",
         tests="tests/test_preview.py"),
+    Mutation(
+        id="a-signal-that-never-fired-still-has-a-row",
+        claim="every catalogue signal has a row in the funnel, the silent ones "
+              "included: a signal that fired zero times is the one the operator is "
+              "paying for and getting nothing from",
+        path="zolts/signalfunnel.py",
+        find="    keys = set(catalogue) | set(counts)",
+        replace="    keys = set(counts)",
+        tests="tests/test_signal_funnel.py"),
+    Mutation(
+        id="a-conversion-outside-the-window-is-not-counted",
+        claim="a conversion counts inside the programme's declared window of "
+              "enrolment and nowhere else",
+        path="zolts/signalfunnel.py",
+        find="    return entered_at <= occurred_at < entered_at + timedelta(days=window_days)",
+        replace="    return entered_at <= occurred_at",
+        tests="tests/test_signal_funnel.py"),
+    Mutation(
+        id="the-window-is-the-programmes-not-the-default",
+        claim="the funnel judges a conversion by the metric and window the "
+              "programme declared, never by the default every programme can fall "
+              "back to",
+        path="runtime/signalfunnel.py",
+        find="        return metrics.resolve(experiment.get(\"primary_metric\"))",
+        replace="        return metrics.DEFAULT",
+        tests="tests/test_signal_funnel.py"),
 )
 
 def _dirty() -> bool:

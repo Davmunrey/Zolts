@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -162,6 +163,32 @@ def _seed() -> tuple[str, str]:
             " cost_micros, sent_at) values (%s,%s,%s,'email','out','email_1',%s,"
             " 'sent','{}','smartlead',1200, now() - interval '1 day')",
             (tenant_id, enrol, iker, f"why-touch-{uuid.uuid4().hex}"))
+
+        # The signal that made that enrolment, and the outcome it produced,
+        # so the Signals screen has one catalogue signal that earned its
+        # keep beside eight that never fired. The outcome is the first event
+        # of the metric the programme declares, read rather than guessed,
+        # because a conversion under the wrong metric is not counted and the
+        # screen would read as a funnel that stops at "reached".
+        from zolts import metrics
+
+        cur.execute("select spec from program where id = %s", (program_id,))
+        declared = ((cur.fetchone()["spec"] or {}).get("experiment") or {}).get("primary_metric")
+        metric = metrics.resolve(declared)
+        cur.execute(
+            "insert into signal (tenant_id, entity_type, entity_id, type, strength,"
+            " half_life_h, source, legal_basis, payload, observed_at, ingested_at)"
+            " values (%s,'person',%s,'hiring.role_opened',0.6,720,'jobs_feed',"
+            " 'legitimate_interest','{}', now() - interval '2 days',"
+            " now() - interval '2 days' + interval '3 minutes') returning id",
+            (tenant_id, iker))
+        fired = cur.fetchone()["id"]
+        cur.execute("update enrollment set context = %s where id = %s",
+                    (json.dumps({"signal_id": str(fired)}), enrol))
+        cur.execute(
+            "insert into outcome (tenant_id, enrollment_id, type, occurred_at, source)"
+            " values (%s,%s,%s, now() - interval '12 hours','crm')",
+            (tenant_id, enrol, metric.events[0]))
 
         # One action that gave up, with the error the runbook's own triage
         # table keys on. Seeded dead on purpose: an empty state proves the
@@ -520,7 +547,13 @@ def main() -> int:
                     # no target beside it (D-97). A panel added and never
                     # opened is the defect this whole script exists for, so
                     # the verdict is read off the screen rather than assumed.
-                    report["sla_panel"] = page.locator("#detail").inner_text()[:700]
+                    report["sla_panel"] = page.locator("#detail").inner_text()[:1200]
+                    # Which signals earn their keep (docs/28, OX-3): the first
+                    # funnel row is the best earner and the panel opens on it.
+                    funnel_rows = page.locator("#list .row[data-f]")
+                    report["funnel_count"] = funnel_rows.count()
+                    report["funnel_rows"] = [
+                        row.inner_text() for row in funnel_rows.all()[:3]]
             # A wide screen. Columns used to be fixed pixel widths, so a
             # 1920px display gave its extra 500px to empty gutter while
             # `local-services-multisite` still ellipsised in a 152px column.
@@ -703,6 +736,25 @@ def main() -> int:
             print("::error::the signals view does not carry the time-to-touch "
                   "verdict docs/06 publishes:", json.dumps(sla_panel)[:400],
                   file=sys.stderr)
+            return 1
+
+        # Which signals earn their keep. One catalogue signal was seeded with
+        # a signal, an enrolment, a sent touch and a conversion inside the
+        # window; the other eight never fired. Every one of the nine has a
+        # row, the earner leads, and the panel reads its funnel back to the
+        # conversion — the exit criterion `docs/28` OX-3 set, read off the
+        # screen rather than off the endpoint.
+        funnel_rows = report.get("funnel_rows") or []
+        first = funnel_rows[0] if funnel_rows else ""
+        if "hiring.role_opened" not in first or not re.search(r"Converted\s+1 inside \d+ days",
+                                                             sla_panel):
+            print("::error::the signals view does not show which signal earned its "
+                  "keep:", json.dumps(funnel_rows)[:300], json.dumps(sla_panel)[:400],
+                  file=sys.stderr)
+            return 1
+        if int(report.get("funnel_count") or 0) < 9:
+            print("::error::the funnel hides the signals that never fired:",
+                  report.get("funnel_count"), "rows", file=sys.stderr)
             return 1
 
         # The worklist has to name the work and what it costs, not just count

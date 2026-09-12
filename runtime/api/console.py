@@ -643,8 +643,16 @@ def signals_view(cur, limit: int = 100) -> dict[str, Any]:
     # tier and calls it the contractual SLA of two plans; until now the
     # console printed the measurement beside no target at all, which is an
     # SLA an operator can miss for a quarter without being told (D-97).
+    # Which signals earn their keep (docs/28, OX-3): one funnel per catalogue
+    # signal, the silent ones included, with a conversion counted only inside
+    # the window the programme declared. On this view rather than fetched on
+    # demand because it is per tenant, not per row, and it is the reason an
+    # operator opens this screen after the first month.
+    from runtime import signalfunnel
+
     return {"recent": recent, "watched": watched,
-            "latency": watch.latency(cur), "sla": watch.sla(cur)}
+            "latency": watch.latency(cur), "sla": watch.sla(cur),
+            "funnel": signalfunnel.for_tenant(cur)}
 
 
 def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:
