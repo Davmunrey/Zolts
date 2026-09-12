@@ -140,6 +140,43 @@ def _live(cur, tenant_id: str, key: str, spec: dict) -> dict:
     return dict(cur.fetchone())
 
 
+def _software_accounts(cur, tenant_id: str, program_key: str, holdout: int,
+                       n: int = 12) -> list[str]:
+    """`n` software accounts whose ids are fixed, so the holdout split is the
+    same on every run and the premise the tests state is a fact, not a hope.
+
+    An id the database generates is random, and `experiment.assign` buckets on
+    the id: twelve random accounts at a 20% holdout land every one of them in
+    treatment about seven runs in a hundred. A premise that holds ninety-three
+    per cent of the time is the ambient-data defect the repository's rule
+    names, and this file had it twice. The ids are derived, the arms are read
+    off the same function the runtime assigns with, and the set is extended
+    from a deterministic spare list until both arms are present.
+    """
+    import uuid
+
+    from zolts import experiment
+
+    ids = [uuid.uuid5(uuid.NAMESPACE_URL, f"zolts.test/preview/{i}") for i in range(200)]
+
+    def held_out(account_id: uuid.UUID) -> bool:
+        return experiment.assign(str(account_id), program_key, holdout, "").is_control
+
+    chosen, spare = ids[:n], ids[n:]
+    while not any(held_out(i) for i in chosen):
+        chosen[-1] = spare.pop(0)
+    while all(held_out(i) for i in chosen):
+        chosen[-1] = spare.pop(0)
+    assert any(held_out(i) for i in chosen) and not all(held_out(i) for i in chosen), (
+        "the premise: both arms are present before the preview is asked about them")
+    for k, account_id in enumerate(chosen):
+        cur.execute(
+            "insert into account (id, tenant_id, name, domain, industry_code)"
+            " values (%s,%s,%s,%s,'software')",
+            (account_id, tenant_id, f"Soft {k}", f"soft{k}.example"))
+    return [str(i) for i in chosen]
+
+
 @requires_db
 def test_the_preview_equals_what_activating_enrols_in_the_same_second(db, tenant):
     """The exit criterion of OX-2: preview, then really enrol every subject,
@@ -153,10 +190,7 @@ def test_the_preview_equals_what_activating_enrols_in_the_same_second(db, tenant
     from runtime.repo import entities
 
     with db.tenant_tx(tenant["id"]) as cur:
-        ids = [str(entities.upsert_account(cur, tenant["id"], name=f"Soft {i}",
-                                           domain=f"soft{i}.example",
-                                           industry_code="software")["id"])
-               for i in range(12)]
+        ids = _software_accounts(cur, tenant["id"], "preview-eq", holdout=20)
         entities.upsert_account(cur, tenant["id"], name="Bricks",
                                 domain="bricks.example", industry_code="construction")
         program = _live(cur, tenant["id"], "preview-eq", _spec())
@@ -178,23 +212,21 @@ def test_the_preview_equals_what_activating_enrols_in_the_same_second(db, tenant
 
     assert sum(1 for v in arms.values() if v == "control") == said["control"]
     assert sum(1 for v in arms.values() if v == "treatment") == said["treatment"]
-    assert said["control"] >= 1, (
-        "the premise: at a 20% holdout over twelve accounts, somebody is held out")
+    assert said["control"] >= 1 and said["treatment"] >= 1, (
+        "both arms were established by the fixture, so the equality above "
+        "compared two real numbers rather than two zeros")
 
 
 @requires_db
 def test_week_one_is_the_treatment_arm_through_the_steps_inside_seven_days(db, tenant):
     from runtime import preview
-    from runtime.repo import entities
 
     with db.tenant_tx(tenant["id"]) as cur:
-        for i in range(12):
-            entities.upsert_account(cur, tenant["id"], name=f"S{i}",
-                                    domain=f"s{i}.example", industry_code="software")
+        _software_accounts(cur, tenant["id"], "preview-week", holdout=20)
         program = _live(cur, tenant["id"], "preview-week", _spec(holdout=20))
         said = preview.for_program(cur, tenant["id"], program)
     assert said["treatment"] + said["control"] == 12
-    assert said["control"] >= 1, "the premise: somebody is held out"
+    assert said["control"] >= 1, "the fixture established that somebody is held out"
     steps = [s["step"] for s in said["weekOne"]["steps"]]
     assert steps == ["research_brief", "email_1"], "email_2 fires on day ten"
     assert said["weekOne"]["sendsAtMost"] == said["treatment"], (
