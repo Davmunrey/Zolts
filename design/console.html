@@ -1530,22 +1530,70 @@ function palClose(){
   lastFocus = null;
 }
 
+/* ── the palette reaches everything ────────────────────────────────────
+   Every screen, every programme, every contact and every command from ⌘K
+   (docs/28, OX-8). The blueprint command is gone: its handler was
+   `function(){}`, a command that did nothing, which is D-38 inside the
+   palette; no blueprint-to-programme flow exists in the console, and a
+   command that pretends one does is worse than none. A test refuses any
+   command whose handler has an empty body. */
+function palScreens(term){
+  return Object.keys(VIEWS).map(function(view){
+    return { label: "Go to " + VIEWS[view].title, key: "→", view: view,
+             run: function(){ show(view); } };
+  }).filter(function(c){ return !term || c.label.toLowerCase().indexOf(term) > -1; });
+}
+function palContacts(term){
+  var people = ((D.prospects || {}).people || []);
+  if (!term) return [];
+  return people.filter(function(c){
+    return (c.name || "").toLowerCase().indexOf(term) > -1;
+  }).slice(0, 8).map(function(c){
+    return { label: c.name, key: c.account || "", run: function(){
+      show("prospects");
+      state.csel = c.id; state.tl = null;
+      renderProspects(); loadTimeline(c.id);
+    } };
+  });
+}
+function palCommands(term){
+  var p = P.filter(function(x){ return x.key === state.sel; })[0];
+  return [
+    { label: "Toggle live only", key: "L", run: function(){ show("programs"); document.getElementById("f-live").click(); } },
+    { label: "Toggle significant only", key: "S", run: function(){ show("programs"); document.getElementById("f-sig").click(); } },
+    { label: (state.tuning ? "Close the editor" : "Open the editor") + (p ? " on " + p.key : ""),
+      key: "E", run: function(){ show("programs"); state.tuning = !state.tuning; renderDetail(); } }
+  ].filter(function(c){ return !term || c.label.toLowerCase().indexOf(term) > -1; });
+}
+
 function palRender(){
   var term = q.value.trim().toLowerCase();
+  var screens = palScreens(term);
   var progs = P.filter(function(p){
     return !term || p.name.toLowerCase().indexOf(term) > -1 || p.key.indexOf(term) > -1 || p.blueprint.indexOf(term) > -1;
   });
-  var cmds = [
-    { label: "Toggle live only", key: "L", run: function(){ document.getElementById("f-live").click(); } },
-    { label: "Toggle significant only", key: "S", run: function(){ document.getElementById("f-sig").click(); } },
-    { label: "New program from blueprint", key: "N", run: function(){} }
-  ].filter(function(c){ return !term || c.label.toLowerCase().indexOf(term) > -1; });
+  var contacts = palContacts(term);
+  var cmds = palCommands(term);
 
-  palItems = progs.map(function(p){ return { kind: "p", p: p }; })
+  palItems = screens.map(function(c){ return { kind: "c", c: c }; })
+    .concat(progs.map(function(p){ return { kind: "p", p: p }; }))
+    .concat(contacts.map(function(c){ return { kind: "c", c: c }; }))
     .concat(cmds.map(function(c){ return { kind: "c", c: c }; }));
   if (palIndex >= palItems.length) palIndex = Math.max(0, palItems.length - 1);
 
   var html = "";
+  var group = function(title, entries){
+    if (!entries.length) return;
+    html += '<div class="pgroup">' + title + '</div>';
+    entries.forEach(function(c){
+      var i = palItems.findIndex(function(x){ return x.kind === "c" && x.c === c; });
+      html += '<div class="pitem" role="option" id="pal-' + i + '" data-i="' + i + '"'
+            + ' aria-selected="' + (i === palIndex) + '" data-on="' + (i === palIndex ? 1 : 0) + '">'
+            + '<span style="width:7px"></span><span>' + esc(c.label) + '</span>'
+            + '<span class="pk">' + esc(c.key) + '</span></div>';
+    });
+  };
+  group("Screens", screens);
   if (progs.length){
     html += '<div class="pgroup">Programs</div>';
     progs.forEach(function(p){
@@ -1556,16 +1604,8 @@ function palRender(){
             + '<span class="pk">' + p.blueprint + '</span></div>';
     });
   }
-  if (cmds.length){
-    html += '<div class="pgroup">Commands</div>';
-    cmds.forEach(function(c){
-      var i = palItems.findIndex(function(x){ return x.kind === "c" && x.c.label === c.label; });
-      html += '<div class="pitem" role="option" id="pal-' + i + '" data-i="' + i + '"'
-            + ' aria-selected="' + (i === palIndex) + '" data-on="' + (i === palIndex ? 1 : 0) + '">'
-            + '<span style="width:7px"></span><span>' + c.label + '</span>'
-            + '<span class="pk">' + c.key + '</span></div>';
-    });
-  }
+  group("Contacts", contacts);
+  group("Commands", cmds);
   pres.innerHTML = html || '<div class="pempty" role="status">No match for “' + q.value + '”</div>';
   q.setAttribute("aria-activedescendant", palItems.length ? "pal-" + palIndex : "");
   var active = pres.querySelector('[data-on="1"]');
@@ -2051,7 +2091,7 @@ function switchBlock(d){
    The verdict comes from the same two functions the act itself uses, so the
    sentence here and the one written into the audit row cannot disagree. */
 function resumeNote(d){
-  var lines = [["Paused because.", d.reason || "reason not recorded"]];
+  var lines = [["Paused because", d.reason || "reason not recorded"]];
   if (d.resumption === "will_retrip"){
     lines.push(["Still over the cut-off.", "The rates say " + (d.rationale || d.rule)
       + ". Lifting it holds until the next reputation event, and then the "

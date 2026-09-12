@@ -930,6 +930,15 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-071 · The palette reaches every screen, programme and contact, and a command with nothing behind it is removed rather than left.**
+`New program from blueprint` ran `function(){}`: a command that did nothing, which is D-38 inside the palette. Keyboard-first is what an operator who lives in a tool expects, and the palette listed programmes and three commands, two of them real (`docs/28`, OX-8).
+
+| Decision | Why |
+|---|---|
+| **Screens from the registry, not by hand** | One entry per `VIEWS` key, so a screen added to the console is reachable from ⌘K the day it exists |
+| **A contact opens on their timeline** | Typing a name lands on Prospects with that contact chosen and *why this person* loading (ADR-064): the palette is the fastest route to the product's deepest screen |
+| **The dead command is removed, not wired to something else** | No blueprint-to-programme flow exists in the console; a command that pretends one does is worse than none, and a test refuses any handler with an empty body |
+
 **ADR-070 · A batch is one act over many rows with one written reason, never all-or-nothing, and a refusal names the rows it refused.**
 An operator with forty drafts does not click forty times; they open a spreadsheet instead, and the product loses the day (`docs/28`, OX-7). Review, Human tasks and Outbox now take a batch: `POST /v1/proposals/batch`, `/v1/tasks/batch`, `/v1/outbox/batch`.
 

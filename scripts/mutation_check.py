@@ -574,6 +574,23 @@ MUTATIONS = (
         find='                     detail={"reason": reason, "batch": batch_id, "action_id": action_id})',
         replace='                     detail={"batch": batch_id, "action_id": action_id})',
         tests="tests/test_batches.py"),
+    Mutation(
+        id="a-command-that-does-nothing-is-refused",
+        claim="a palette command whose handler has an empty body fails a test, "
+              "so D-38 cannot come back through the palette",
+        path="design/console.html",
+        find='    { label: "Toggle live only", key: "L", run: function(){ show("programs"); '
+             'document.getElementById("f-live").click(); } },',
+        replace='    { label: "Toggle live only", key: "L", run: function(){} },',
+        tests="tests/test_console_palette.py"),
+    Mutation(
+        id="a-screen-added-to-the-console-is-reachable-from-the-palette",
+        claim="the palette lists screens from the view registry, so a screen added "
+              "to the console is reachable from the keyboard the day it exists",
+        path="design/console.html",
+        find="  return Object.keys(VIEWS).map(function(view){",
+        replace='  return ["today", "programs"].map(function(view){',
+        tests="tests/test_console_palette.py"),
 )
 
 def _dirty() -> bool:
