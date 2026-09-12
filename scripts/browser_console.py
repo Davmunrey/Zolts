@@ -679,7 +679,7 @@ def main() -> int:
             # they wrap rather than clip.
             page.set_viewport_size({"width": 1920, "height": 1080})
             page.wait_for_timeout(250)
-            cut, stiff = [], []
+            cut, stiff, undefined_numbers = [], [], []
             for entry in page.locator("nav a[data-view]").all():
                 view = entry.get_attribute("data-view")
                 entry.click()
@@ -691,6 +691,14 @@ def main() -> int:
                     ".map(e => e.textContent.slice(0, 40))")
                 if over:
                     cut.append({"view": view, "cells": over})
+                # Every number defines itself (docs/28, OX-10): a tile or a
+                # property label with no sentence behind it fails here.
+                bare = page.evaluate(
+                    "() => [...document.querySelectorAll('#kpis .kpi, #detail dt')]"
+                    ".filter(e => !(e.dataset.def || '').trim())"
+                    ".map(e => e.textContent.trim().slice(0, 40))")
+                if bare:
+                    undefined_numbers.append({"view": view, "labels": bare})
                 # The exemption above is earned, not assumed.
                 rigid = page.evaluate(
                     "() => [...document.querySelectorAll('.row .cell.w')]"
@@ -699,6 +707,11 @@ def main() -> int:
                 if rigid:
                     stiff.append({"view": view, "cells": rigid})
             report["cut_off_on_a_wide_screen"] = cut
+            report["numbers_without_a_definition"] = undefined_numbers
+            # A tap opens the sentence under the number, on the tile itself.
+            page.click("#kpis .kpi >> nth=0")
+            page.wait_for_selector("#kpis .kpi .def", timeout=10_000)
+            report["definition_on_tap"] = page.locator("#kpis .kpi .def").first.inner_text()
             report["prose_that_does_not_wrap"] = stiff
 
             # A phone. Below 820px the rail is a strip of destinations and the
@@ -1122,6 +1135,14 @@ def main() -> int:
                 or report.get("phone_horizontal_overflow")):
             print("::error::the phone did not approve:",
                   json.dumps({k: report.get(k) for k in phone_keys}), file=sys.stderr)
+            return 1
+        # Every number defines itself (docs/28, OX-10): no tile and no property
+        # label on any screen without a sentence, and a tap opens one.
+        if report.get("numbers_without_a_definition") or not report.get("definition_on_tap"):
+            print("::error::a number on the console has no definition:",
+                  json.dumps({k: report.get(k) for k in
+                              ("numbers_without_a_definition", "definition_on_tap")}),
+                  file=sys.stderr)
             return 1
         if errors or violations:
             print("::error::the console raised errors or CSP violations", file=sys.stderr)

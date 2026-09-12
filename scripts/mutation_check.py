@@ -607,6 +607,22 @@ MUTATIONS = (
         find="  .dactions .btn,.actf .btn,.batch .btn{height:40px; padding:0 16px; font-size:13px}",
         replace="  .dactions .btn,.actf .btn,.batch .btn{height:26px; padding:0 10px; font-size:12px}",
         tests="tests/test_console_phone.py"),
+    Mutation(
+        id="a-tile-without-a-sentence-fails",
+        claim="a tile whose label has no definition in the registry fails a test "
+              "before it reaches a meeting",
+        path="design/console.html",
+        find='  "Waiting for a person": "Proposals in draft or needs_human right now, from proposal: the gate declined to send them unattended.",\n',
+        replace="",
+        tests="tests/test_console_definitions.py"),
+    Mutation(
+        id="a-definition-is-on-the-number-not-in-a-document",
+        claim="every tile carries its definition on the element, where hover and "
+              "a tap can reach it",
+        path="design/console.html",
+        find="""    return '<div class="kpi"' + defAttrs(tile.label) + '><div class="k">' + esc(tile.label) + '</div>'\n""",
+        replace="""    return '<div class="kpi"><div class="k">' + esc(tile.label) + '</div>'\n""",
+        tests="tests/test_console_definitions.py"),
 )
 
 def _dirty() -> bool:

@@ -930,6 +930,16 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-073 · Every number defines itself: one registry in the console, read by the tests, carried on the element, opened by hover, tap or Enter.**
+A number without a definition is a number two people read differently in the same meeting (`docs/28`, OX-10). Writing the sentences found a label that lied: the spend tile said *quarter to date* over a sum with no date on it (D-107).
+
+| Decision | Why |
+|---|---|
+| **One registry, in the console, that the tests read** | A definition kept in a document drifts from the tile; one kept beside the tile and read by a test cannot. The registry is a JSON object in the console's own script, and a test parses it, enumerates every tile label, property label and dynamic block, and refuses any without a sentence |
+| **What it counts, over what window, from which table** | Every sentence names its source; a test refuses one that does not. The window is where the honest word had to be written — *right now*, *all time*, *the last 200* — and the tile that had no honest window got its label corrected, never the measurement |
+| **On the element, not in a tooltip library** | `data-def` and `title` on the tile and the term: hover reads it, a tap or Enter opens it under the number for a phone and a keyboard. The browser check walks every screen and fails on any tile or term without one, and opens one |
+| **A block's rows may carry their own** | A funnel stage arrives with its own sentence from `zolts.signalfunnel`; a data-keyed row — an actor, a jurisdiction, a tier — inherits the block's. The rule is the lookup order, and the test applies the same one |
+
 **ADR-072 · The phone approves: the panel comes to the thumb, the buttons that decide are sized for one, and the proof is read back from the database at 390px.**
 The person who unblocks the queue at 11pm is on a phone (`docs/28`, OX-9). The console was measured at 390px — nothing clipped, nothing drawn over text, no horizontal overflow (VER-2) — and nobody had approved anything from one. Below the phone breakpoint the panel sits under the list, so a row tapped at the top of the screen changed something below the fold and the tap looked like nothing; the buttons that decide were 26px tall, a target for a pointer.
 
