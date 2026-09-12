@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="a01759b80fee">
+<meta name="zolts-build" content="7548fdc4831e">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -596,7 +596,16 @@ function act(path, method, body){
     credentials: "same-origin"
   };
   if (body !== undefined) options.body = JSON.stringify(body);
-  return fetch(path, options);
+  /* Counted, so a refresh that lands while this request is in flight is
+     dropped rather than rendered over the button that made it; and numbered,
+     so a refresh that started before this action is dropped when it lands
+     after it — the sending stop's refresh arriving a second after a revive
+     was refused would have rendered the refusal away. */
+  epoch += 1;
+  inflight += 1;
+  return fetch(path, options).then(
+    function(res){ inflight -= 1; return res; },
+    function(err){ inflight -= 1; throw err; });
 }
 /* A read the console makes on demand. The session cookie is ambient and a
    GET changes nothing, so no token; `credentials` keeps it same-origin. */
@@ -895,7 +904,7 @@ function wireReviewActions(r){
       both.forEach(function(x){ if (x) x.disabled = true; });
       b.textContent = verb === "approve" ? "Approving…" : "Rejecting…";
       act("/v1/proposals/" + b.dataset.id + "/" + verb).then(function(res){
-        if (res.ok){ window.location.reload(); return; }
+        if (res.ok){ refresh(); return; }
         both.forEach(function(x){ if (x) x.disabled = false; });
         b.textContent = res.status === 403 ? "Not permitted" : "Failed (" + res.status + ")";
       }).catch(function(){
@@ -1116,7 +1125,7 @@ function wireEditor(p){
       owner: body.metadata.owner, description: body.metadata.description,
       spec: body.spec
     }).then(function(res){
-      if (res.ok){ window.location.reload(); return; }
+      if (res.ok){ state.tuning = false; refresh(); return; }
       /* The server's reason, not a shrug. A 422 here names the field that
          failed, and hiding it would send the operator back to a form that
          looks correct. */
@@ -1452,7 +1461,7 @@ function renderDetail(){
               sessionStorage.setItem("zolts.activation-note",
                 JSON.stringify({id: go.dataset.id, lines: body.lint}));
           } catch (e) {}
-          window.location.reload();
+          refresh();
         });
       }
       /* Named, not swallowed. A button that fails quietly is the reason the
@@ -1984,7 +1993,7 @@ function wireSendingAction(){
     b.textContent = b.dataset.act === "pause" ? "Stopping…" : "Resuming…";
     act("/v1/sending/domains/" + encodeURIComponent(b.dataset.domain) + "/"
         + b.dataset.act, "POST", {reason: field.value}).then(function(res){
-      if (res.ok){ window.location.reload(); return; }
+      if (res.ok){ refresh(); return; }
       b.disabled = false;
       b.textContent = label;
       /* Named, never swallowed. The refusal an operator most needs to read is
@@ -2297,7 +2306,7 @@ function wireProspectActions(){
       b.textContent = "Buying…";
       act("/v1/enrich", "POST", {field: field, ids: state.psel,
                                  legal_basis: state.basis}).then(function(res){
-        if (res.ok){ state.psel = []; window.location.reload(); return; }
+        if (res.ok){ state.psel = []; refresh(); return; }
         b.disabled = false;
         b.textContent = label;
         msg.textContent = BUY_REFUSAL[res.status] || ("Failed (" + res.status + ").");
@@ -2705,7 +2714,7 @@ function wireTaskAction(){
     b.disabled = true;
     b.textContent = "Marking…";
     act("/v1/tasks/" + b.dataset.id + "/complete", "POST").then(function(res){
-      if (res.ok){ window.location.reload(); return; }
+      if (res.ok){ refresh(); return; }
       b.disabled = false;
       b.textContent = res.status === 409 ? "Already done"
         : res.status === 403 ? "Not permitted" : "Failed (" + res.status + ")";
@@ -2862,7 +2871,7 @@ function wireOutboxActions(){
       b.textContent = pair[1] === "revive" ? "Queueing…" : "Retiring…";
       act("/v1/outbox/" + encodeURIComponent(b.dataset.id) + "/" + pair[1],
           "POST", {reason: field.value}).then(function(res){
-        if (res.ok){ window.location.reload(); return; }
+        if (res.ok){ refresh(); return; }
         b.disabled = false;
         b.textContent = label;
         return res.json().then(function(body){
@@ -3071,6 +3080,67 @@ document.querySelectorAll("nav a[data-view]").forEach(function(a){
   if (a.dataset.view === state.view) a.setAttribute("aria-current", "page");
   else a.removeAttribute("aria-current");
 });
+
+/* ── live ─────────────────────────────────────────────────────────────
+   Every action used to end in a full page load: the operator approved a
+   draft and was dumped back through it, their scroll and their selection
+   gone, and nothing on the screen moved until somebody pressed F5
+   (docs/28, OX-6). The console now re-reads /v1/console after every action
+   and every POLL_MS while the tab is visible, and re-renders in place.
+   State survives: every renderer already falls back to the first row when a
+   selected id is gone. A re-render never lands on a field the operator is
+   typing in — fresh data waits until the cursor leaves it, because replacing
+   a half-typed reason from under the cursor is the reload this exists to
+   remove, one keystroke at a time. */
+var POLL_MS = 30000;
+var etag = null;
+var inflight = 0;
+var epoch = 0;
+function refresh(){
+  if (!LIVE) return Promise.resolve(false);
+  var started = epoch;
+  var options = {credentials: "same-origin", headers: {}};
+  if (etag) options.headers["If-None-Match"] = etag;
+  return fetch("/v1/console", options).then(function(res){
+    if (res.status === 304 || !res.ok) return false;
+    var tag = res.headers.get("ETag");
+    return res.json().then(function(body){ return applyFresh(body, tag, started); });
+  }).catch(function(){ return false; });
+}
+function typing(){
+  var el = document.activeElement;
+  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+function busy(){
+  return inflight > 0 || state.tuning || typing();
+}
+function applyFresh(body, tag, started){
+  /* Dropped, and the tag not advanced, so the next poll asks again. A
+     re-render under a half-typed reason, an open editor or an action still
+     in flight is the reload this exists to remove, one keystroke at a
+     time — and the refusal a request is about to show would be rendered
+     away before the operator read it. A refresh older than the latest
+     action is dropped for the same reason: that action's own refresh is
+     the one that should land. */
+  if (busy()) return false;
+  if (started !== undefined && started !== epoch) return false;
+  etag = tag || etag;
+  D = body; P = D.programs; R = D.review || []; LIVE = D.live === true;
+  renderChrome();
+  render();
+  return true;
+}
+var ticker = null;
+function startPolling(){
+  if (ticker || !LIVE) return;
+  ticker = setInterval(function(){ if (!document.hidden) refresh(); }, POLL_MS);
+}
+document.addEventListener("visibilitychange", function(){
+  if (document.hidden){ clearInterval(ticker); ticker = null; return; }
+  startPolling();
+  refresh();
+});
+startPolling();
 
 render();
 })();

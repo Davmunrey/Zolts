@@ -360,21 +360,25 @@ def main() -> int:
             # started (D-96). Wait for the reload itself: a publish the server
             # refuses never navigates, so it fails here, naming this step,
             # instead of surfacing three steps later as a click that hangs.
+            # A successful publish no longer reloads the page (docs/28, OX-6):
+            # the console re-reads its data and the new version appears in
+            # the list in place. Wait for that, not for a navigation — and a
+            # publish the server refuses shows its reason in `#pubnote`, so a
+            # missing version names this step rather than surfacing later.
+            page.evaluate("() => { window.__zoltsPage = 1; }")
+            page.click("#pub")
             try:
-                with page.expect_navigation(wait_until="load", timeout=45_000):
-                    page.click("#pub")
+                page.wait_for_function(
+                    "v => document.querySelector('#list').innerText.includes(v)",
+                    arg=report["generated_version"], timeout=45_000)
             except PlaywrightTimeout:
-                # Name the step and say what the page said. A refusal shows in
-                # `#pubnote`; an empty note with no navigation means the
-                # request never came back, which is the database being held
-                # by something else rather than the product refusing.
                 note = page.locator("#pubnote").inner_text() if page.locator("#pubnote").count() else ""
-                print("::error::publish did not reload the page. The page says:",
-                      json.dumps(note or "(nothing: the request never returned)"),
+                print("::error::the published version never appeared in the list. "
+                      "The page says:", json.dumps(note or "(nothing: the request never returned)"),
                       file=sys.stderr)
                 return 1
             page.wait_for_selector("#tunebtn", timeout=20_000)
-            report["publish_reloaded"] = True
+            report["publish_in_place"] = page.evaluate("() => window.__zoltsPage === 1")
 
             # 4. The review queue: agents propose, a person disposes. Until
             #    this existed the disposing was curl, and the rail counted a
@@ -384,8 +388,20 @@ def main() -> int:
             report["queue_rendered"] = page.locator("#list .row").count()
             report["gate_reason_shown"] = "Gate" in page.locator(".dhead, .block").first \
                 .evaluate("el => el.parentElement.innerText")
+            # Approve, and watch the rail count fall without a navigation: the
+            # marker set on the window before the click survives a re-render
+            # and dies with a reload (docs/28, OX-6).
+            before = page.locator("#nav-review").inner_text()
+            page.evaluate("() => { window.__zoltsApprove = 1; }")
             page.click("#approve")
             page.wait_for_selector("#approve", state="detached", timeout=15_000)
+            page.wait_for_function(
+                "b => document.getElementById('nav-review') === null"
+                "  || document.getElementById('nav-review').innerText !== b",
+                arg=before, timeout=15_000)
+            report["approve_in_place"] = page.evaluate("() => window.__zoltsApprove === 1")
+            report["review_rail_before_after"] = [
+                before, page.evaluate("() => (document.getElementById('nav-review') || {}).innerText || '0'")]
 
             # 4b. The work waiting for a person. `GET /v1/tasks` has answered
             #     this since a human task could be closed at all, and no screen
@@ -432,6 +448,11 @@ def main() -> int:
 
             page.fill("#sc-reason", "bought list found in the import")
             page.click("#sc-act")
+            # The stop re-renders in place (docs/28, OX-6): the button that
+            # stopped the domain relabels to the act that starts it again.
+            page.wait_for_function(
+                "() => (document.getElementById('sc-act') || {}).textContent === 'Let it send'",
+                timeout=20_000)
             page.wait_for_selector('#list .row[data-d]', timeout=15_000)
             page.locator('#list .row[data-d]').first.click()
             page.wait_for_selector("#sc-act", timeout=15_000)
@@ -747,6 +768,20 @@ def main() -> int:
             print("::error::the signals view does not carry the time-to-touch "
                   "verdict docs/06 publishes:", json.dumps(sla_panel)[:400],
                   file=sys.stderr)
+            return 1
+
+        # Live, no reload. The approve and the publish both re-rendered in
+        # place: the window markers survived, and the rail's review count fell
+        # while the operator watched — the exit criterion `docs/28` OX-6 set.
+        if not report.get("approve_in_place") or not report.get("publish_in_place"):
+            print("::error::an action still throws the page away:",
+                  json.dumps({k: report.get(k) for k in ("approve_in_place", "publish_in_place")}),
+                  file=sys.stderr)
+            return 1
+        rail = report.get("review_rail_before_after") or ["", ""]
+        if rail[0] == rail[1]:
+            print("::error::the review count in the rail did not move after an approval:",
+                  json.dumps(rail), file=sys.stderr)
             return 1
 
         # Which copy works. One positive reply on one send is a count and not
