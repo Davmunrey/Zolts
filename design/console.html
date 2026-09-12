@@ -19,7 +19,7 @@
   --hairline:#d5d5d9; --hairline-strong:#b7b7ba; --hairline-ghost:#e7e7ea;
   --line:var(--hairline);
   --ink:#1d1f20; --ink-muted:#3c3c3e; --ink-secondary:#4b4b4e; --ink-subtle:#55555a;
-  --ink-tertiary:#6f6f72; --ink-inverse:#f2f2f3;
+  --ink-tertiary:#5f5f63; --ink-inverse:#f2f2f3;
 
   /* Steel, one accent, on a ramp generated in OKLCH whose 500 step is the
      declared brand value #5980A6 rather than an approximation of it. 500
@@ -181,7 +181,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
      letter-spacing:.3px;text-transform:uppercase;background:var(--surface-2);color:var(--ink-secondary)}
 .tlk.live{color:var(--live)}.tlk.bad{color:var(--deny)}.tlk.warnt{color:var(--review)}
 .tld{color:var(--ink-secondary)}
-.tldrop{opacity:.8}
+.tldrop{color:var(--ink-tertiary)}
 .field .why{grid-column:1/-1;margin:0}
 .why{font-size:11px;color:var(--ink-tertiary);line-height:1.45}
 .dsl{margin:0;padding:10px;max-height:240px;overflow:auto;
@@ -192,7 +192,8 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
         -webkit-line-clamp:2;overflow:hidden;text-overflow:clip}
 .row:has(.cell.w){height:auto;min-height:36px;padding-top:6px;padding-bottom:6px}
 .row.sub{background:var(--canvas)}
-.row.planned{cursor:default;opacity:.62}
+.row.planned{cursor:default}
+.row.planned .cell,.row.planned .pname,.row.planned .bp,.row.planned .n{color:var(--ink-tertiary)}
 .row.planned:hover{background:var(--canvas)}
 /* Two different tables in one list need a line between them. Detections and
    watched signals, contacts and accounts, rules and decisions: without this
@@ -204,6 +205,11 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 .sect b{font-family:var(--mono);font-weight:450;color:var(--ink-subtle);letter-spacing:0}
 .row.sub .cell.k{color:var(--ink-secondary);padding-left:14px}
 
+/* Focus is visible wherever it lands, and the list's pointer is visible
+   while the list has it (docs/28, OX-13). */
+:focus-visible{outline:2px solid var(--accent-ring);outline-offset:2px}
+#list:focus-visible{outline-offset:-2px}
+#list:focus-visible .row.on{box-shadow:inset 0 0 0 2px var(--accent-ring)}
 .row[aria-selected="true"]{background:var(--surface-2)}
 .row[aria-selected="true"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
 .st{width:9px;height:9px;border-radius:50%;flex:none;justify-self:center}
@@ -245,7 +251,10 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
      transition:background 90ms var(--ease), transform 160ms var(--ease)}
 .btn:active{transform:scale(.97)}
 .chipbtn:active,.row:active,.pitem:active{transform:scale(.99)}
-.btn-p{background:var(--accent);color:var(--ink-inverse)}
+/* One step darker than the accent: the accent itself carries its inverse ink at
+   3.7:1, under the floor for a 12px label (docs/28, OX-13). */
+.btn-p{background:var(--accent-hover);color:var(--ink-inverse)}
+.ev.dropped{color:var(--ink-tertiary)}
 
 .btn-s{background:var(--surface-2);color:var(--ink);border:1px solid var(--hairline)}
 
@@ -380,7 +389,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   /* A link that leaves the console for a document: the signed report a CFO
      is sent. Accent, because it is an action in chrome and not a figure. */
   .lnk{color:var(--accent);text-decoration:underline;text-underline-offset:2px;font-size:11.5px}
-  .btn-p:hover{background:var(--accent-hover)}
+  .btn-p:hover{background:var(--accent-ring)}
   .btn-s:hover{background:var(--surface-3)}
 }
 
@@ -499,29 +508,29 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
 
 <div class="app">
   <aside class="rail">
-    <div class="brand"><svg class="zmark" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><path d="M89 0L89 20.5L100 31.5L100 11Z M89 20.5L34 68.5L45 79.5L100 31.5Z M89 68.5L89 89L100 100L100 79.5Z M89 89L0 89L11 100L100 100Z M55 20.5L0 20.5L11 31.5L66 31.5Z" fill="var(--steel-800)"/><path d="M0 0H89V20.5L34 68.5H89V89H0V68.5L55 20.5H0Z" fill="var(--steel-500)" stroke="var(--steel-900)" stroke-width="2.5" stroke-linejoin="miter"/></svg><span class="wordmark">ZOLTS</span></div>
+    <div class="brand"><svg aria-hidden="true" class="zmark" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><path d="M89 0L89 20.5L100 31.5L100 11Z M89 20.5L34 68.5L45 79.5L100 31.5Z M89 68.5L89 89L100 100L100 79.5Z M89 89L0 89L11 100L100 100Z M55 20.5L0 20.5L11 31.5L66 31.5Z" fill="var(--steel-800)"/><path d="M0 0H89V20.5L34 68.5H89V89H0V68.5L55 20.5H0Z" fill="var(--steel-500)" stroke="var(--steel-900)" stroke-width="2.5" stroke-linejoin="miter"/></svg><span class="wordmark">ZOLTS</span></div>
     <div>
       <button class="ws">
-        <span class="glyph"><svg viewBox="0 0 89 89" aria-hidden="true" focusable="false"><path d="M0 0H89V20.5L34 68.5H89V89H0V68.5L55 20.5H0Z" fill="var(--ink-inverse)"/></svg></span>
+        <span class="glyph"><svg aria-hidden="true" viewBox="0 0 89 89" aria-hidden="true" focusable="false"><path d="M0 0H89V20.5L34 68.5H89V89H0V68.5L55 20.5H0Z" fill="var(--ink-inverse)"/></svg></span>
         <span class="name" id="ws-name">Northbeam</span>
-        <svg class="chev" width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2.2 3.6L4.5 5.9 6.8 3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        <svg aria-hidden="true" class="chev" width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2.2 3.6L4.5 5.9 6.8 3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
       </button>
     </div>
 
     <nav aria-label="Primary">
       <p class="sec">Run</p>
-      <a href="#" data-view="today" aria-current="page"><svg viewBox="0 0 13 13" fill="none"><path d="M2 6.5h3l1.4-3 1.8 6 1.3-3H11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today<span class="c" id="nav-today">0</span></a>
-      <a href="#" data-view="programs"><svg viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
-      <a href="#" data-view="signals"><svg viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
-      <a href="#" data-view="prospects"><svg viewBox="0 0 13 13" fill="none"><circle cx="5" cy="4.4" r="2.2" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 11.2c0-1.9 1.6-3.2 3.5-3.2s3.5 1.3 3.5 3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M9.6 5.2h2.4M10.8 4v2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Prospects<span class="c" id="nav-prospects">0</span></a>
-      <a href="#" data-view="review"><svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
-      <a href="#" data-view="tasks"><svg viewBox="0 0 13 13" fill="none"><rect x="1.7" y="2.2" width="9.6" height="8.6" rx="1.4" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.4l1.6 1.6 3-3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Human tasks<span class="c" id="nav-tasks">0</span></a>
-      <a href="#" data-view="outbox"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 7.4h3l.9 1.8h3l.9-1.8h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.8 7.4l1.3-4.6h4.8l1.3 4.6v3H2.8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Outbox<span class="c" id="nav-outbox">0</span></a>
-      <a href="#" data-view="sending"><svg viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
-      <a href="#" data-view="spend"><svg viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend<span class="c" id="nav-spend">0</span></a>
+      <a href="#" data-view="today" aria-current="page"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><path d="M2 6.5h3l1.4-3 1.8 6 1.3-3H11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today<span class="c" id="nav-today">0</span></a>
+      <a href="#" data-view="programs"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><rect x="1.4" y="1.4" width="10.2" height="10.2" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.5h4.6M6.5 4.2v4.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Programs<span class="c" id="nav-programs">7</span></a>
+      <a href="#" data-view="signals"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><path d="M1.4 9l2.8-3.7 2.8 2.3 4.6-5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Signals<span class="c" id="nav-signals">15</span></a>
+      <a href="#" data-view="prospects"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><circle cx="5" cy="4.4" r="2.2" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 11.2c0-1.9 1.6-3.2 3.5-3.2s3.5 1.3 3.5 3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M9.6 5.2h2.4M10.8 4v2.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Prospects<span class="c" id="nav-prospects">0</span></a>
+      <a href="#" data-view="review"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="4.8" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 3.7v3l1.8 1.1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Review queue<span class="c" id="nav-review">42</span></a>
+      <a href="#" data-view="tasks"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><rect x="1.7" y="2.2" width="9.6" height="8.6" rx="1.4" stroke="currentColor" stroke-width="1.1"/><path d="M4.2 6.4l1.6 1.6 3-3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>Human tasks<span class="c" id="nav-tasks">0</span></a>
+      <a href="#" data-view="outbox"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><path d="M1.6 7.4h3l.9 1.8h3l.9-1.8h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.8 7.4l1.3-4.6h4.8l1.3 4.6v3H2.8z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Outbox<span class="c" id="nav-outbox">0</span></a>
+      <a href="#" data-view="sending"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><path d="M1.6 3.2h9.8v6.6H1.6z" stroke="currentColor" stroke-width="1.1"/><path d="M1.6 3.6l4.9 3.4 4.9-3.4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Sending<span class="c" id="nav-sending">0</span></a>
+      <a href="#" data-view="spend"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><path d="M2 10.6h9M3.6 8.4V5M6.5 8.4V2.6M9.4 8.4V6.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Spend<span class="c" id="nav-spend">0</span></a>
       <p class="sec">Prove</p>
-      <a href="#" data-view="policy"><svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5l4.4 1.7v3.3c0 2.5-1.8 4.4-4.4 5.1C3.9 10.9 2.1 9 2.1 6.5V3.2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Policy<span class="c" id="nav-policy">0</span></a>
-      <a href="#" data-view="audit"><svg viewBox="0 0 13 13" fill="none"><path d="M3 1.8h5.2l2.3 2.3v7.1H3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M4.9 6.3h4M4.9 8.4h2.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Audit log<span class="c" id="nav-audit">0</span></a>
+      <a href="#" data-view="policy"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5l4.4 1.7v3.3c0 2.5-1.8 4.4-4.4 5.1C3.9 10.9 2.1 9 2.1 6.5V3.2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>Policy<span class="c" id="nav-policy">0</span></a>
+      <a href="#" data-view="audit"><svg aria-hidden="true" viewBox="0 0 13 13" fill="none"><path d="M3 1.8h5.2l2.3 2.3v7.1H3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M4.9 6.3h4M4.9 8.4h2.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>Audit log<span class="c" id="nav-audit">0</span></a>
     </nav>
 
     <div class="rail-foot">
@@ -531,7 +540,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
     </div>
   </aside>
 
-  <section class="centre">
+  <main class="centre">
     <div class="bar">
       <h1>Programs</h1>
       <span class="count" id="shown">7</span>
@@ -540,18 +549,18 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
         <span class="st live" style="width:7px;height:7px"></span>Live only
       </button>
       <button class="chipbtn only-programs" id="f-sig" aria-pressed="false">
-        <svg viewBox="0 0 11 11" fill="none"><path d="M1.5 8.5l2.4-3.2 2.4 2 3.2-4.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 11 11" fill="none"><path d="M1.5 8.5l2.4-3.2 2.4 2 3.2-4.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Significant
       </button>
-      <button class="chipbtn" id="open-pal"><kbd style="border:0;background:none;padding:0;color:var(--ink-tertiary)">⌘K</kbd></button>
+      <button class="chipbtn" id="open-pal" aria-label="Command palette"><kbd style="border:0;background:none;padding:0;color:var(--ink-tertiary)">⌘K</kbd></button>
     </div>
 
     <div class="kpis" id="kpis"></div>
-    <div class="head" id="head" role="row"></div>
+    <div class="head" id="head" role="presentation"></div>
     <div class="list" id="list" role="listbox" aria-label="Programs" tabindex="0"
          aria-activedescendant=""></div>
     <div class="foot" id="foot"></div>
-  </section>
+  </main>
 
   <aside class="detail" id="detail"></aside>
 </div>
@@ -622,8 +631,8 @@ var P = D.programs;
 function sig(p){ return p.significant === true; }
 function nf(n){ return n.toLocaleString("en-US"); }
 
-var ICON_SIG = '<svg viewBox="0 0 14 14" fill="none"><path d="M2.4 7.6l2.6 2.6 6.6-6.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="9.8" r=".7" fill="currentColor"/></svg>';
+var ICON_SIG = '<svg aria-hidden="true" viewBox="0 0 14 14" fill="none"><path d="M2.4 7.6l2.6 2.6 6.6-6.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var ICON_UND = '<svg aria-hidden="true" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.2"/><path d="M7 4.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="7" cy="9.8" r=".7" fill="currentColor"/></svg>';
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
@@ -659,6 +668,42 @@ function noProgrammePanel(){
 
 /* ── list ──────────────────────────────────────────────────────────── */
 var list = document.getElementById("list");
+
+/* ── keyboard and screen reader ──────────────────────────────────────────
+   DESIGN.md's list contract (docs/28, OX-13): the container is the single
+   tab stop, holds role="listbox", and names the current option through
+   aria-activedescendant; rows are plain elements carrying role="option"
+   and a stable id. Arrow keys and J/K move the pointer on every view, and
+   the selection follows it; focus never leaves the container. Rows are
+   pointed after every render, from one place, so a renderer that forgets
+   an id or a role is corrected rather than trusted. */
+var BATCH_VIEWS = {review: 1, tasks: 1, outbox: 1};
+function pointRows(){
+  var rows = list.querySelectorAll(".row"), current = null;
+  rows.forEach(function(r, i){
+    if (r.getAttribute("role") !== "option") r.setAttribute("role", "option");
+    if (!r.id) r.id = "opt-" + i;
+    if (r.classList.contains("on")){
+      current = r;
+      if (r.getAttribute("aria-selected") === null) r.setAttribute("aria-selected", "true");
+    }
+  });
+  var id = current ? current.id : (rows[0] ? rows[0].id : "");
+  if (list.getAttribute("aria-activedescendant") !== id) list.setAttribute("aria-activedescendant", id);
+}
+new MutationObserver(pointRows).observe(list, {childList: true, subtree: true});
+function stepRow(step){
+  if (state.view === "programs") return move(step);
+  var rows = Array.prototype.slice.call(list.querySelectorAll(".row"));
+  if (!rows.length) return;
+  var at = rows.findIndex(function(r){ return r.classList.contains("on"); });
+  var next = step === Infinity ? rows.length - 1 : step === -Infinity ? 0
+           : Math.max(0, Math.min(rows.length - 1, (at < 0 ? -1 : at) + step));
+  rows[next].click();
+  var moved = list.querySelectorAll(".row")[next];
+  if (moved) moved.scrollIntoView({ block: "nearest" });
+  list.focus({ preventScroll: true });
+}
 function renderList(){
   var rows = visible();
   document.getElementById("shown").textContent = rows.length;
@@ -815,7 +860,7 @@ function renderReviewList(){
   }
   list.innerHTML = R.map(function(r){
     return '<div class="row' + (r.id === state.rsel ? " on" : "") + '" data-r="'
-      + esc(r.id) + '" role="row" tabindex="0" aria-selected="'
+      + esc(r.id) + '" role="option" aria-selected="'
       + (inBatch("proposals", r.id) ? "true" : "false") + '">'
       + labelled([dot(r.spendVerdict === "no" ? "deny" : "warn"),
                   cell(r.agent + " · " + (r.step || r.channel || ""), "k"),
@@ -874,7 +919,7 @@ function renderReviewDetail(){
   var dropped = r.droppedClaims.length
     ? '<div class="block"><div class="blabel">Removed before sending</div>'
       + r.droppedClaims.map(function(c){
-          return '<div class="ev" style="opacity:.75"><s>' + esc(c) + '</s></div>';
+          return '<div class="ev dropped"><s>' + esc(c) + '</s></div>';
         }).join("")
       + '<p style="margin:8px 0 0;font-size:11.5px;color:var(--ink-tertiary)">'
       + 'A sentence the evidence did not support. It never reaches a provider.</p>'
@@ -1140,7 +1185,7 @@ function editorPanel(p){
     + '<pre class="dsl" id="dsl"></pre>'
     + '<div class="dactions" style="margin-top:10px">'
     + '<button class="btn btn-p" id="pub"' + (LIVE ? "" : " disabled") + '>Publish version</button>'
-    + '<span class="why" id="pubnote"></span></div>'
+    + '<span class="why" id="pubnote" role="status"></span></div>'
     + '</div>';
 }
 
@@ -1633,7 +1678,7 @@ function palRender(){
   var html = "";
   var group = function(title, entries){
     if (!entries.length) return;
-    html += '<div class="pgroup">' + title + '</div>';
+    html += '<div class="pgroup" role="presentation">' + title + '</div>';
     entries.forEach(function(c){
       var i = palItems.findIndex(function(x){ return x.kind === "c" && x.c === c; });
       html += '<div class="pitem" role="option" id="pal-' + i + '" data-i="' + i + '"'
@@ -1644,7 +1689,7 @@ function palRender(){
   };
   group("Screens", screens);
   if (progs.length){
-    html += '<div class="pgroup">Programs</div>';
+    html += '<div class="pgroup" role="presentation">Programs</div>';
     progs.forEach(function(p){
       var i = palItems.findIndex(function(x){ return x.kind === "p" && x.p.key === p.key; });
       html += '<div class="pitem" role="option" id="pal-' + i + '" data-i="' + i + '"'
@@ -1691,9 +1736,13 @@ document.addEventListener("keydown", function(e){
     else if (e.key === "Enter"){ e.preventDefault(); palRun(); }
     return;
   }
-  if (e.target.tagName === "INPUT") return;
-  if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); move(1); }
-  else if (e.key === "k" || e.key === "ArrowUp"){ e.preventDefault(); move(-1); }
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  /* On every view, not only Programs: `move` renders the programme list,
+     and ArrowDown on the review queue used to paint programmes over it. */
+  if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); stepRow(1); }
+  else if (e.key === "k" || e.key === "ArrowUp"){ e.preventDefault(); stepRow(-1); }
+  else if (e.key === "Home" && e.target === list){ e.preventDefault(); stepRow(-Infinity); }
+  else if (e.key === "End" && e.target === list){ e.preventDefault(); stepRow(Infinity); }
 });
 
 renderChrome();
@@ -1776,6 +1825,12 @@ function chrome(view){
   var spec = VIEWS[view] || VIEWS.programs;
   document.querySelector(".centre").style.setProperty("--cols", spec.cols);
   document.querySelector(".bar h1").textContent = spec.title;
+  /* The one tab stop names what it lists, and says when a row's
+     `aria-selected` means membership of a batch rather than the selection. */
+  var box = document.getElementById("list");
+  box.setAttribute("aria-label", spec.title);
+  if (BATCH_VIEWS[view]) box.setAttribute("aria-multiselectable", "true");
+  else box.removeAttribute("aria-multiselectable");
   headEl.innerHTML = spec.head.map(function(h){
     var right = h.indexOf("r:") === 0;
     return '<span' + (right ? ' class="r"' : "") + '>'
@@ -1856,7 +1911,7 @@ function batchBlock(kind, total){
     + '<div class="batch">' + buttons
     + '<button class="btn btn-s" id="batch-clear">Clear</button>'
     + '<button class="btn btn-s" id="batch-all">Select all ' + nf(total) + '</button>'
-    + '<span class="why" id="batch-msg"' + (note ? "" : " hidden") + '>' + esc(note) + '</span>'
+    + '<span class="why" id="batch-msg" role="status"' + (note ? "" : " hidden") + '>' + esc(note) + '</span>'
     + '</div></div>';
 }
 function wireBatch(kind, allIds, rerender){
@@ -1942,7 +1997,7 @@ function labelled(cells, own){
 }
 
 function rowOf(cells, cls, own){
-  return '<div class="row' + (cls ? " " + cls : "") + '" role="row">'
+  return '<div class="row' + (cls ? " " + cls : "") + '" role="option">'
        + labelled(cells, own) + '</div>';
 }
 /* A stat tile: label, value, an optional unit and an optional ratio against a
@@ -2125,15 +2180,15 @@ function sect(title, note, own){
   /* With `own`, the section is followed by its own column head, rendered
      the way `chrome` renders the view's: the prefix is stripped by the one
      function that knows it, and a right-aligned column stays right-aligned. */
-  var head = own ? '<div class="head" role="row">' + own.map(function(h){
+  var head = own ? '<div class="head" role="presentation">' + own.map(function(h){
     return '<span' + (h.indexOf("r:") === 0 ? ' class="r"' : "") + '>'
       + esc(label(h)) + '</span>';
   }).join("") + '</div>' : "";
-  return '<div class="sect">' + esc(title)
+  return '<div class="sect" role="presentation">' + esc(title)
     + (note ? '<b>' + esc(note) + '</b>' : "") + '</div>' + head;
 }
 function empty(text){
-  return '<p class="empty">' + esc(text) + '</p>';
+  return '<p class="empty" role="status">' + esc(text) + '</p>';
 }
 function block(label, pairs){
   var body = pairs.map(function(kv){
@@ -2245,7 +2300,7 @@ function renderSending(){
    link this console keeps having to remove. */
 function drow(d, cells){
   return '<div class="row' + (d.name === state.dsel ? " on" : "") + '" data-d="'
-    + esc(d.name) + '" role="row" tabindex="0">' + labelled(cells) + '</div>';
+    + esc(d.name) + '" role="option">' + labelled(cells) + '</div>';
 }
 
 function renderSendingDetail(d, mailboxes, alarm, pausedCount){
@@ -2293,7 +2348,7 @@ function switchBlock(d){
     + ' data-domain="' + esc(d.name) + '" data-act="'
     + (d.paused ? "resume" : "pause") + '">'
     + (d.paused ? "Let it send" : "Stop sending") + '</button>'
-    + '<p class="pnote" id="sc-msg" hidden></p>'
+    + '<p class="pnote" id="sc-msg" role="status" hidden></p>'
     + '</div></div>';
 }
 
@@ -2399,7 +2454,7 @@ function renderProspects(){
     var on = state.psel.indexOf(c.id) >= 0 || state.csel === c.id;
     return '<div class="row' + (on ? " on" : "") + '"'
       + ' data-c="' + esc(c.id) + '"' + (open ? ' data-p="' + esc(c.id) + '"' : "")
-      + ' tabindex="0" role="row">'
+      + ' role="option">'
       + labelled([dot(c.optedOut ? "deny" : c.missing.length ? "warn" : "live"),
                   cell(c.name || "(no name)", "k"), cell(c.email, "m"),
                   cell(c.phone, "m"),
@@ -2581,7 +2636,7 @@ function buyBlock(buyable, price){
     + 'a value that arrives.</p>'
     + basisChoice()
     + (LIVE ? '<div class="actf">' + buttons
-              + '<p class="pnote" id="buy-msg" hidden></p></div>'
+              + '<p class="pnote" id="buy-msg" role="status" hidden></p></div>'
             : '<p class="pnote"><b>Static preview.</b> Buying works on the '
               + 'served console.</p>')
     + '</div>';
@@ -2609,7 +2664,7 @@ function basisChoice(){
      operator nothing and this choice would look like it had not been made. */
   var chosen = options.filter(function(o){ return o[0] === state.basis; })[0];
   return '<div class="actf"><label>Legal basis for this purchase</label>'
-    + '<span class="seg" id="basis">'
+    + '<span class="seg" id="basis" role="group" aria-label="Legal basis for this purchase">'
     + options.map(function(o){
         return '<button data-basis="' + o[0] + '" aria-pressed="'
           + (state.basis === o[0] ? "true" : "false") + '">'
@@ -2734,7 +2789,7 @@ function renderSignals(){
     + earning.map(function(r){
       var tone = r.converted ? "live" : (r.fired ? "" : "draft");
       var tier = r.catalogued ? (r.tier ? "Tier " + r.tier : "no tier") : "not in the catalogue";
-      return '<div class="row' + (r.key === state.fsel ? " on" : "") + '" role="row"'
+      return '<div class="row' + (r.key === state.fsel ? " on" : "") + '" role="option"'
         + ' data-f="' + esc(r.key) + '">'
         + labelled([dot(tone), cell(r.key, "k"), cell(tier, "m"), cell(nf(r.fired), "n"),
                     cell(nf(r.enrolled), "n"),
@@ -2922,7 +2977,7 @@ function renderToday(){
   var guided = G && G.show && G.steps.filter(function(st){ return st.key === state.gsel; })[0];
   list.innerHTML = items.map(function(it, i){
     return '<div class="row' + (!guided && i === todayIndex(items) ? " on" : "") + '" data-a="'
-      + i + '" role="row" tabindex="0">'
+      + i + '" role="option">'
       + labelled([dot(TONE[it.urgency] || ""), cell(it.title, "k"),
                   cell(it.detail, "m"), cell(nf(it.count), "n"),
                   cell(it.urgency, "w m" + (it.urgency === "now" ? " warnt" : ""))])
@@ -2956,7 +3011,7 @@ function guideRows(G){
         var next = st.key === G.next;
         var on = st.key === state.gsel;
         return '<div class="row guide' + (on ? " on" : "") + '" data-g="' + esc(st.key)
-          + '" id="fr-' + esc(st.key) + '" role="row" tabindex="0">'
+          + '" id="fr-' + esc(st.key) + '" role="option">'
           + labelled([dot(st.done ? "live" : (next ? "warn" : "")),
                       cell(st.title, "k"), cell(st.status, "m"),
                       cell(String(i + 1) + " of " + nf(G.of), "n"),
@@ -3070,7 +3125,7 @@ function renderTasks(){
      detail panel follows the click rather than always showing the first. */
   list.innerHTML = tasks.map(function(t){
     return '<div class="row' + (t.id === state.tsel ? " on" : "") + '" data-t="'
-      + esc(t.id) + '" role="row" tabindex="0" aria-selected="'
+      + esc(t.id) + '" role="option" aria-selected="'
       + (inBatch("tasks", t.id) ? "true" : "false") + '">'
       + labelled([dot(t.late ? "warn" : "live"), cell(stepName(t), "k"),
                   cell(t.program || "—", "m"), cell(t.channel, "m"),
@@ -3190,7 +3245,7 @@ function renderOutbox(){
 
   list.innerHTML = dead.map(function(a){
     return '<div class="row' + (a.id === state.osel ? " on" : "") + '" data-o="'
-      + esc(a.id) + '" role="row" tabindex="0" aria-selected="'
+      + esc(a.id) + '" role="option" aria-selected="'
       + (inBatch("outbox", a.id) ? "true" : "false") + '">'
       + labelled([dot("deny"), cell(a.kind, "k"), cell(a.channel || "—", "m"),
                   cell(nf(a.attempts) + "/" + nf(a.maxAttempts), "n"),
@@ -3277,7 +3332,7 @@ function renderOutboxDetail(a){
     + 'Put it back on the wire</button>'
     + '<button class="btn btn-s" id="ob-discard" data-id="' + esc(a.id) + '">'
     + 'Retire it</button>'
-    + '<p class="pnote" id="ob-msg" hidden></p>'
+    + '<p class="pnote" id="ob-msg" role="status" hidden></p>'
     + '</div></div>';
   wireOutboxActions();
 }

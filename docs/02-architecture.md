@@ -930,6 +930,18 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-076 · One tab stop per list, options under it, the pointer moved from the keyboard on every view, every control named, every icon hidden, contrast measured against what the text is drawn on.**
+Accessibility is table stakes for enterprise procurement and it is cheaper now than after the surface grows (`docs/28`, OX-13). `DESIGN.md` had already written the list contract; the console had a tab stop per row, moved the pointer only on Programs — and painted the programme list over any other view when ArrowDown was pressed there (D-109) — and drew its smallest ink at 4.48:1 on the canvas (D-108).
+
+| Decision | Why |
+|---|---|
+| **DESIGN.md's list, implemented once** | The container is the tab stop, `role="listbox"`, named after the view; rows are `role="option"` with a stable id; `aria-activedescendant` names the current row. Rows are pointed after every render by one observer, so a renderer that forgets an id or a role is corrected rather than trusted. A batch list says `aria-multiselectable`, because there `aria-selected` is membership of the batch |
+| **Arrow keys and J/K on every view** | The selection follows the pointer, as it did on Programs; the programme mover runs only there. A guard restores the old call and requires a test to notice |
+| **The pass is the check's, and every finding is critical** | No accessibility engine is available offline, so the check carries its own rules: a control without a name, an ARIA reference to nothing, a listbox child that is not an option, an icon in the tree, and text under the AA floor against the backdrop it is really composited on, opacity included. It runs on the door and on every screen, and the check fails on any finding |
+| **Contrast is measured, and what failed moved** | The tertiary ink was 4.48:1 on the canvas and 3.66:1 on the darkest surface; it is #5f5f63 now, 5.68:1 and 4.65:1, and a test holds it above 4.5 on every surface, with a guard that puts the old value back. The pass then found what a token table cannot: the primary button's label at 3.7:1 on the accent, now one step darker; and three things dimmed by opacity — planned programmes, dropped claims, a timeline's removed sentence — whose composited ink fell under the floor, now dimmed by the tertiary ink instead |
+| **Refusals are announced** | Every message a refusal lands in is a `status` region, and so is every empty state, so a screen reader hears the reason without hunting for it |
+| **Known limit, said** | Cells are read in the order they appear, without their column's name; the column head is visual. The first cell of every row is the row's key, so a row reads as a sentence of values, and the definitions (ADR-073) sit on the panel's terms, not the cells |
+
 **ADR-075 · Every empty, loading and error state says what the runtime is doing or what is missing; a blank side is refused.**
 An empty screen that says nothing looks like a screen that failed (`docs/28`, OX-12). Three renderers assigned an empty string to the panel, the Programs list went blank for a tenant whose blueprint ships no starter programme, and five empty panels carried a count of zero and no sentence.
 
