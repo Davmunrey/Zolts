@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="59fd35862215">
+<meta name="zolts-build" content="cdc8ba3e09ea">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -294,6 +294,15 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
         line-height:1.1;color:var(--ink);font-variant-numeric:proportional-nums;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi .u{margin-top:3px;font-size:11px;line-height:1.4;color:var(--ink-tertiary)}
+/* Every number defines itself: hover reads the title, a tap or Enter opens
+   the sentence under the number. The open sentence wears the panel's prose
+   face, not the value's mono, whichever element it lands in. */
+[data-def]{cursor:help}
+.kpi .def,.props dd.def{font-family:var(--sans);font-size:11px;line-height:1.45;
+  color:var(--ink-secondary);white-space:normal;text-align:left}
+.kpi .def{margin-top:6px}
+.props dd.def{grid-column:1/-1;margin:0 0 4px}
+.kpi:focus-visible,dt[data-def]:focus-visible{outline:2px solid var(--accent-ring);outline-offset:-2px}
 .kpi .v.good{color:var(--lift)} .kpi .v.warn{color:var(--review)} .kpi .v.bad{color:var(--deny)}
 /* Latency reads as a measurement, never as a verdict. The runtime's own
    p95 wore `good` — the verified-lift green — unconditionally, so a
@@ -659,13 +668,13 @@ function renderList(){
      tone: proven.length ? "good" : "",
      share: rows.length ? proven.length / rows.length : 0},
     {label: "Accounts enrolled", value: nf(enrolled)},
-    {label: "Spend, quarter to date", value: "€" + nf(Math.round(spend))}
+    {label: "Spend, all time", value: "€" + nf(Math.round(spend))}
   ]);
   document.getElementById("foot").innerHTML =
       '<span><b>' + live.length + '</b> live</span>'
     + '<span><b>' + proven.length + '</b> with proven lift</span>'
     + '<span><b>' + nf(enrolled) + '</b> accounts enrolled</span>'
-    + '<span style="margin-left:auto"><b>€' + nf(Math.round(spend)) + '</b> spend, quarter to date</span>';
+    + '<span style="margin-left:auto"><b>€' + nf(Math.round(spend)) + '</b> spend, all time</span>';
   list.innerHTML = "";
   rows.forEach(function(p, i){
     var d = p.absLift;
@@ -889,9 +898,9 @@ function renderReviewDetail(){
       + (r.evalFailures.length
           ? '<p class="pnote"><b>Failed checks.</b> ' + esc(r.evalFailures.join(", ")) + '</p>' : "")
       + '<dl class="props">'
-      + '<dt>Eval score</dt><dd class="hi">' + (r.evalScore == null ? "—" : r.evalScore.toFixed(2)) + '</dd>'
-      + '<dt>Spend guard</dt><dd>' + esc(r.spendVerdict || "—") + '</dd>'
-      + '<dt>Cost</dt><dd>€' + (r.costEur || 0).toFixed(4) + '</dd>'
+      + '<dt' + defAttrs("Eval score") + '>Eval score</dt><dd class="hi">' + (r.evalScore == null ? "—" : r.evalScore.toFixed(2)) + '</dd>'
+      + '<dt' + defAttrs("Spend guard") + '>Spend guard</dt><dd>' + esc(r.spendVerdict || "—") + '</dd>'
+      + '<dt' + defAttrs("Cost") + '>Cost</dt><dd>€' + (r.costEur || 0).toFixed(4) + '</dd>'
       + '</dl></div>'
     + '<div class="block" style="border-bottom:0"><div class="blabel">Evidence</div>'
       + evidence
@@ -972,10 +981,10 @@ function unverifiedRow(p){
      footnote nobody reaches. Decision 16. */
   if (p.unverifiedShare == null) return "";
   if (!p.unverifiedConversions){
-    return '<dt>Conversions read</dt><dd>all ' + nf(p.conversions) + '</dd>';
+    return '<dt' + defAttrs("Conversions read") + '>Conversions read</dt><dd>all ' + nf(p.conversions) + '</dd>';
   }
   var pct = Math.round(p.unverifiedShare * 100);
-  return '<dt>Conversions read</dt><dd class="' + (pct >= 25 ? "hi" : "") + '">'
+  return '<dt' + defAttrs("Conversions read") + '>Conversions read</dt><dd class="' + (pct >= 25 ? "hi" : "") + '">'
     + nf(p.conversions - p.unverifiedConversions) + ' of ' + nf(p.conversions)
     + ' · ' + pct + '% unread</dd>';
 }
@@ -1303,7 +1312,7 @@ function previewBlock(p){
         : '<p class="pnote"><b>Policy allows all ' + nf(v.policy.sampled) + ' sampled contacts</b> for the first sending step.</p>')
     : '<p class="pnote">No contact to run the policy against yet.</p>';
   return head + '<dl class="props">' + rows.map(function(kv){
-      return '<dt>' + esc(kv[0]) + '</dt><dd' + (kv[2] ? ' class="' + kv[2] + '"' : "") + '>' + esc(kv[1]) + '</dd>';
+      return '<dt' + defAttrs(kv[0], "Preview") + '>' + esc(kv[0]) + '</dt><dd' + (kv[2] ? ' class="' + kv[2] + '"' : "") + '>' + esc(kv[1]) + '</dd>';
     }).join("") + '</dl>' + policy
     + '<p class="why">A forecast as of ' + esc((v.asOf || "").slice(0, 16).replace("T", " "))
     + ' UTC, from the audience and capacity as they stand, by the same functions that enrol. Week one is an upper bound: every reached contact through every step inside seven days.</p></div>';
@@ -1357,12 +1366,12 @@ function renderDetail(){
         + Math.min(1, p.ctrl / 25).toFixed(3) + ')"></i></span><span class="v">'
         + p.ctrl.toFixed(2) + '%</span></div>'
     + '<dl class="props">'
-      + '<dt>Absolute lift</dt><dd class="hi">' + (d > 0 ? "+" : "") + d.toFixed(2) + ' pp</dd>'
-      + '<dt>Minimum detectable effect</dt><dd class="hi">' + p.mde.toFixed(2) + ' pp</dd>'
-      + '<dt>Treatment · control</dt><dd>' + nf(p.nTreat) + ' · ' + nf(p.nControl) + '</dd>'
+      + '<dt' + defAttrs("Absolute lift") + '>Absolute lift</dt><dd class="hi">' + (d > 0 ? "+" : "") + d.toFixed(2) + ' pp</dd>'
+      + '<dt' + defAttrs("Minimum detectable effect") + '>Minimum detectable effect</dt><dd class="hi">' + p.mde.toFixed(2) + ' pp</dd>'
+      + '<dt' + defAttrs("Treatment · control") + '>Treatment · control</dt><dd>' + nf(p.nTreat) + ' · ' + nf(p.nControl) + '</dd>'
       + unverifiedRow(p)
-      + '<dt>Opportunities (t · c)</dt><dd>' + nf(p.oppTreat) + ' · ' + nf(p.oppControl) + '</dd>'
-      + '<dt>Incremental pipeline</dt><dd>'
+      + '<dt' + defAttrs("Opportunities (t · c)") + '>Opportunities (t · c)</dt><dd>' + nf(p.oppTreat) + ' · ' + nf(p.oppControl) + '</dd>'
+      + '<dt' + defAttrs("Incremental pipeline") + '>Incremental pipeline</dt><dd>'
         + (p.pipeline != null ? "€" + nf(p.pipeline) : "not reported") + '</dd>'
     + '</dl>'
     + '<div class="note ' + (ok ? "pass" : "fail") + '">'
@@ -1409,19 +1418,19 @@ function renderDetail(){
     + copyBlock(p)
     + frozenReports(p)
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
-      + '<dt>Status</dt><dd class="hi">' + p.status + '</dd>'
-      + '<dt>Blueprint</dt><dd>' + p.blueprint + '</dd>'
-      + '<dt>Primary metric</dt><dd>' + p.metric
+      + '<dt' + defAttrs("Status") + '>Status</dt><dd class="hi">' + p.status + '</dd>'
+      + '<dt' + defAttrs("Blueprint") + '>Blueprint</dt><dd>' + p.blueprint + '</dd>'
+      + '<dt' + defAttrs("Primary metric") + '>Primary metric</dt><dd>' + p.metric
         + (p.metricTestsValue
              // A value metric's event is tested and its amount is not, and a
              // screen that did not say so would let the reader assume it was.
              ? ' <span style="color:var(--ink-tertiary)">· amount reported, not tested</span>'
              : '') + '</dd>'
-      + '<dt>Holdout</dt><dd class="hi">' + p.holdout + '%</dd>'
-      + '<dt>Enrolled</dt><dd>' + (p.enrolled ? nf(p.enrolled) : "—") + '</dd>'
-      + '<dt>Signal → action p95</dt><dd>' + (p.p95 == null ? "—" : p.p95 + " min") + '</dd>'
-      + '<dt>Spend (QTD)</dt><dd>€' + p.spend.toFixed(2) + '</dd>'
-      + '<dt>Monthly budget</dt><dd>' + nf(p.budget) + ' credits</dd>'
+      + '<dt' + defAttrs("Holdout") + '>Holdout</dt><dd class="hi">' + p.holdout + '%</dd>'
+      + '<dt' + defAttrs("Enrolled") + '>Enrolled</dt><dd>' + (p.enrolled ? nf(p.enrolled) : "—") + '</dd>'
+      + '<dt' + defAttrs("Signal → action p95") + '>Signal → action p95</dt><dd>' + (p.p95 == null ? "—" : p.p95 + " min") + '</dd>'
+      + '<dt' + defAttrs("Spend (all time)") + '>Spend (all time)</dt><dd>€' + p.spend.toFixed(2) + '</dd>'
+      + '<dt' + defAttrs("Monthly budget") + '>Monthly budget</dt><dd>' + nf(p.budget) + ' credits</dd>'
     + '</dl>'
     // What the metric counts, as a sentence rather than a cell: the props
     // list is a two-column grid and a sentence in it clipped every term
@@ -1433,7 +1442,7 @@ function renderDetail(){
     + '</p></div>'
     + '<div class="block"><div class="blabel">Triggers</div><dl class="props">'
       + p.signals.map(function(sg){
-          return '<dt style="font-family:var(--mono);font-size:11.5px">' + sg + '</dt>'
+          return '<dt style="font-family:var(--mono);font-size:11.5px"' + defAttrs(sg, "Triggers") + '>' + sg + '</dt>'
                + '<dd>armed</dd>'; }).join("")
     + '</dl></div>'
     + (state.tuning ? editorPanel(p) : "")
@@ -1932,6 +1941,161 @@ function rowOf(cells, cls, own){
 /* A stat tile: label, value, an optional unit and an optional ratio against a
    limit. `tone` is a status, so it is never the only carrier — the label and
    the unit say the same thing in words. */
+/* ── every number defines itself ─────────────────────────────────────────
+   A number without a definition is a number two people read differently in
+   the same meeting (docs/28, OX-10). Every tile and every property label
+   carries what it counts, over what window, from which table, read from this
+   one registry; the tests read the same object, so a tile added without a
+   sentence fails a test before it reaches a meeting. Hover shows it; a tap
+   or Enter opens it under the number, for a phone and for a keyboard. */
+var DEFINITIONS = {
+  "Live programs": "Programmes whose status is live right now, counted from program over the rows the filters show.",
+  "With proven lift": "Programmes whose measured lift is significant at the holdout they declared, from enrollment and outcome inside each programme's metric window; the rest cannot resolve one yet.",
+  "Accounts enrolled": "Enrolments summed over the programmes shown, all time, from enrollment; an account in two programmes counts twice.",
+  "Spend, all time": "Cost events summed over the programmes shown, all time, from cost_event; nothing bounds the date, which is why this no longer says quarter to date.",
+  "Waiting for a person": "Proposals in draft or needs_human right now, from proposal: the gate declined to send them unattended.",
+  "Refused by the spend guard": "Drafts waiting whose spend verdict was no, from proposal.spend; no model call was made for them.",
+  "Median eval score": "The median of the eval scores the drafts waiting carry, from proposal.eval_score; auto-send needs 0.85.",
+  "Spent on these drafts": "What the model calls behind the drafts waiting cost, summed from proposal.cost_micros; the model call, not the send.",
+  "Eval score": "The evaluator's score for this draft, from proposal.eval_score; auto-send needs 0.85.",
+  "Spend guard": "What the spend guard said before the model was called, from proposal.spend.",
+  "Cost": "What the model call behind this draft cost, from proposal.cost_micros.",
+  "Sends left today": "Sends the fleet can still make today, summed over every mailbox's remaining allowance, from mailbox and today's touches.",
+  "Mailboxes": "Mailboxes across every sending domain right now, from mailbox; not ok counts those in alarm.",
+  "Domains": "Sending domains right now, from sending_domain; a paused one was stopped by a person with a written reason.",
+  "Capacity used today": "Sends made today as a share of the fleet's daily capacity, from mailbox allowances and today's touches.",
+  "Managed here": "Whether this tenant's sending capacity is managed by Zolts, from sending_domain: no means the provider owns the mailboxes.",
+  "Not ok": "Mailboxes whose health is not ok right now, from mailbox and today's touches.",
+  "Domains paused": "Sending domains a person paused, right now, from sending_domain.paused.",
+  "Accounts": "Accounts this tenant holds right now, from account; the newest 200 are listed.",
+  "Contacts": "People this tenant holds right now, from person; opted out counts those who asked not to be contacted.",
+  "Fields missing": "Fields the buying rule can purchase across the contacts shown, right now, from person and account: an email, a phone, firmographics.",
+  "Accounts researched": "Accounts with a dossier as a share of all accounts right now, from account and dossier; stale counts dossiers older than the research rule allows.",
+  "Need an email": "Contacts shown with no email, right now, from person.",
+  "Need a phone": "Contacts shown with no phone, right now, from person.",
+  "Need firmographics": "Accounts shown with no firmographics, right now, from account.",
+  "Stale": "Dossiers older than the research rule allows, right now, from dossier.",
+  "Cost per dossier": "The credits one dossier costs, from the price list the runtime bills from.",
+  "Detected": "Signals observed, newest first, the last 100, from signal.",
+  "Signals watched": "Signal definitions the runtime has checked at least once, from signal_check; stale refused counts observations refused as too old.",
+  "The source noticing": "Minutes from a signal happening to the source reporting it, at the 95th percentile, from signal.observed_at to signal.ingested_at.",
+  "This runtime acting": "Minutes from a signal being ingested to the first touch sent, at the 95th percentile, from signal, enrollment and touch.",
+  "Signal to touch": "Minutes from a signal happening to the first touch sent, at the 95th percentile, from signal and touch.",
+  "Measured over": "The touches the percentiles are computed over, from touch.",
+  "Touches from a signal": "Touches sent to contacts enrolled from a signal, all time, from touch and enrollment.",
+  "Which copy works": "Per copy step and variant: sent, replied and positive, with the rate beside its sample, from touch and outcome; no rate under the floor the experiment accepts.",
+  "replied": "Replies received to the sends of this step, as a count with its rate, from touch.",
+  "positive": "Replies read as positive, as a count with its rate, from outcome.",
+  "Time-to-touch SLA (docs/06)": "Per signal tier and stage: the measured p95 in minutes against the target docs/06 publishes, from signal, enrollment and touch.",
+  "Needs you now": "Items ranked now, from the same numbers the other screens render: something irreversible is happening or a promise is already broken.",
+  "Today": "Items ranked today, from the same numbers the other screens render: a clock is running against a commitment somebody made.",
+  "Soon": "Items ranked soon, from the same numbers the other screens render: they cost something if left a week.",
+  "Running unattended": "Programmes live right now, from program, with the actions queued from action and the signals watched from signal_check.",
+  "Live programmes": "Programmes whose status is live right now, from program.",
+  "Queued actions": "Actions pending or leased right now, from action.",
+  "How many": "Rows behind this entry, from the screen it points to.",
+  "Where": "The screen this entry sends you to, from the worklist rule.",
+  "Urgency": "Now, today or soon, from the worklist rule: ranked by what ignoring it costs, never by recency.",
+  "Open": "Tasks waiting for a person right now, from touch: on a human channel and not yet completed.",
+  "Past due": "Open tasks past the deadline their step stamped when the work was created, right now, from touch.due_at.",
+  "Oldest waiting": "The open task with the soonest deadline, from touch; a task with no declared SLA sorts last.",
+  "Channel": "The channel the step declares, from the row's channel column.",
+  "Due": "When this task is due, from touch.due_at, stamped from the step's SLA when the work was created.",
+  "Created": "When this task was created, from touch.created_at.",
+  "Deadline": "The deadline the step declared, from touch.due_at; none declared means the step has no SLA.",
+  "Gave up": "Actions in the dead state right now, from action: every retry is spent and a person has to decide.",
+  "Queued": "Actions pending or leased right now, from action; the worker is still trying them.",
+  "Waiting to send": "Proposals in draft or needs_human right now, from proposal: the review queue, not queued actions.",
+  "Step": "The step of the programme this action belonged to, from action.step_key.",
+  "Tries": "Attempts the worker made before giving up, from action.attempts.",
+  "What died · Gave up": "When the last attempt failed, from action.updated_at.",
+  "Credits consumed": "Credits billed in the open billing period, from cost_event.billed_credits.",
+  "Remaining": "Credits left of the period's included allowance, from the billing period and cost_event.",
+  "Ceiling used": "Credits consumed as a share of the period's ceiling, from the billing period and cost_event; the alert is at 80%.",
+  "Plan": "The tenant's plan, from tenant.plan; billed monthly.",
+  "Included": "Credits the plan includes in this billing period, from the billing period.",
+  "Consumed": "Credits billed in this billing period, from cost_event.billed_credits.",
+  "Of the ceiling": "Credits consumed as a share of this period's ceiling, from the billing period and cost_event.",
+  "Allowed": "Decisions that allowed an action, over the last 200 recorded, from policy_decision.",
+  "Denied": "Decisions that denied an action, over the last 200 recorded, from policy_decision.",
+  "Share denied": "Denials as a share of the last 200 decisions recorded, from policy_decision.",
+  "Rules that fired": "Distinct rule keys among the last 200 decisions, from policy_decision, across the jurisdictions they name.",
+  "Distinct rules": "Distinct rule keys among the last 200 decisions, from policy_decision.",
+  "Jurisdictions": "Decisions per jurisdiction among the last 200 recorded, from policy_decision.jurisdiction.",
+  "Entries": "Audit entries, newest first, the last 200, from audit_log.",
+  "Actors": "API keys that acted among the last 200 entries, from audit_log.actor; each row is one key's entries.",
+  "Kinds of action": "Distinct action names among the last 200 entries, from audit_log.action.",
+  "Removals and rotations": "Entries among the last 200 whose action is a removal or a key rotation, from audit_log.action.",
+  "By action": "Entries per action name among the last 200, from audit_log.action.",
+  "Absolute lift": "Treatment conversion rate minus control, in percentage points, from enrollment and outcome inside the metric window.",
+  "Minimum detectable effect": "The smallest lift this sample could have detected at the holdout declared, in percentage points, from the arm sizes in enrollment.",
+  "Treatment · control": "Enrolments in each arm, from enrollment.variant.",
+  "Conversions read": "Conversions whose reply body was read, of all conversions counted, from outcome; an unread reply still counts.",
+  "Opportunities (t · c)": "Opportunities opened in each arm inside the metric window, from outcome.",
+  "Incremental pipeline": "Treatment pipeline beyond what the control rate predicts, from opportunity amounts in outcome; not reported when amounts are missing.",
+  "Status": "The programme's status, from program.status.",
+  "Blueprint": "The blueprint the programme was generated from, from program.metadata.",
+  "Primary metric": "The metric the experiment declares, from the programme's spec.",
+  "Holdout": "The share of enrolments assigned to control, from the programme's spec.",
+  "Enrolled": "Enrolments in this programme, all time, from enrollment.",
+  "Signal → action p95": "Minutes from the signal to the first touch sent, at the 95th percentile, from signal, enrollment and touch.",
+  "Spend (all time)": "Cost events for this programme, all time, from cost_event.",
+  "Monthly budget": "The monthly credit budget the programme declares, from its spec.",
+  "Triggers": "Signal types the programme's trigger listens for, from its spec; armed means a live programme enrols on them.",
+  "Cost per contact (docs/08)": "Model spend per contact reached against the target docs/08 sets, from cost_event and touch.",
+  "Tokens per contact": "Model spend divided by contacts reached, from cost_event and touch, against the target docs/08 sets.",
+  "Target": "The ceiling docs/08 sets for model spend per contact reached, from the document's own number.",
+  "Contacts reached": "Distinct contacts with a touch sent, all time, from touch.",
+  "Token spend": "Model cost events, all time, from cost_event where the kind is llm.",
+  "Touches naming nobody": "Touches sent with no contact on them, from touch; they are left out of the denominator.",
+  "Preview": "What activating the programme would do today, by the functions that will run it, with the insert taken out, from account and the programme's spec.",
+  "Would enrol now": "Accounts the audience returns right now, by the same functions that enrol, from account.",
+  "Held out": "Of the accounts that would enrol, the control arm the holdout assigns, from the programme's spec; never contacted.",
+  "Reached": "Of the accounts that would enrol, the treatment arm the holdout assigns, from the programme's spec.",
+  "Steps in week one": "Steps of the routed play that land inside seven days of enrolment, from the programme's waits.",
+  "Sends, at most": "Treatment contacts times the sending steps inside week one, from the programme's play: an upper bound.",
+  "Credits, at most": "The steps and sends of week one priced from the list the runtime bills from.",
+  "Capacity left": "Enrolments the tier can still take this week, from its declared capacity minus this week's enrolments."
+};
+
+function definitionOf(label, group, override){
+  if (override) return override;
+  var plain = String(label || "");
+  return DEFINITIONS[(group || "") + " · " + plain] || DEFINITIONS[plain]
+      || DEFINITIONS[plain.split(" · ")[0]] || DEFINITIONS[group || ""] || "";
+}
+function defAttrs(label, group, override){
+  var text = definitionOf(label, group, override);
+  return ' data-def="' + esc(text) + '"' + (text
+    ? ' title="' + esc(text) + '" role="button" tabindex="0" aria-expanded="false"' : "");
+}
+function toggleDefinition(el){
+  var text = el.dataset.def;
+  if (!text) return;
+  var term = el.tagName === "DT";
+  var host = term ? (el.nextElementSibling || el) : el;
+  var open = term
+    ? (host.nextElementSibling && host.nextElementSibling.classList.contains("def")
+        ? host.nextElementSibling : null)
+    : el.querySelector(":scope > .def");
+  if (open){ open.remove(); el.setAttribute("aria-expanded", "false"); return; }
+  var d = document.createElement(term ? "dd" : "div");
+  d.className = "def"; d.textContent = text;
+  if (term) host.insertAdjacentElement("afterend", d); else el.appendChild(d);
+  el.setAttribute("aria-expanded", "true");
+}
+document.addEventListener("click", function(e){
+  var el = e.target.closest && e.target.closest("[data-def]");
+  if (!el || e.target.closest("button, a, input, .def")) return;
+  toggleDefinition(el);
+});
+document.addEventListener("keydown", function(e){
+  if (e.key !== "Enter" && e.key !== " ") return;
+  var el = e.target && e.target.closest ? e.target.closest("[data-def]") : null;
+  if (!el || el !== e.target) return;
+  e.preventDefault(); toggleDefinition(el);
+});
+
 function kpis(tiles){
   document.getElementById("kpis").innerHTML = (tiles || []).map(function(tile){
     var meter = "";
@@ -1940,7 +2104,7 @@ function kpis(tiles){
       meter = '<div class="meter ' + (tile.tone || "") + '">'
             + '<i style="width:' + pct.toFixed(1) + '%"></i></div>';
     }
-    return '<div class="kpi"><div class="k">' + esc(tile.label) + '</div>'
+    return '<div class="kpi"' + defAttrs(tile.label) + '><div class="k">' + esc(tile.label) + '</div>'
       + '<div class="v ' + (tile.tone || "") + '">' + esc(String(tile.value)) + '</div>'
       + (tile.unit ? '<div class="u">' + esc(tile.unit) + '</div>' : "")
       + meter + '</div>';
@@ -1963,8 +2127,8 @@ function empty(text){
 }
 function block(label, pairs){
   var body = pairs.map(function(kv){
-    return '<dt>' + esc(kv[0]) + '</dt><dd' + (kv[2] ? ' class="' + kv[2] + '"' : "")
-      + '>' + esc(kv[1]) + '</dd>';
+    return '<dt' + defAttrs(kv[0], label, kv[3]) + '>' + esc(kv[0]) + '</dt><dd'
+      + (kv[2] ? ' class="' + kv[2] + '"' : "") + '>' + esc(kv[1]) + '</dd>';
   }).join("");
   return '<div class="block"><div class="blabel">' + esc(label) + '</div>'
        + '<dl class="props">' + body + '</dl></div>';
@@ -2647,7 +2811,7 @@ function funnelBlock(r, stages){
   };
   var pairs = stages.map(function(st){
     return [st.label, by[st.key] === undefined ? "—" : by[st.key],
-            st.key === "converted" ? "hi" : ""];
+            st.key === "converted" ? "hi" : "", st.counts];
   });
   var title = r.name + (r.catalogued ? (r.tier ? " · tier " + r.tier : "")
                                      : " · not in the catalogue");

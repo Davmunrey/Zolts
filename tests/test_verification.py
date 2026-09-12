@@ -154,7 +154,7 @@ def test_the_console_renders_the_share_beside_the_lift():
     # and the pipeline figure a buyer reads. Positions are taken inside the
     # props block, because the function's own definition appears earlier in
     # the file and comparing against that proves nothing.
-    block_start = source.index("<dt>Treatment · control</dt>")
+    block_start = source.index("Treatment · control</dt>")
     block = source[block_start:source.index("</dl>", block_start)]
     assert "+ unverifiedRow(p)" in block
     assert block.index("unverifiedRow(p)") < block.index("Incremental pipeline")
