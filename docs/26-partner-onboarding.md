@@ -159,7 +159,7 @@ select period_start,
 
 ### 10 · The report, frozen
 
-At every period close — `python3 -m runtime.cli close-period --tenant <id>` — the runtime freezes the **incrementality report** for each program that enrolled anybody: the same arms and lift, the unread share, decisions, credits by kind, pipeline on opportunities only, and the baseline's digest from step 4, written once with a digest of its own (ADR-043). `python3 -m runtime.cli report --tenant <id>` prints it; `GET /v1/programs/{program_id}/reports` lists it. The one at the term's last close is what the letter's success table is read from.
+At every period close — `python3 -m runtime.cli close-period --tenant <id>` — the runtime freezes the **incrementality report** for each program that enrolled anybody: the same arms and lift, the unread share, decisions, credits by kind, pipeline on opportunities only, and the baseline's digest from step 4, written once with a digest of its own (ADR-043). `python3 -m runtime.cli report --tenant <id>` prints it; `GET /v1/programs/{program_id}/reports` lists it. The one at the term's last close is what the letter's success table is read from. `GET /v1/reports/{id}/export` — the *Export the signed report* link beside each frozen report in the console — is the document to send the partner's finance team: the figures, the digest, the prose, and a signature over the digest and the prose. They verify it on their own machine with `python3 scripts/verify_report.py <file> --keys-url https://<your instance>/.well-known/zolts-signing-keys.json`, which needs the `zolts` package and nothing of yours (ADR-068).
 
 ```sql
 select verdict, period_start, period_end, digest, frozen_at

@@ -189,6 +189,9 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("--program", help="a program key; every program when omitted")
     rep.add_argument("--json", action="store_true",
                      help="the canonical fields and the digest rather than the document")
+    rep.add_argument("--export", metavar="DIR",
+                     help="write each report as a signed document into DIR, one file per "
+                          "report, verifiable anywhere with scripts/verify_report.py")
 
     domain = sub.add_parser(
         "sending-domain",
@@ -551,6 +554,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "report":
+        from runtime.repo import programs as programs_repo
         from runtime.repo import reports as reports_repo
 
         with db.tenant_tx(args.tenant) as cur:
@@ -560,10 +564,29 @@ def main(argv: list[str] | None = None) -> int:
                 cur.execute("select id from program")
             program_ids = [str(r["id"]) for r in cur.fetchall()]
             frozen = [row for pid in program_ids for row in reports_repo.for_program(cur, pid)]
+            owners = {pid: programs_repo.get(cur, pid) for pid in program_ids}
         if not frozen:
             print("no report is frozen for this tenant; reports are frozen by close-period",
                   file=sys.stderr)
             return 1
+        if args.export:
+            # The document a CFO is sent: signed with the key this instance
+            # publishes, verifiable with `scripts/verify_report.py` and the
+            # public key alone (ADR-068).
+            from pathlib import Path as _Path
+
+            from runtime import reportsig
+
+            out = _Path(args.export)
+            out.mkdir(parents=True, exist_ok=True)
+            for row in frozen:
+                program = owners[str(row["program_id"])]
+                doc = reportsig.export(dict(row), program, settings.keyring)
+                target = out / (f"{program['key']}-{row['period_end'].isoformat()}"
+                                "-incrementality-report.json")
+                target.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+                print(f"{target}  digest {row['digest'][:12]}…  key {doc['signature']['key_id']}")
+            return 0
         if args.json:
             print(json.dumps([reports_repo.as_dict(r) for r in frozen], indent=2))
         else:
