@@ -930,6 +930,17 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-070 · A batch is one act over many rows with one written reason, never all-or-nothing, and a refusal names the rows it refused.**
+An operator with forty drafts does not click forty times; they open a spreadsheet instead, and the product loses the day (`docs/28`, OX-7). Review, Human tasks and Outbox now take a batch: `POST /v1/proposals/batch`, `/v1/tasks/batch`, `/v1/outbox/batch`.
+
+| Decision | Why |
+|---|---|
+| **One reason, recorded on every row** | Forty approvals with no sentence is forty clicks, not an act. The reason goes through `zolts.reasons` like every other override and is written into every done row's audit entry with the batch's id, so *which forty, and why* is a `where` clause during the next incident |
+| **Never all-or-nothing** | Each row runs under its own savepoint. A batch of three where one row is stale returns two done and one named refusal; rolling the two back because of the one would teach the operator that a batch is fragile, and a fragile batch is one they stop using |
+| **The same acts, the same words** | A batch row is exactly what the per-row endpoint does — promote, reject, complete, revive, discard — and a refused row is named in the words that endpoint would have used. A second implementation of approval for the plural would be a second gate |
+| **A modified click selects; a plain click reads** | Reading five drafts must not approve five drafts. Ctrl, Cmd or Shift adds a row to the batch; the panel then offers the acts with their count, one reason field, and *select all*. Refused rows stay selected so the operator can see which |
+| **At most two hundred rows** | Enough for a morning's queue, small enough that one request cannot hold a transaction across a thousand rows |
+
 **ADR-069 · The console is live: every action re-renders in place, the data is re-read while the tab is visible, and nothing reloads the page.**
 Seven actions ended in `window.location.reload()`: the operator approved a draft and was dumped back through a full page load, their scroll and their selection gone, and nothing on the screen moved until somebody pressed F5. Persisting the view (ADR-060) hid the cost; it did not remove it (`docs/28`, OX-6).
 

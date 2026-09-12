@@ -147,6 +147,18 @@ class BaselineIn(BaseModel):
     signed_by: str = Field(min_length=1, max_length=200)
 
 
+class BatchIn(BaseModel):
+    """One act over many rows, with one reason for all of them (docs/28, OX-7).
+
+    The reason is required in spirit and checked by the rule rather than the
+    schema, so a thin one is refused with the same three names every other
+    override uses instead of a validation error about a missing field.
+    """
+    act: str = Field(min_length=1, max_length=40)
+    ids: list[str] = Field(default_factory=list, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class SendingActIn(BaseModel):
     """Stopping a domain sending, or letting it send again.
 

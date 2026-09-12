@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from runtime.api import auth, console, webhooks
 from runtime.api.signin import SIGN_IN_CSP, sign_in_page
 from runtime.api.auth import CurrentPrincipal, Principal
-from runtime.api.schemas import (AccountIn, BaselineIn, EnrichIn, EnrollmentOut,
+from runtime.api.schemas import (AccountIn, BaselineIn, BatchIn, EnrichIn, EnrollmentOut,
                                  HealthOut, IngestOut, KeyIn, MeasurementOut,
                                  PersonIn, ProgramIn, ProgramOut, ResearchIn,
                                  SendingActIn, SessionIn, SignalIn, SignupIn)
@@ -27,7 +27,7 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime import (outbox, preview, replyrates, reportsig, sendingcontrol,
+from runtime import (batches, outbox, preview, replyrates, reportsig, sendingcontrol,
                      signalfunnel, timeline)
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
@@ -291,6 +291,48 @@ def create_app(db: Database, *, install_connectors: bool = True,
         if format == "markdown":
             return PlainTextResponse(row["rendered"], media_type="text/markdown")
         return reports_repo.as_dict(row)
+
+    # -- bulk, with reasons ----------------------------------------------
+
+    _BATCH_REFUSALS = {
+        "unknown_act": "that is not an act this queue offers",
+        "no_rows": "no rows were named",
+        "too_many": f"a batch is at most {batches.MAX_BATCH} rows",
+        "no_reason": "a reason is required: forty approvals with no sentence is forty "
+                     "clicks, not an act",
+        "reason_too_short": "the reason is too short to be a reason",
+        "reason_says_nothing": "the reason restates the act instead of explaining it",
+    }
+
+    def _batch(kind: str, body: BatchIn, principal: Principal) -> dict[str, Any]:
+        """One act over many rows, one written reason, each row under its own
+        savepoint: a stale row is a named refusal and the rest proceed
+        (docs/28, OX-7). The `approve` scope, because every act here is a
+        person taking responsibility for something the runtime cannot verify.
+        """
+        principal.require("approve")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            try:
+                outcome = batches.run(cur, principal.tenant_id, kind=kind, act=body.act,
+                                      ids=body.ids, reason=body.reason,
+                                      actor=f"key:{principal.key_id}")
+            except batches.BatchRefused as refused:
+                raise HTTPException(
+                    422, {"refused": refused.key,
+                          "message": _BATCH_REFUSALS.get(refused.key, refused.key)})
+        return outcome.as_dict()
+
+    @app.post("/v1/proposals/batch")
+    def batch_proposals(body: BatchIn, principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        return _batch("proposals", body, principal)
+
+    @app.post("/v1/tasks/batch")
+    def batch_tasks(body: BatchIn, principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        return _batch("tasks", body, principal)
+
+    @app.post("/v1/outbox/batch")
+    def batch_outbox(body: BatchIn, principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        return _batch("outbox", body, principal)
 
     # -- the report a CFO opens ------------------------------------------
 

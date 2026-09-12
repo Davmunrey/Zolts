@@ -362,6 +362,11 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
      its story — gave no sign of which row the story belonged to (D-106).
      DESIGN.md names this surface: the accent's own dim, never a semantic. */
   .row.on{background:var(--accent-dim)}
+  /* A row in a batch: a bar on the accent, distinct from the row the panel
+     is showing. Both can be true of one row. */
+  .row[aria-selected="true"]{box-shadow:inset 3px 0 0 var(--accent)}
+  .batch{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+  .batch .why{flex:1 1 100%}
   /* A link that leaves the console for a document: the signed report a CFO
      is sent. Accent, because it is an action in chrome and not a figure. */
   .lnk{color:var(--accent);text-decoration:underline;text-underline-offset:2px;font-size:11.5px}
@@ -608,7 +613,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, pv: null, pvFor: null, fsel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, pv: null, pvFor: null, fsel: null, bsel: {proposals: [], tasks: [], outbox: []}, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -776,7 +781,8 @@ function renderReviewList(){
   }
   list.innerHTML = R.map(function(r){
     return '<div class="row' + (r.id === state.rsel ? " on" : "") + '" data-r="'
-      + esc(r.id) + '" role="row" tabindex="0">'
+      + esc(r.id) + '" role="row" tabindex="0" aria-selected="'
+      + (inBatch("proposals", r.id) ? "true" : "false") + '">'
       + labelled([dot(r.spendVerdict === "no" ? "deny" : "warn"),
                   cell(r.agent + " · " + (r.step || r.channel || ""), "k"),
                   cell(r.channel || "", "m"),
@@ -803,8 +809,12 @@ function renderReviewList(){
   foot([[nf(R.length), "waiting for a person"], [nf(refused), "refused by the spend guard"]]);
 
   list.querySelectorAll("[data-r]").forEach(function(el){
-    el.addEventListener("click", function(){
-      state.rsel = el.dataset.r; renderReviewList(); renderReviewDetail();
+    el.addEventListener("click", function(e){
+      /* A plain click reads the draft; a modified click adds it to the
+         batch. Reading five drafts must not approve five drafts. */
+      if (modified(e)) toggleBatch("proposals", el.dataset.r);
+      else state.rsel = el.dataset.r;
+      renderReviewList(); renderReviewDetail();
     });
   });
 }
@@ -812,8 +822,11 @@ function renderReviewList(){
 function renderReviewDetail(){
   var r = R.filter(function(x){ return x.id === state.rsel; })[0];
   if (!r){
-    detail.innerHTML = '<div class="dhead"><h2>Review queue</h2></div>'
+    detail.innerHTML = batchBlock("proposals", R.length)
+      + '<div class="dhead"><h2>Review queue</h2></div>'
       + '<div class="block"><p style="color:var(--ink-tertiary)">Select a draft.</p></div>';
+    wireBatch("proposals", R.map(function(x){ return x.id; }),
+              function(){ renderReviewList(); renderReviewDetail(); });
     return;
   }
 
@@ -838,7 +851,7 @@ function renderReviewDetail(){
     ? '<pre class="draft">' + esc(r.body) + '</pre>'
     : '<p style="color:var(--ink-tertiary);margin:0">No draft was produced.</p>';
 
-  detail.innerHTML =
+  detail.innerHTML = batchBlock("proposals", R.length) +
     '<div class="dhead">'
       + '<div class="k">' + esc(r.model || "no model") + ' · ' + esc(r.promptVersion || "") + '</div>'
       + '<h2>' + esc(r.agent) + ' · ' + esc(r.step || r.channel || "") + '</h2>'
@@ -870,6 +883,8 @@ function renderReviewDetail(){
     + '</div>';
 
   wireReviewActions(r);
+  wireBatch("proposals", R.map(function(x){ return x.id; }),
+            function(){ renderReviewList(); renderReviewDetail(); });
 }
 
 function reviewActions(r){
@@ -1706,6 +1721,100 @@ function show(view){
     else a.removeAttribute("aria-current");
   });
   render();
+}
+
+/* ── bulk, with reasons ────────────────────────────────────────────────
+   An operator with forty drafts does not click forty times; they open a
+   spreadsheet instead, and the product loses the day (docs/28, OX-7). A
+   modified click — Ctrl, Cmd or Shift — adds a row to the batch; a plain
+   click still reads it, because reading five drafts must not approve five
+   drafts. One reason for the batch, recorded on every row; a refusal names
+   the rows it refused and keeps them selected so the operator can see which. */
+var BATCH_ACTS = {
+  proposals: [["approve", "Approve", "btn-p"], ["reject", "Reject", "btn-s"]],
+  tasks: [["complete", "Mark done", "btn-p"]],
+  outbox: [["revive", "Put back on the wire", "btn-p"], ["discard", "Retire", "btn-s"]]
+};
+var BATCH_PATH = {proposals: "/v1/proposals/batch", tasks: "/v1/tasks/batch",
+                  outbox: "/v1/outbox/batch"};
+var BATCH_REFUSAL = {
+  no_reason: "A reason is required. Forty approvals with no sentence is forty clicks, not an act.",
+  reason_too_short: "Too short to be a reason.",
+  reason_says_nothing: "That restates the act instead of explaining it.",
+  no_rows: "Nothing is selected.",
+  too_many: "Too many rows for one batch."
+};
+var batchNote = {};
+function modified(e){ return !!(e && (e.ctrlKey || e.metaKey || e.shiftKey)); }
+function inBatch(kind, id){ return state.bsel[kind].indexOf(id) >= 0; }
+function toggleBatch(kind, id){
+  var at = state.bsel[kind].indexOf(id);
+  if (at >= 0) state.bsel[kind].splice(at, 1); else state.bsel[kind].push(id);
+}
+function batchBlock(kind, total){
+  var ids = state.bsel[kind];
+  if (!ids.length || !LIVE) return "";
+  var buttons = BATCH_ACTS[kind].map(function(act){
+    return '<button class="btn ' + act[2] + '" data-batch="' + act[0] + '">'
+      + esc(act[1]) + ' ' + nf(ids.length) + '</button>';
+  }).join("");
+  var note = batchNote[kind] || "";
+  return '<div class="block" id="batch"><div class="blabel">'
+    + nf(ids.length) + ' of ' + nf(total) + ' selected</div>'
+    + '<label for="batch-reason">One reason, recorded on every row</label>'
+    + '<input id="batch-reason" type="text" maxlength="500" autocomplete="off" '
+    + 'placeholder="why these, in your own words">'
+    + '<div class="batch">' + buttons
+    + '<button class="btn btn-s" id="batch-clear">Clear</button>'
+    + '<button class="btn btn-s" id="batch-all">Select all ' + nf(total) + '</button>'
+    + '<span class="why" id="batch-msg"' + (note ? "" : " hidden") + '>' + esc(note) + '</span>'
+    + '</div></div>';
+}
+function wireBatch(kind, allIds, rerender){
+  var panel = document.getElementById("batch");
+  if (!panel) return;
+  var field = document.getElementById("batch-reason");
+  var msg = document.getElementById("batch-msg");
+  var clear = document.getElementById("batch-clear");
+  if (clear) clear.addEventListener("click", function(){
+    state.bsel[kind] = []; batchNote[kind] = ""; rerender();
+  });
+  var all = document.getElementById("batch-all");
+  if (all) all.addEventListener("click", function(){
+    state.bsel[kind] = allIds.slice(); rerender();
+  });
+  panel.querySelectorAll("[data-batch]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var label = b.textContent;
+      b.disabled = true; b.textContent = "Working…";
+      var ids = state.bsel[kind].slice();
+      act(BATCH_PATH[kind], "POST", {act: b.dataset.batch, ids: ids, reason: field.value})
+        .then(function(res){
+          return res.json().then(function(body){
+            if (res.ok){
+              /* The refused rows stay selected, so the operator can see
+                 which; the done rows leave the queue on the refresh. */
+              var refused = Object.keys(body.refused || {});
+              state.bsel[kind] = refused;
+              batchNote[kind] = refused.length
+                ? nf(body.counts.done) + " done. Refused: " + refused.map(function(id){
+                    return (body.refused[id] || "").replace(/_/g, " "); }).join(", ") + "."
+                : "";
+              refresh();
+              return;
+            }
+            b.disabled = false; b.textContent = label;
+            var key = body && body.detail && body.detail.refused;
+            msg.textContent = BATCH_REFUSAL[key]
+              || (res.status === 403 ? "Not permitted." : "Failed (" + res.status + ").");
+            msg.hidden = false;
+          });
+        }).catch(function(){
+          b.disabled = false; b.textContent = label;
+          msg.textContent = "Failed (network)."; msg.hidden = false;
+        });
+    });
+  });
 }
 
 /* ── small builders ───────────────────────────────────────────────────── */
@@ -2634,7 +2743,8 @@ function renderTasks(){
      detail panel follows the click rather than always showing the first. */
   list.innerHTML = tasks.map(function(t){
     return '<div class="row' + (t.id === state.tsel ? " on" : "") + '" data-t="'
-      + esc(t.id) + '" role="row" tabindex="0">'
+      + esc(t.id) + '" role="row" tabindex="0" aria-selected="'
+      + (inBatch("tasks", t.id) ? "true" : "false") + '">'
       + labelled([dot(t.late ? "warn" : "live"), cell(stepName(t), "k"),
                   cell(t.program || "—", "m"), cell(t.channel, "m"),
                   cell(dueText(t), "n" + (t.late ? " warnt" : "")),
@@ -2645,9 +2755,12 @@ function renderTasks(){
   var chosen = tasks.filter(function(t){ return t.id === state.tsel; })[0] || tasks[0];
   state.tsel = chosen.id;
   renderTaskDetail(chosen);
+  wireBatch("tasks", tasks.map(function(x){ return x.id; }), renderTasks);
   list.querySelectorAll(".row[data-t]").forEach(function(el){
-    el.addEventListener("click", function(){
-      state.tsel = el.dataset.t; renderTasks();
+    el.addEventListener("click", function(e){
+      if (modified(e)) toggleBatch("tasks", el.dataset.t);
+      else state.tsel = el.dataset.t;
+      renderTasks();
     });
   });
   foot([[nf(counts.open || 0), "open"], [nf(overdue), "past due"]]);
@@ -2670,7 +2783,8 @@ function dueText(t){
 function renderTaskDetail(t){
   /* The detail header the other views use: a mono kicker, an h2, then the
      actions. Two classes of my own would have been two rules nobody styled. */
-  detail.innerHTML = '<div class="dhead">'
+  detail.innerHTML = batchBlock("tasks", ((D.tasksView || {}).tasks || []).length)
+    + '<div class="dhead">'
     + '<div class="k">' + esc(t.program || "no programme") + ' · '
     + esc(t.channel) + '</div>'
     + '<h2>' + esc(stepName(t)) + '</h2>'
@@ -2749,7 +2863,8 @@ function renderOutbox(){
 
   list.innerHTML = dead.map(function(a){
     return '<div class="row' + (a.id === state.osel ? " on" : "") + '" data-o="'
-      + esc(a.id) + '" role="row" tabindex="0">'
+      + esc(a.id) + '" role="row" tabindex="0" aria-selected="'
+      + (inBatch("outbox", a.id) ? "true" : "false") + '">'
       + labelled([dot("deny"), cell(a.kind, "k"), cell(a.channel || "—", "m"),
                   cell(nf(a.attempts) + "/" + nf(a.maxAttempts), "n"),
                   cell(shortError(a.lastError), "m")])
@@ -2759,9 +2874,12 @@ function renderOutbox(){
   var chosen = dead.filter(function(a){ return a.id === state.osel; })[0] || dead[0];
   state.osel = chosen.id;
   renderOutboxDetail(chosen);
+  wireBatch("outbox", dead.map(function(x){ return x.id; }), renderOutbox);
   list.querySelectorAll(".row[data-o]").forEach(function(el){
-    el.addEventListener("click", function(){
-      state.osel = el.dataset.o; renderOutbox();
+    el.addEventListener("click", function(e){
+      if (modified(e)) toggleBatch("outbox", el.dataset.o);
+      else state.osel = el.dataset.o;
+      renderOutbox();
     });
   });
   foot([[nf(V.count || 0), "gave up"]]);
@@ -2799,7 +2917,8 @@ function errorAdvice(text){
 
 function renderOutboxDetail(a){
   var advice = errorAdvice(a.lastError);
-  var head = '<div class="dhead"><span class="k">' + esc(a.kind) + '</span>'
+  var head = batchBlock("outbox", ((D.outboxView || {}).dead || []).length)
+    + '<div class="dhead"><span class="k">' + esc(a.kind) + '</span>'
     + '<h2>' + esc(a.channel || "no channel") + '</h2></div>';
   var body = block("What died", [
     ["Step", a.step || "—"],
