@@ -246,6 +246,78 @@ SAYS_SOMETHING = """
 """
 
 
+# Keyboard and screen reader (docs/28, OX-13): the automated pass. Every
+# control has a name, every ARIA reference points somewhere, a listbox holds
+# options, every icon is hidden from the tree, and every piece of visible text
+# meets the contrast floor against what it is really drawn on. Each finding
+# is critical; the check fails on any.
+A11Y_PASS = """
+() => {
+  const out = [];
+  const seen = new Set();
+  const say = (rule, at, extra) => { const key = rule + '|' + at; if (!seen.has(key)) { seen.add(key); out.push(Object.assign({rule, at}, extra || {})); } };
+  const visible = el => { if (el.closest('[inert], [hidden], .sr') || el.hidden) return false;
+    const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
+  const where = el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).join('.') : '');
+  const byIds = ids => ids.split(/\\s+/).filter(Boolean).map(id => (document.getElementById(id) || {textContent: ''}).textContent).join(' ').trim();
+  const name = el => (el.getAttribute('aria-label') || '').trim()
+    || byIds(el.getAttribute('aria-labelledby') || '')
+    || (el.id && document.querySelector('label[for="' + el.id + '"]') ? document.querySelector('label[for="' + el.id + '"]').textContent.trim() : '')
+    || (el.getAttribute('title') || '').trim()
+    || (el.tagName === 'INPUT' ? (el.getAttribute('placeholder') || '').trim() : (el.textContent || '').trim());
+  for (const el of document.querySelectorAll('button, a[href], [role="button"], input:not([type="hidden"]), select, textarea, [role="listbox"], [role="combobox"], [role="dialog"], [role="group"]')) {
+    if (!visible(el)) continue;
+    if (!name(el)) say('name', where(el));
+  }
+  for (const attr of ['aria-labelledby', 'aria-describedby', 'aria-controls', 'aria-activedescendant']) {
+    for (const el of document.querySelectorAll('[' + attr + ']')) {
+      for (const id of (el.getAttribute(attr) || '').split(/\\s+/).filter(Boolean))
+        if (!document.getElementById(id)) say('reference', attr + '=' + id);
+    }
+  }
+  for (const box of document.querySelectorAll('[role="listbox"]'))
+    for (const child of box.children) {
+      const role = child.getAttribute('role');
+      if (!['option', 'presentation', 'none', 'group', 'status'].includes(role)) say('listbox-child', where(child));
+    }
+  for (const svg of document.querySelectorAll('svg'))
+    if (visible(svg) && svg.getAttribute('aria-hidden') !== 'true' && !svg.querySelector('title') && !svg.getAttribute('aria-label')) say('image', where(svg.parentElement || svg));
+  const chan = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const lum = c => 0.2126 * chan(c[0]) + 0.7152 * chan(c[1]) + 0.0722 * chan(c[2]);
+  const parse = str => { const m = (str || '').match(/rgba?\\(([^)]+)\\)/); if (!m) return null;
+    const p = m[1].split(',').map(x => parseFloat(x)); return {rgb: p.slice(0, 3), a: p.length > 3 ? p[3] : 1}; };
+  const over = (top, a, under) => top.map((v, i) => Math.round(v * a + under[i] * (1 - a)));
+  const backdrop = el => {   // what the text is really drawn on, composited up the tree
+    let layers = [], node = el, opacity = 1;
+    for (; node && node !== document.documentElement; node = node.parentElement) {
+      const cs = getComputedStyle(node); const bg = parse(cs.backgroundColor);
+      if (bg && bg.a > 0) layers.push(bg);
+      if (node !== el && cs.opacity !== '1') opacity *= parseFloat(cs.opacity);
+      if (bg && bg.a >= 1) break;
+    }
+    let base = [255, 255, 255];
+    for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i].rgb, layers[i].a, base);
+    return {rgb: base, opacity};
+  };
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (!node.textContent.trim()) continue;
+    const el = node.parentElement; if (!el || !visible(el) || el.closest('[disabled], :disabled, script, style')) continue;
+    const cs = getComputedStyle(el); const fg = parse(cs.color); if (!fg) continue;
+    const bd = backdrop(el);
+    let ink = over(fg.rgb, fg.a * parseFloat(cs.opacity === '' ? 1 : cs.opacity) * bd.opacity, bd.rgb);
+    const ratio = (Math.max(lum(ink), lum(bd.rgb)) + 0.05) / (Math.min(lum(ink), lum(bd.rgb)) + 0.05);
+    const size = parseFloat(cs.fontSize), bold = parseInt(cs.fontWeight, 10) >= 700;
+    const floor = size >= 24 || (size >= 18.66 && bold) ? 3 : 4.5;
+    if (ratio < floor) say('contrast', where(el), {ratio: Math.round(ratio * 100) / 100, text: node.textContent.trim().slice(0, 40), ink: cs.color, on: 'rgb(' + bd.rgb.join(',') + ')'});
+  }
+  return out;
+}
+"""
+
+
 def _empty_tenant() -> str:
     """A tenant with nothing: signed up under a blueprint that ships no starter
     programme, so no programme, no draft, no signal and no task exist, and
@@ -363,6 +435,7 @@ def main() -> int:
             page.goto(f"{BASE}/console")
             page.wait_for_selector("#f", timeout=15_000)
             report["door_shown"] = True
+            report["door_a11y"] = page.evaluate(A11Y_PASS)
 
             # 2. They paste the key they were given at signup.
             page.fill("#k", api_key)
@@ -387,6 +460,23 @@ def main() -> int:
             report["today_order"] = [
                 r.inner_text().split("\n")[0]
                 for r in page.locator("#list .row").all()]
+            # Keyboard and screen reader (docs/28, OX-13): the list is the one
+            # tab stop, arrow keys move the pointer and the selection follows
+            # it, and the container names the current option.
+            page.focus("#list")
+            page.keyboard.press("ArrowDown")
+            page.wait_for_timeout(150)
+            down = page.evaluate(
+                "() => { const rows = [...document.querySelectorAll('#list .row')];"
+                " return {at: rows.findIndex(r => r.classList.contains('on')),"
+                "  active: document.getElementById('list').getAttribute('aria-activedescendant'),"
+                "  focused: document.activeElement === document.getElementById('list'),"
+                "  same: rows.some(r => r.classList.contains('on') && r.id === document.getElementById('list').getAttribute('aria-activedescendant'))}; }")
+            page.keyboard.press("ArrowUp")
+            page.wait_for_timeout(150)
+            up = page.evaluate(
+                "() => [...document.querySelectorAll('#list .row')].findIndex(r => r.classList.contains('on'))")
+            report["keyboard_list_nav"] = {"down": down, "up": up}
             # First run inside the console (docs/28, OX-11): a tenant one minute
             # past signup sees five steps under the worklist, each read from
             # the database, and the CRM step says it is not connected and how.
@@ -735,7 +825,7 @@ def main() -> int:
             # they wrap rather than clip.
             page.set_viewport_size({"width": 1920, "height": 1080})
             page.wait_for_timeout(250)
-            cut, stiff, undefined_numbers = [], [], []
+            cut, stiff, undefined_numbers, a11y = [], [], [], []
             for entry in page.locator("nav a[data-view]").all():
                 view = entry.get_attribute("data-view")
                 entry.click()
@@ -755,6 +845,11 @@ def main() -> int:
                     ".map(e => e.textContent.trim().slice(0, 40))")
                 if bare:
                     undefined_numbers.append({"view": view, "labels": bare})
+                # Keyboard and screen reader (docs/28, OX-13): the automated
+                # pass, on every screen, at the width most operators use.
+                found = page.evaluate(A11Y_PASS)
+                if found:
+                    a11y.append({"view": view, "findings": found})
                 # The exemption above is earned, not assumed.
                 rigid = page.evaluate(
                     "() => [...document.querySelectorAll('.row .cell.w')]"
@@ -764,6 +859,7 @@ def main() -> int:
                     stiff.append({"view": view, "cells": rigid})
             report["cut_off_on_a_wide_screen"] = cut
             report["numbers_without_a_definition"] = undefined_numbers
+            report["a11y_findings"] = a11y
             # A tap opens the sentence under the number, on the tile itself.
             page.click("#kpis .kpi >> nth=0")
             page.wait_for_selector("#kpis .kpi .def", timeout=10_000)
@@ -1209,6 +1305,17 @@ def main() -> int:
                   json.dumps({k: report.get(k) for k in
                               ("batch_offered", "thin_batch_reason_refused", "batch_approved")}),
                   len(waiting), "still waiting", file=sys.stderr)
+            return 1
+        # Keyboard and screen reader (docs/28, OX-13): zero critical findings
+        # on the door and on every screen, and the list moved from the keyboard.
+        nav = report.get("keyboard_list_nav") or {}
+        down = nav.get("down") or {}
+        if (report.get("door_a11y") or report.get("a11y_findings")
+                or down.get("at") != 1 or not down.get("focused") or not down.get("same")
+                or nav.get("up") != 0):
+            print("::error::the accessibility pass found something, or the keyboard did not move the list:",
+                  json.dumps({"door": report.get("door_a11y"), "views": report.get("a11y_findings"),
+                              "keyboard": nav})[:1500], file=sys.stderr)
             return 1
         # States that say something (docs/28, OX-12).
         if report.get("blank_states"):

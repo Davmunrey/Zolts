@@ -651,6 +651,20 @@ MUTATIONS = (
         find='    list.innerHTML = empty("Nothing needs a person. " + nf(idle.live || 0)\n',
         replace='    list.innerHTML = empty("" + nf(idle.live || 0)\n',
         tests="tests/test_console_states.py"),
+    Mutation(
+        id="the-tertiary-ink-meets-the-contrast-floor",
+        claim="the smallest ink on the console meets the AA floor on every surface it is drawn on",
+        path="design/console.html",
+        find="--ink-tertiary:#5f5f63",
+        replace="--ink-tertiary:#6f6f72",
+        tests="tests/test_console_a11y.py"),
+    Mutation(
+        id="arrow-keys-move-on-every-view",
+        claim="ArrowDown moves the pointer of the list on screen, never the programme list over it",
+        path="design/console.html",
+        find='  if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); stepRow(1); }\n',
+        replace='  if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); move(1); }\n',
+        tests="tests/test_console_a11y.py"),
 )
 
 def _dirty() -> bool:

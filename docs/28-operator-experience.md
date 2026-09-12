@@ -5,7 +5,7 @@
 | Test | What it means | Passes today |
 |---|---|---|
 | **An operator does their day inside it** | Not alongside it with a CRM tab, a spreadsheet and a Slack thread open | Yes: nothing reloads and the console updates live (OX-6), a batch takes one reason (OX-7), the palette reaches every screen, programme and contact (OX-8), and a phone approves a draft and closes a task at 390px (OX-9) |
-| **It shows a person something no other tool can, and proves it** | Per contact: the signal, the policy decision with its rule and pack digest, the step, the evidence behind each claim, the cost, the outcome. Every row of that exists in the database; no screen joins them | No |
+| **It shows a person something no other tool can, and proves it** | Per contact: the signal, the policy decision with its rule and pack digest, the step, the evidence behind each claim, the cost, the outcome. Every row of that exists in the database, and one screen joins them | Yes: one timeline per contact from the six tables (OX-1), what activating a programme would do before the click (OX-2), which signals earn their keep (OX-3), which copy works with its sample (OX-4), and the report a CFO opens, signed and verified offline (OX-5) |
 | **A DPO and a CFO can sign off from a screen, not a deck** | The incrementality report is signed and frozen (ADR-043); a subject access request is `docs/11` COMP-2, *not built* | Half |
 
 The consequence of getting this wrong is not a worse demo. It is that the moat `docs/01` names — governance, jurisdictional policy, incrementality — stays invisible at the point of use, and the product is compared on the one axis where it is weakest: how pleasant it is to send email from.
