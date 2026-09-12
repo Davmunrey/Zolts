@@ -35,7 +35,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 
 ## Product depth — the road to enviable
 
-Thirteen rows in `docs/28`, three levels, each with a binary exit criterion. Built in leverage order: OX-1 (why this person), OX-2 (what a programme would do today), then the day, then the polish. Each ships as its own pull request against the same bar as everything above.
+Thirteen rows in `docs/28`, three levels, each with a binary exit criterion, all built (ADR-064 to ADR-076) in leverage order: OX-1 (why this person), OX-2 (what a programme would do today), then the day, then the polish. Each shipped as its own pull request against the same bar as everything above; the Built list below carries a line per row, and `docs/28` carries the table of what each one proves.
 
 ## Then — engineering, unblocked, ordered by what being wrong costs
 

@@ -1,6 +1,6 @@
 # 28 · Operator experience: the road to enviable
 
-**Conclusion:** the console now answers *what do I do now* (ADR-060) and lets a person act on eight of eleven screens (ADR-061 to ADR-063). That makes it usable. It does not make it enviable. Enviable is three tests, and the product passes none of them yet:
+**Conclusion:** the thirteen rows below are built, each as its own pull request with tests, a mutation guard where a rule is involved, an ADR where a decision constrains future work (ADR-064 to ADR-076), and a line in `docs/24`. Enviable is three tests. The product passes two of them and half of the third; the half that is missing is `docs/11` COMP-2, a subject access request from a screen, which needs the identity model COMP-7 covers:
 
 | Test | What it means | Passes today |
 |---|---|---|
@@ -41,6 +41,28 @@ Ordered by leverage per unit of operator attention, not by size. Each row has a 
 | **OX-11** | **First run inside the console.** A new tenant is walked from connect CRM → choose blueprint → review the programme → activate → first signal, on the screen, with each step's status read from the database | `quickstart` is a CLI. The founder could not find where to configure the product (this document exists because of that conversation) | A fresh tenant sees the guide; a tenant with a live programme does not | M |
 | **OX-12** | **States that say something.** Every empty, loading and error state names what the runtime is doing or what failed, never a blank panel | An empty screen that says nothing looks like a screen that failed | A test renders every view with an empty model and requires a sentence | S |
 | **OX-13** | **Keyboard and screen reader.** Full keyboard navigation of lists, ARIA on every control, contrast measured | Accessibility is table stakes for enterprise procurement and it is cheaper now than after the surface grows | An automated pass reports zero critical findings in the browser check | S |
+
+## Delivered
+
+Each row's exit criterion is proved by the browser check on every push, against a real Postgres and a real browser, and read back from the database where a button's claim has to be true.
+
+| Row | Pull request | ADR | What the browser check proves |
+|---|---|---|---|
+| OX-1 Why this person | #82 | ADR-064 | one timeline per contact from the six tables, read on demand |
+| OX-2 What activating it would do today | #83 | ADR-065 | the preview equals what activating enrols in the same second |
+| OX-3 Which signals earn their keep | #84 | ADR-066 | a funnel per catalogue signal, converted only inside the declared window |
+| OX-4 Which copy works | #85 | ADR-067 | a rate with its sample, and no rate under the floor |
+| OX-5 The report a CFO opens | #86 | ADR-068 | a signed export verified offline with the instance's public key |
+| OX-6 Live, no reload | #87 | ADR-069 | an approval re-renders in place and the rail count falls, no navigation |
+| OX-7 Bulk, with reasons | #88 | ADR-070 | a batch refused for a thin reason by name, then taken with one, every row audited |
+| OX-8 A palette that reaches everything | #89 | ADR-071 | the Outbox and a contact's timeline reached from the keyboard |
+| OX-9 The phone approves | #90 | ADR-072 | a draft approved and a task closed at 390px, read back by id |
+| OX-10 Every number defines itself | #91 | ADR-073 | no tile or term without a sentence on any screen, one opened on a tap |
+| OX-11 First run inside the console | #92 | ADR-074 | five steps read from the rows on the fresh tenant, gone after activation |
+| OX-12 States that say something | #93 | ADR-075 | a tenant with nothing sees a sentence on every side of every screen |
+| OX-13 Keyboard and screen reader | #94 | ADR-076 | zero findings from the accessibility pass on the door and every screen; ArrowDown moves the list |
+
+What the road found on the way is in `docs/22`: D-105 to D-109, five defects, three of them read out of the console while writing the sentence a screen now carries.
 
 ## What this document is not
 
