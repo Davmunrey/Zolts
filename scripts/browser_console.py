@@ -157,12 +157,19 @@ def _seed() -> tuple[str, str]:
              json.dumps([{"ref": "e1", "source": "press release",
                           "text": "Northbeam raises a $12m Series A."}]),
              json.dumps({"failures": []}), json.dumps({"verdict": "yes"})))
+        # Replied to, and read as positive: the one email that went out is
+        # also the one row on "which copy works", where a single positive
+        # reply is a count and not a rate (docs/28, OX-4).
         cur.execute(
             "insert into touch (tenant_id, enrollment_id, person_id, channel,"
             " direction, step_key, idempotency_key, status, content, provider,"
             " cost_micros, sent_at) values (%s,%s,%s,'email','out','email_1',%s,"
-            " 'sent','{}','smartlead',1200, now() - interval '1 day')",
+            " 'replied','{}','smartlead',1200, now() - interval '1 day')",
             (tenant_id, enrol, iker, f"why-touch-{uuid.uuid4().hex}"))
+        cur.execute(
+            "insert into outcome (tenant_id, enrollment_id, type, occurred_at, source,"
+            " verified_by) values (%s,%s,'reply_positive', now() - interval '20 hours',"
+            " 'smartlead','triage')", (tenant_id, enrol))
 
         # The signal that made that enrolment, and the outcome it produced,
         # so the Signals screen has one catalogue signal that earned its
@@ -299,6 +306,10 @@ def main() -> int:
             #     says so rather than reading as zero.
             page.wait_for_selector("#pv dl, #pv-unanswerable, #pv-error", timeout=20_000)
             report["preview_before_activate"] = page.locator("#pv").inner_text()[:500]
+            # Which copy works, on the same panel: the seeded email was
+            # replied to and read as positive, so the step shows one sent and
+            # a count with no rate, under the floor.
+            report["copy_panel"] = page.locator("#detail").inner_text()[:2400]
 
             # 3. The first action after signup: activate the draft.
             report["activate_offered"] = page.locator("#activate").inner_text()
@@ -736,6 +747,18 @@ def main() -> int:
             print("::error::the signals view does not carry the time-to-touch "
                   "verdict docs/06 publishes:", json.dumps(sla_panel)[:400],
                   file=sys.stderr)
+            return 1
+
+        # Which copy works. One positive reply on one send is a count and not
+        # a rate: the panel names the step, the send and the reason there is
+        # no rate — the exit criterion `docs/28` OX-4 set, on the screen.
+        copy_panel = report.get("copy_panel") or ""
+        if ("WHICH COPY WORKS" not in copy_panel.upper()
+                or not re.search(r"email_1\s+1 sent", copy_panel)
+                or not re.search(r"no rate, 1 of \d+ needed", copy_panel)):
+            print("::error::the programme detail does not say which copy works, "
+                  "or shows a rate the floor refuses:",
+                  json.dumps(copy_panel)[:600], file=sys.stderr)
             return 1
 
         # Which signals earn their keep. One catalogue signal was seeded with

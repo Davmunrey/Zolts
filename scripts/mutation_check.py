@@ -508,6 +508,23 @@ MUTATIONS = (
         find="        return metrics.resolve(experiment.get(\"primary_metric\"))",
         replace="        return metrics.DEFAULT",
         tests="tests/test_signal_funnel.py"),
+    Mutation(
+        id="no-rate-under-the-floor-the-experiment-accepts",
+        claim="a step with fewer positive replies than the floor shows the count "
+              "and no rate, because a rate computed from a guess looks precise and "
+              "is not",
+        path="zolts/replyrates.py",
+        find="    if count < floor:",
+        replace="    if count < 0:",
+        tests="tests/test_reply_rates.py"),
+    Mutation(
+        id="a-reply-is-credited-to-the-step-it-answered",
+        claim="a positive reply is credited to the last step sent before it, not "
+              "to the first step of the play",
+        path="runtime/replyrates.py",
+        find="     order by t.sent_at desc limit 1) last on true",
+        replace="     order by t.sent_at asc limit 1) last on true",
+        tests="tests/test_reply_rates.py"),
 )
 
 def _dirty() -> bool:

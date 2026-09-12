@@ -27,7 +27,7 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime import outbox, preview, sendingcontrol, signalfunnel, timeline
+from runtime import outbox, preview, replyrates, sendingcontrol, signalfunnel, timeline
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
@@ -972,6 +972,26 @@ def create_app(db: Database, *, install_connectors: bool = True,
             if row is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "no such program")
             return preview.for_program(cur, principal.tenant_id, dict(row))
+
+    # -- which copy works -------------------------------------------------
+
+    @app.get("/v1/programs/{program_id}/copy")
+    def program_copy(program_id: str,
+                     principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """Reply and positive-reply rates per step, with the sample beside
+        the rate and no rate under the floor the experiment accepts
+        (docs/28, OX-4). A withheld rate says why.
+        """
+        from zolts.replyrates import FLOOR
+
+        principal.require("read")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute("select id, key, spec from program where id = %s", (program_id,))
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "no such program")
+            return {"kind": "copy", "program": row["key"], "floor": FLOOR,
+                    "rows": replyrates.for_program(cur, str(row["id"]), row["spec"] or {})}
 
     # -- which signals earn their keep -----------------------------------
 

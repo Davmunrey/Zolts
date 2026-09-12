@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1820 | 549 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1838 | 554 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -104,6 +104,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **Which copy works.** Reply and positive-reply rates per step on a programme's detail and at `GET /v1/programs/{id}/copy`, with the sample beside the rate and no rate under the floor `zolts.experiment` accepts: a step with fewer positive replies than the floor shows the count and the reason, a step at the floor shows the rate. A reply is credited to the last step sent before it (ADR-067, `docs/28` OX-4).
 
 - **Which signals earn their keep.** One row per catalogue signal on the Signals screen and at `GET /v1/signals/funnel`: fired, listened to by how many live programmes, enrolled, held out, reached, converted — the silent signals included, and a conversion counted only inside the window the programme it enrolled into declares. Descriptive, not attributed: the holdout converts too and is shown as held out, and SIG-2 stays blocked on the instrument it needs (ADR-066, `docs/28` OX-3).
 

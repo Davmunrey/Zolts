@@ -1257,6 +1257,33 @@ function previewBlock(p){
     + ' UTC, from the audience and capacity as they stand, by the same functions that enrol. Week one is an upper bound: every reached contact through every step inside seven days.</p></div>';
 }
 
+/* Which copy works (docs/28, OX-4). One row per copy step: sent, replied,
+   positive, with the sample beside the rate. The rate and the reason it is
+   missing both come from `zolts.replyrates`; this never divides for itself,
+   because a rate the rule withheld is a rate the sample cannot carry, and a
+   screen that computed one anyway would print exactly the number the floor
+   exists to refuse. Values stay short — `.props dd` does not wrap (D-38). */
+function copyBlock(p){
+  var rows = p.copy || [];
+  if (!rows.length) return "";
+  var pct = function(r){
+    return r.value === null || r.value === undefined
+      ? nf(r.count) + " · no rate, " + r.withheldBecause
+      : nf(r.count) + " · " + (r.value * 100).toFixed(1) + "%";
+  };
+  var pairs = [];
+  rows.forEach(function(r){
+    var who = r.step + (r.variant === "treatment" ? "" : " · " + r.variant);
+    pairs.push([who, r.sent ? nf(r.sent) + " sent" : "nothing sent", "hi"]);
+    if (!r.sent) return;
+    pairs.push(["replied", pct(r.replyRate)]);
+    pairs.push(["positive", pct(r.positiveRate)]);
+  });
+  return block("Which copy works", pairs)
+    + '<p class="pnote">A rate appears at ' + nf(p.copyFloor) + ' positive replies, the '
+    + 'floor the lift test uses; under it the count is shown and the rate is not.</p>';
+}
+
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
@@ -1327,6 +1354,7 @@ function renderDetail(){
     + activationNote(p)
     + previewBlock(p)
     + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
+    + copyBlock(p)
     + frozenReports(p)
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'
       + '<dt>Status</dt><dd class="hi">' + p.status + '</dd>'

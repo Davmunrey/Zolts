@@ -930,6 +930,17 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-067 · A reply rate is shown with its sample, and withheld under the floor the experiment accepts.**
+Every sequencing tool shows an open rate. None shows a rate with the sample size that makes it believable, and none withholds the rate when the sample cannot carry one (`docs/28`, OX-4). A programme's detail now carries one row per copy step — sent, replied, positive — and `GET /v1/programs/{id}/copy` answers the same rows.
+
+| Decision | Why |
+|---|---|
+| **The floor is `MIN_CONVERSIONS_PER_ARM`, read from `zolts.experiment`** | Below five conversions the baseline is a guess, and a rate computed from a guess is a number that looks precise and is not. The programme's lift already refuses to resolve under that floor; a step's rate refusing at a different number would be two standards for one product. Read from the constant, not restated, so the two cannot drift |
+| **A withheld rate says why** | Three positive replies out of sixty is *3 of 60, no rate: 3 of 5 needed*, never 5.0% and never a dash. The count is real; the rate is not yet. The screen renders the rule's rate and the rule's reason, and a test refuses a surface that divides for itself. The reason is short because it sits in a panel cell that does not wrap; the floor's sentence is said once under the block |
+| **A positive reply is credited to the last step sent before it** | The runtime records the outcome on the enrolment, not on a step. The step it answered is the last one sent before it arrived; crediting the play's first step would make every follow-up look like it never worked |
+| **Every copy step has a row, sent or not** | A play with four emails and one row is a play whose second email has never gone out, and that is worth seeing. A human task is not copy and has no row |
+| **Only a sent touch is a sample** | A queued or failed touch is copy nobody read; counting it would deflate every rate on the day the provider is slow |
+
 **ADR-066 · A signal's yield is a funnel, descriptive, with every catalogue row present and every conversion inside the window its programme declared.**
 `docs/06` prices signals by tier and gives each a half-life, a freshness SLA and a legal basis, and after a month the operator's first question is *which of these is worth paying for*. Nothing answered it: the catalogue said what a signal costs and no screen said what it produced (`docs/28`, OX-3). The Signals screen now leads with one row per catalogue signal — fired, listened to by how many live programmes, enrolled, held out, reached, converted — and `GET /v1/signals/funnel` answers the same rows.
 

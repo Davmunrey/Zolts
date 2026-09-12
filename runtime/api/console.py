@@ -15,13 +15,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from runtime import fleet, outbox, sendingcontrol
+from runtime import fleet, outbox, replyrates, sendingcontrol
 from runtime.repo import enrollments, programs
 from zolts import attention, billing, dsl
 from zolts.deliverability import assess
 from zolts.sendingcontrol import judge_resume
 from zolts.catalog import load_catalog
 from zolts.experiment import MIN_CONVERSIONS_PER_ARM, minimum_detectable_effect
+from zolts.replyrates import FLOOR as COPY_FLOOR
 from zolts.report import BASELINE_RATE_FLOOR, SIGNIFICANT, Comparison
 from zolts import report as report_rules
 from zolts import metrics
@@ -336,6 +337,12 @@ def program_view(cur, program: dict[str, Any]) -> dict[str, Any]:
         "autoSend": {k: bool(v.get("auto_send")) for k, v in (spec.get("plays") or {}).items()},
         "budget": (spec.get("budget") or {}).get("monthly_credits"),
         "specHash": program["spec_hash"],
+        # Which copy works (docs/28, OX-4): reply and positive-reply rates per
+        # step, with the sample beside the rate and no rate under the floor
+        # the experiment accepts. The floor travels with the rows so the
+        # screen can say what a withheld rate is waiting for.
+        "copy": replyrates.for_program(cur, program_id, spec),
+        "copyFloor": COPY_FLOOR,
         # The document itself. A console that edits a program has to emit a
         # whole document, because that is what `POST /v1/programs` validates
         # and versions — a patch would make the engine the author.
@@ -402,6 +409,7 @@ def decisions_view(cur, limit: int = 200) -> dict[str, list[dict[str, Any]]]:
     mean a second rendering path — which is how the trace came to show
     `undefined · undefined` the first time this ran against live data.
     """
+
     cur.execute(
         "select d.subject_id, d.action, d.decision, d.rule_key, d.jurisdiction,"
         " d.rationale, d.decided_at, p.full_name, p.email"
