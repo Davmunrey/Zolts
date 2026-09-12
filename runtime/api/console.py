@@ -658,9 +658,14 @@ def signals_view(cur, limit: int = 100) -> dict[str, Any]:
     # operator opens this screen after the first month.
     from runtime import signalfunnel
 
+    funnel = signalfunnel.for_tenant(cur)
+    # The endpoint stamps the funnel with the moment it was read; the view
+    # model is itself served at a moment, and a timestamp inside it would
+    # make every poll look like a change (ADR-069).
+    funnel.pop("asOf", None)
     return {"recent": recent, "watched": watched,
             "latency": watch.latency(cur), "sla": watch.sla(cur),
-            "funnel": signalfunnel.for_tenant(cur)}
+            "funnel": funnel}
 
 
 def spend_view(cur, tenant: dict[str, Any]) -> dict[str, Any]:

@@ -541,6 +541,23 @@ MUTATIONS = (
         find='    return json.dumps({"digest": digest, "rendered_sha256": rendered_hash(rendered)},',
         replace='    return json.dumps({"digest": digest, "rendered_sha256": ""},',
         tests="tests/test_report_signing.py"),
+    Mutation(
+        id="fresh-data-never-lands-on-a-field-the-operator-is-typing-in",
+        claim="a re-render waits while the editor is open or a field has the cursor, "
+              "because replacing a half-typed reason from under it is the reload this "
+              "removes, one keystroke at a time",
+        path="design/console.html",
+        find="  if (busy()) return false;",
+        replace="  if (false) return false;",
+        tests="tests/test_console_live.py"),
+    Mutation(
+        id="a-quiet-console-pays-a-304-not-a-render",
+        claim="the console endpoint answers 304 to the ETag it served, so a poll on an "
+              "unchanged model is one small request",
+        path="runtime/api/app.py",
+        find='        if request.headers.get("if-none-match") == tag:',
+        replace='        if False:',
+        tests="tests/test_console_live.py"),
 )
 
 def _dirty() -> bool:

@@ -1248,11 +1248,26 @@ def create_app(db: Database, *, install_connectors: bool = True,
             })
 
     @app.get("/v1/console")
-    def console_data(principal: Principal = CurrentPrincipal) -> dict[str, Any]:
-        """The same view model as JSON, for anything that renders it itself."""
+    def console_data(request: Request, principal: Principal = CurrentPrincipal) -> Any:
+        """The same view model as JSON, for anything that renders it itself —
+        the console included, which re-reads it after every action and every
+        thirty seconds while its tab is visible (docs/28, OX-6). An ETag over
+        the body lets a quiet console pay one small request for a 304 instead
+        of re-rendering a model that has not moved.
+        """
+        import hashlib
+        import json as _json
+
+        from fastapi.encoders import jsonable_encoder
+
         with db.tenant_tx(principal.tenant_id) as cur:
             cur.execute("select * from tenant where id = %s", (principal.tenant_id,))
-            return console.build(cur, cur.fetchone())
+            model = console.build(cur, cur.fetchone())
+        body = _json.dumps(jsonable_encoder(model), separators=(",", ":")).encode("utf-8")
+        tag = '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+        if request.headers.get("if-none-match") == tag:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": tag})
+        return Response(content=body, media_type="application/json", headers={"ETag": tag})
 
     return app
 

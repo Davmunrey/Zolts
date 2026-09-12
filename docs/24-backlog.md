@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1862 | 557 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1872 | 558 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -104,6 +104,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **Live, no reload.** Every action re-renders in place from a fresh read of `/v1/console`, the console polls it every thirty seconds while its tab is visible and pays a 304 for a model that has not moved, and fresh data never lands on a field the operator is typing in. No full-page reload remains in the surface; a test greps for it, and the browser check approves a draft and sees the rail count fall without a navigation (ADR-069, `docs/28` OX-6).
 
 - **The report a CFO opens.** Every frozen incrementality report exports as a signed document — `GET /v1/reports/{id}/export`, one link per report on the programme's panel beside the full digest — with an Ed25519 signature over the digest and the rendered prose, made with a key the instance publishes at `/.well-known/zolts-signing-keys.json`. `scripts/verify_report.py` verifies it with `zolts` alone, on a machine that has never seen the database, and names the check that failed (ADR-068, decision 58, `docs/28` OX-5).
 

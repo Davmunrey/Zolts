@@ -930,6 +930,17 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-069 · The console is live: every action re-renders in place, the data is re-read while the tab is visible, and nothing reloads the page.**
+Seven actions ended in `window.location.reload()`: the operator approved a draft and was dumped back through a full page load, their scroll and their selection gone, and nothing on the screen moved until somebody pressed F5. Persisting the view (ADR-060) hid the cost; it did not remove it (`docs/28`, OX-6).
+
+| Decision | Why |
+|---|---|
+| **One refresh path, from the same endpoint** | `refresh()` re-reads `GET /v1/console` — the view model the page was served with — and re-renders. A second model of what changed, patched by hand per action, is a second answer waiting to disagree with the first |
+| **An ETag, so a quiet console costs one small request** | The endpoint hashes the body and answers 304 to the tag it served. Thirty seconds is the interval: a poll under ten is a load, not a refresh, and a test names the floor |
+| **Polling pauses while the tab is hidden and refreshes on return** | A hidden console asking every thirty seconds for a model nobody is reading is the cost of liveness with none of the benefit |
+| **Fresh data never lands on a field the operator is typing in, an open editor, or an action in flight** | The editor holds a draft nobody has published, a reason field holds a sentence half typed, and a request about to be refused is about to show why. A refresh that arrives then is dropped and its tag not advanced, so the next poll asks again — replacing any of them from under the operator would be the reload this removes, one keystroke at a time. A refresh that started before the latest action is dropped too: the browser check caught a sending stop's refresh landing a second after a revive was refused and rendering the refusal away |
+| **State survives** | Every renderer already falls back to the first row when a selected id is gone; a refresh keeps the view, the selection and the scroll. The browser check approves a draft and sees the rail count fall with a window marker still set |
+
 **ADR-068 · A frozen report is exported signed, and verified with the instance's public key and nothing else.**
 ADR-043 froze the incrementality report: written once, a sha256 digest over its canonical fields, the rendered document stored verbatim. *Signed* meant the partner signed a letter quoting the digest. What a CFO receives is a document, and a document with a digest proves only that it is consistent with itself — anybody can recompute a digest over figures they changed (`docs/28`, OX-5). The export now carries an Ed25519 signature the instance's key made, `scripts/verify_report.py` checks it with `zolts` alone, and the instance publishes its keys at `/.well-known/zolts-signing-keys.json`.
 
