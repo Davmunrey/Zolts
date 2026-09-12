@@ -28,7 +28,7 @@
 | 11 | [Compliance and governance](docs/11-compliance-and-governance.md) | GDPR/ePrivacy/AI Act, policy engine |
 | 12 | [Pricing and unit economics](docs/12-pricing-and-unit-economics.md) | Tariff, COGS, margins, expansion |
 | 13 | [90-day roadmap](docs/13-90-day-roadmap.md) | Three phases with binary exit criteria |
-| 28 | [Operator experience](docs/28-operator-experience.md) | The road to enviable: thirteen rows, three levels, binary exit criteria |
+| 28 | [Operator experience](docs/28-operator-experience.md) | The road to enviable, walked: thirteen rows built, each proved by the browser check; two of its three tests pass and the third is half |
 | 14 | [KPIs](docs/14-kpis.md) | Leading/lagging with targets |
 | 15 | [Risks and debt](docs/15-risks-and-debt.md) | Commoditisation, mitigations |
 | 16 | [Team and operations](docs/16-team-and-operations.md) | Org, burn, forward-deployed model |
