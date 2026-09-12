@@ -50,6 +50,16 @@ def _basis(value: Any) -> policy.Basis | None:
         return None
 
 
+def local_hour(country: str | None, now: datetime) -> int:
+    """The hour on the contact's clock, for the quiet-hours rule.
+
+    Public because the preview evaluates the same rule for the same contact
+    without recording a decision, and a second copy of this arithmetic is the
+    hour the two would disagree on.
+    """
+    return (now.hour + _UTC_OFFSET.get(country or "", 0)) % 24
+
+
 def build_contact(cur, person: dict[str, Any], touches_week: int) -> policy.Contact:
     consent_state = person.get("consent_state") or {}
     consent: dict[str, policy.Basis] = {}
@@ -97,11 +107,9 @@ def check(cur, tenant_id: str, *, person: dict[str, Any], channel: str,
 
     overrides = (program_spec.get("policy") or {}).get("overrides") or {}
     cap = int(overrides.get("max_touches_per_person_per_week", 3))
-    offset = _UTC_OFFSET.get(contact.country, 0)
-    local_hour = (now.hour + offset) % 24
 
     context = policy.ActionContext(
-        channel=channel, now=now, local_hour=local_hour, max_touches_per_week=cap,
+        channel=channel, now=now, local_hour=local_hour(contact.country, now), max_touches_per_week=cap,
         remaining_budget_eur=remaining_budget_eur, action_cost_eur=action_cost_eur)
 
     # The program's own policy block, applied to the jurisdiction's rule. The

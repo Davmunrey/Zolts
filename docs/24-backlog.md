@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1782 | 537 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1797 | 541 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -104,6 +104,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **What activating it would do today.** A forecast beside Activate from the functions that will enrol, with the insert taken out: who would enrol, who is held out, week one's steps with sends and credits as an upper bound, capacity left per tier, and the policy rule that would refuse a sample. An unanswerable audience is a refusal, never a zero. A test previews a programme and then really enrols every subject and requires the same count and the same arm (ADR-065, `docs/28` OX-2).
 
 - **Why this person.** One timeline per contact from the six tables that already held it: signal, enrolment, policy decision with rule and pack digest, proposal with evidence and dropped claims, touch with provider and cost, outcome, audit. Newest first, effect above cause, account events through the membership join the worker uses, read on demand. The first half of COMP-2 (ADR-064, D-104, `docs/28` OX-1).
 

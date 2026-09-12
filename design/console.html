@@ -591,7 +591,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, pv: null, pvFor: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -1191,6 +1191,67 @@ function frozenReports(p){
     + '</p></div>';
 }
 
+/* ── what activating it would do today ─────────────────────────────────
+   Activate is the scariest click in the product and the one with no preview.
+   The number beside the button comes from the same functions that will enrol,
+   with the insert taken out, and a test holds that equality. An audience the
+   runtime cannot evaluate is reported as that, never as zero: a quiet
+   programme and a broken one look identical on a tile and are opposite in
+   consequence. */
+function loadPreview(id){
+  if (!LIVE || state.pvFor === id) return;
+  state.pvFor = id; state.pv = null;
+  read("/v1/programs/" + encodeURIComponent(id) + "/preview").then(function(res){
+    if (!res.ok){ state.pv = {error: "Failed (" + res.status + ")."}; renderDetail(); return; }
+    return res.json().then(function(body){
+      if (state.pvFor !== id) return;
+      state.pv = body; renderDetail();
+    });
+  }).catch(function(){ state.pv = {error: "Failed (network)."}; renderDetail(); });
+}
+
+function previewBlock(p){
+  if (!p || !p.id) return "";
+  var head = '<div class="block" id="pv"><div class="blabel">'
+    + (p.status === "live" ? "What it does now" : "What activating it would do today") + '</div>';
+  if (!LIVE) return head + '<p class="pnote"><b>Static preview.</b> The forecast reads live rows on the served console.</p></div>';
+  if (state.pvFor !== p.id) { loadPreview(p.id); }
+  var v = state.pv;
+  if (state.pvFor !== p.id || !v) return head + '<p class="pnote" id="pv-loading">Running the audience…</p></div>';
+  if (v.error) return head + '<p class="pnote" id="pv-error"><b>' + esc(v.error) + '</b></p></div>';
+  if (v.answerable === false){
+    return head + '<p class="pnote" id="pv-unanswerable"><b>The audience cannot be evaluated.</b> '
+      + esc(String(v.reason || "").replace(/[.\s]*$/, ".")) + ' Live, this programme would enrol nobody and say nothing about it.</p></div>';
+  }
+  var week = v.weekOne || {steps: []};
+  var sending = week.steps.filter(function(x){ return x.channel; }).length;
+  var blocked = v.policy && v.policy.blockedByRule ? v.policy.blockedByRule : {};
+  var rules = Object.keys(blocked);
+  var rows = [
+    ["Would enrol now", nf(v.audience) + (v.audience === 1 ? " account" : " accounts"), v.audience ? "hi" : ""],
+    ["Held out", nf(v.control) + " (control, never contacted)"],
+    ["Reached", nf(v.treatment) + " (treatment)"],
+    ["Steps in week one", nf(week.steps.length) + (sending ? ", " + nf(sending) + " sending" : ", none sending")
+      + (v.tier ? " · " + v.tier : "")],
+    ["Sends, at most", nf(week.sendsAtMost || 0)],
+    ["Credits, at most", nf(Math.round((week.creditsAtMost || 0) * 10) / 10)]
+  ];
+  Object.keys(v.headroom || {}).forEach(function(t){
+    rows.push(["Capacity left · " + t, nf(v.headroom[t]) + " this week"]);
+  });
+  var policy = v.policy && v.policy.sampled
+    ? (rules.length
+        ? '<p class="pnote"><b>Policy would refuse ' + esc(rules.map(function(r){ return nf(blocked[r]) + " under " + r; }).join(", "))
+          + '</b> of a sample of ' + nf(v.policy.sampled) + '. The rule, not the count, is what to fix before Activate.</p>'
+        : '<p class="pnote"><b>Policy allows all ' + nf(v.policy.sampled) + ' sampled contacts</b> for the first sending step.</p>')
+    : '<p class="pnote">No contact to run the policy against yet.</p>';
+  return head + '<dl class="props">' + rows.map(function(kv){
+      return '<dt>' + esc(kv[0]) + '</dt><dd' + (kv[2] ? ' class="' + kv[2] + '"' : "") + '>' + esc(kv[1]) + '</dd>';
+    }).join("") + '</dl>' + policy
+    + '<p class="why">A forecast as of ' + esc((v.asOf || "").slice(0, 16).replace("T", " "))
+    + ' UTC, from the audience and capacity as they stand, by the same functions that enrol. Week one is an upper bound: every reached contact through every step inside seven days.</p></div>';
+}
+
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
   if (!p){ detail.innerHTML = ""; return; }
@@ -1259,6 +1320,7 @@ function renderDetail(){
       + '">' + (state.tuning ? "Close editor" : "Open editor") + '</button></div>'
     + '</div>'
     + activationNote(p)
+    + previewBlock(p)
     + '<div class="block"><div class="blabel">Evidence</div>' + evidence + '</div>'
     + frozenReports(p)
     + '<div class="block"><div class="blabel">Configuration</div><dl class="props">'

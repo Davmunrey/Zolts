@@ -27,7 +27,7 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime import outbox, sendingcontrol, timeline
+from runtime import outbox, preview, sendingcontrol, timeline
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
@@ -953,6 +953,25 @@ def create_app(db: Database, *, install_connectors: bool = True,
                                  "late": bool(row["due_at"]
                                               and row["completed_at"] > row["due_at"])})
         return _task(row)
+
+    # -- what activating it would do today ------------------------------
+
+    @app.get("/v1/programs/{program_id}/preview")
+    def program_preview(program_id: str,
+                        principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """A forecast from the functions that will enrol, writing nothing.
+
+        Activate is the scariest click in the product and the one with no
+        preview (docs/28, OX-2). An audience the runtime cannot evaluate is
+        reported as that, never as zero.
+        """
+        principal.require("read")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            cur.execute("select * from program where id = %s", (program_id,))
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "no such program")
+            return preview.for_program(cur, principal.tenant_id, dict(row))
 
     # -- why this person -------------------------------------------------
 
