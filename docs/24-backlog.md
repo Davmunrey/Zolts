@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1797 | 541 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1819 | 549 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -104,6 +104,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **Which signals earn their keep.** One row per catalogue signal on the Signals screen and at `GET /v1/signals/funnel`: fired, listened to by how many live programmes, enrolled, held out, reached, converted — the silent signals included, and a conversion counted only inside the window the programme it enrolled into declares. Descriptive, not attributed: the holdout converts too and is shown as held out, and SIG-2 stays blocked on the instrument it needs (ADR-066, `docs/28` OX-3).
 
 - **What activating it would do today.** A forecast beside Activate from the functions that will enrol, with the insert taken out: who would enrol, who is held out, week one's steps with sends and credits as an upper bound, capacity left per tier, and the policy rule that would refuse a sample. An unanswerable audience is a refusal, never a zero. A test previews a programme and then really enrols every subject and requires the same count and the same arm (ADR-065, `docs/28` OX-2).
 

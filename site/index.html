@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="450c5a8a5bba">
+<meta name="zolts-build" content="1badf762d29f">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -140,7 +140,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
       background-image:repeating-linear-gradient(to bottom,
         transparent 0 35px, var(--hairline-ghost) 35px 36px)}
 /* Rows are opaque so they sit on the guide rather than under it. */
-.row,.sect{background:var(--canvas)}
+.row,.sect,.list .head{background:var(--canvas)}
 .row{display:grid;cursor:pointer;grid-template-columns:var(--cols);
      gap:12px;align-items:center;height:36px;padding:0 14px;width:100%;text-align:left;
      border-bottom:1px solid var(--hairline);position:relative;
@@ -370,6 +370,11 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   nav a:hover{background:var(--surface-2);color:var(--ink-muted)}
   .chipbtn:hover{background:var(--surface-2);color:var(--ink-muted)}
   .row:hover{background:var(--surface-1)}
+  /* The row whose story the panel is showing. Five views emitted the class
+     and nothing styled it, so the console's one gesture — click a row, read
+     its story — gave no sign of which row the story belonged to (D-106).
+     DESIGN.md names this surface: the accent's own dim, never a semantic. */
+  .row.on{background:var(--accent-dim)}
   .btn-p:hover{background:var(--accent-hover)}
   .btn-s:hover{background:var(--surface-3)}
 }
@@ -605,7 +610,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, pv: null, pvFor: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, pv: null, pvFor: null, fsel: null, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -1608,8 +1613,8 @@ var VIEWS = {
   },
   signals: {
     title: "Signals",
-    cols: "22px minmax(150px,1.3fr) minmax(140px,1fr) 96px 96px 96px",
-    head: ["", "Signal", "Subject", "r:Strength", "r:Detected in", "Observed"]
+    cols: "22px minmax(150px,1.3fr) minmax(140px,1fr) minmax(84px,.4fr) minmax(84px,.4fr) minmax(96px,.4fr)",
+    head: ["", "Signal", "Tier", "r:Fired", "r:Enrolled", "r:Converted"]
   },
   spend: {
     title: "Spend",
@@ -1689,8 +1694,12 @@ function dot(kind){ return '<span class="st ' + (kind || "") + '"></span>'; }
 /* "r:" means the column is right-aligned; "w:" means it carries prose. */
 function label(h){ return String(h || "").replace(/^[rw]:/, ""); }
 
-function labelled(cells){
-  var head = (VIEWS[state.view] || {}).head || [];
+function labelled(cells, own){
+  /* A section may carry its own head — the Signals list holds a funnel, the
+     detected signals and the watch list, and they do not share columns. A
+     row labelled from the view's head under a section that named different
+     columns would read "Strength: 12 checks" on a phone. */
+  var head = own || (VIEWS[state.view] || {}).head || [];
   return cells.map(function(c, i){
     var name = label(head[i]);
     if (!name) return c;
@@ -1701,9 +1710,9 @@ function labelled(cells){
   }).join("");
 }
 
-function rowOf(cells, cls){
+function rowOf(cells, cls, own){
   return '<div class="row' + (cls ? " " + cls : "") + '" role="row">'
-       + labelled(cells) + '</div>';
+       + labelled(cells, own) + '</div>';
 }
 /* A stat tile: label, value, an optional unit and an optional ratio against a
    limit. `tone` is a status, so it is never the only carrier — the label and
@@ -1723,9 +1732,16 @@ function kpis(tiles){
   }).join("");
 }
 
-function sect(label, note){
-  return '<div class="sect">' + esc(label)
-    + (note ? '<b>' + esc(note) + '</b>' : "") + '</div>';
+function sect(title, note, own){
+  /* With `own`, the section is followed by its own column head, rendered
+     the way `chrome` renders the view's: the prefix is stripped by the one
+     function that knows it, and a right-aligned column stays right-aligned. */
+  var head = own ? '<div class="head" role="row">' + own.map(function(h){
+    return '<span' + (h.indexOf("r:") === 0 ? ' class="r"' : "") + '>'
+      + esc(label(h)) + '</span>';
+  }).join("") + '</div>' : "";
+  return '<div class="sect">' + esc(title)
+    + (note ? '<b>' + esc(note) + '</b>' : "") + '</div>' + head;
 }
 function empty(text){
   return '<p class="empty">' + esc(text) + '</p>';
@@ -2299,6 +2315,7 @@ function slaBlock(tiers){
 function renderSignals(){
   var S = D.signalsView || {recent: [], watched: [], latency: {}};
   var recent = S.recent || [], watched = S.watched || [], L = S.latency || {};
+  var F = S.funnel || {}, earning = F.rows || [], stages = F.stages || [];
   document.getElementById("shown").textContent = recent.length;
 
   /* docs/06 publishes a p95 per tier and calls it the contractual SLA of two
@@ -2310,28 +2327,58 @@ function renderSignals(){
      does not wrap (D-38). */
   var sla = slaBlock(S.sla || []);
 
+  /* Which signals earn their keep (docs/28, OX-3). Every catalogue signal
+     has a row, the silent ones included: a signal that fired zero times is
+     the one the operator is paying for and getting nothing from, and a list
+     of only the active ones would hide exactly the rows the question is
+     about. Sorted by what each produced, so the first row is the best
+     earner, and the panel opens on it. */
+  var chosen = earning.filter(function(r){ return r.key === state.fsel; })[0] || earning[0];
+  state.fsel = chosen ? chosen.key : null;
+  var rows = earning.length ? sect("Earning their keep", nf(earning.length) + " in the catalogue")
+    + earning.map(function(r){
+      var tone = r.converted ? "live" : (r.fired ? "" : "draft");
+      var tier = r.catalogued ? (r.tier ? "Tier " + r.tier : "no tier") : "not in the catalogue";
+      return '<div class="row' + (r.key === state.fsel ? " on" : "") + '" role="row"'
+        + ' data-f="' + esc(r.key) + '">'
+        + labelled([dot(tone), cell(r.key, "k"), cell(tier, "m"), cell(nf(r.fired), "n"),
+                    cell(nf(r.enrolled), "n"),
+                    cell(nf(r.converted), "n" + (r.converted ? " good" : ""))])
+        + '</div>';
+    }).join("") : "";
+
+  var wire = function(){
+    list.querySelectorAll(".row[data-f]").forEach(function(el){
+      el.addEventListener("click", function(){
+        state.fsel = el.dataset.f; renderSignals();
+      });
+    });
+  };
+
   if (!recent.length && !watched.length){
-    list.innerHTML = empty("Nothing detected yet. A live program's trigger is what puts a "
-      + "signal on the watch list.");
-    detail.innerHTML = block("Time to touch", [["Touches from a signal", "0"]]) + sla;
-    foot([]);
+    list.innerHTML = rows + empty("Nothing detected yet. A live program's trigger is what "
+      + "puts a signal on the watch list.");
+    detail.innerHTML = funnelBlock(chosen, stages)
+      + block("Time to touch", [["Touches from a signal", "0"]]) + sla;
+    foot([[nf(earning.length), "signals in the catalogue"], ["0", "detected"]]);
+    wire();
     return;
   }
 
-  var rows = sect("Detected", nf(recent.length)) + recent.map(function(s){
+  rows += sect("Detected", nf(recent.length), DETECTED_HEAD) + recent.map(function(s){
     var slow = s.detectionMinutes > 60;
     return rowOf([dot("live"), cell(s.type, "k"), cell(s.subject, "m"),
                   cell(s.strength.toFixed(2), "n"),
                   cell(nf(s.detectionMinutes) + " m", "n" + (slow ? " warnt" : "")),
-                  cell(String(s.observedAt).slice(0, 10), "m")]);
+                  cell(String(s.observedAt).slice(0, 10), "m")], "", DETECTED_HEAD);
   }).join("");
 
-  rows += sect("Watched", nf(watched.length))
+  rows += sect("Watched", nf(watched.length), WATCHED_HEAD)
     + watched.map(function(w){
     return rowOf([dot(w.staleRefused ? "warn" : ""), cell(w.signal, "k"),
                   cell(nf(w.checks) + " checks", "m"), cell(nf(w.detected), "n"),
                   cell(nf(w.staleRefused) + " stale", "n" + (w.staleRefused ? " warnt" : "")),
-                  cell(String(w.lastChecked).slice(0, 10), "m")], "sub");
+                  cell(String(w.lastChecked).slice(0, 10), "m")], "sub", WATCHED_HEAD);
   }).join("");
 
   var stale = watched.reduce(function(a, w){ return a + w.staleRefused; }, 0);
@@ -2348,7 +2395,7 @@ function renderSignals(){
 
   list.innerHTML = rows;
   var mins = function(v){ return v === null || v === undefined ? "—" : nf(v) + " min"; };
-  detail.innerHTML = block("Time to touch, p95", [
+  detail.innerHTML = funnelBlock(chosen, stages) + block("Time to touch, p95", [
     ["The source noticing", mins(L.detectionP95Minutes)],
     ["This runtime acting", mins(L.executionP95Minutes)],
     ["Signal to touch", mins(L.totalP95Minutes), "hi"],
@@ -2357,8 +2404,44 @@ function renderSignals(){
     ["A slow source.", "Change the source — the wait is before us."],
     ["A slow runtime.", "Add workers — the wait is ours."]
   ]);
+  wire();
   foot([[nf(recent.length), "detected"], [nf(watched.length), "signals watched"],
         [mins(L.totalP95Minutes), "signal to touch, p95"]]);
+}
+
+/* The detected and watched sections keep the columns they had; the view's
+   own head now belongs to the funnel, which leads. */
+var DETECTED_HEAD = ["", "Signal", "Subject", "r:Strength", "r:Detected in", "Observed"];
+var WATCHED_HEAD = ["", "Signal", "Checks", "r:Detected", "r:Stale refused", "Last checked"];
+
+/* One signal's funnel, rendered from the stages the runtime ships with it:
+   the label and the sentence that says what the number counts come from
+   `zolts.signalfunnel`, so a stage added there is a stage rendered here and
+   there is no second list of names to fall behind. The window is named
+   beside the conversion count because a count with no window is the number
+   two people read differently in the same meeting. */
+function funnelBlock(r, stages){
+  if (!r) return "";
+  var windows = (r.windows || []).length
+    ? " inside " + r.windows.join(" or ") + " days" : "";
+  var by = {
+    fired: nf(r.fired),
+    listened: nf(r.listened) + (r.listened === 1 ? " live programme" : " live programmes"),
+    enrolled: nf(r.enrolled), heldOut: nf(r.heldOut), reached: nf(r.reached),
+    converted: nf(r.converted) + (r.converted ? windows : "")
+  };
+  var pairs = stages.map(function(st){
+    return [st.label, by[st.key] === undefined ? "—" : by[st.key],
+            st.key === "converted" ? "hi" : ""];
+  });
+  var title = r.name + (r.catalogued ? (r.tier ? " · tier " + r.tier : "")
+                                     : " · not in the catalogue");
+  return block(title, pairs) + note("Descriptive, not attributed", [
+    ["The holdout converts too,", "and it is counted. Whether the programme caused a "
+     + "conversion is the incrementality report's question, asked per programme."],
+    ["Inside the window only.", "A conversion counts within the days the programme's "
+     + "metric declares, from enrolment, and nowhere else."]
+  ]);
 }
 
 /* The margin number of the agent layer. docs/08 targets under two cents of

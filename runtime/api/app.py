@@ -27,7 +27,7 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime import outbox, preview, sendingcontrol, timeline
+from runtime import outbox, preview, sendingcontrol, signalfunnel, timeline
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
@@ -972,6 +972,20 @@ def create_app(db: Database, *, install_connectors: bool = True,
             if row is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "no such program")
             return preview.for_program(cur, principal.tenant_id, dict(row))
+
+    # -- which signals earn their keep -----------------------------------
+
+    @app.get("/v1/signals/funnel")
+    def signal_funnel(principal: Principal = CurrentPrincipal) -> dict[str, Any]:
+        """One row per catalogue signal: fired, listened to, enrolled, held
+        out, reached, converted inside the programme's declared window.
+
+        Descriptive, not attributed (docs/28, OX-3). A signal that never fired
+        has a row: it is the one being paid for and producing nothing.
+        """
+        principal.require("read")
+        with db.tenant_tx(principal.tenant_id) as cur:
+            return signalfunnel.for_tenant(cur)
 
     # -- why this person -------------------------------------------------
 

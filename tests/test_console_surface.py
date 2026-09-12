@@ -157,6 +157,17 @@ def test_every_component_class_in_the_markup_is_styled():
     assert not missing, f"classes used in the markup with no rule of their own: {missing}"
 
 
+def test_a_selected_row_is_visible():
+    """Five views mark the row whose story the panel shows with `on`, and no
+    rule ever styled it: the operator's selection was invisible on every one
+    of them (D-106). `DESIGN.md` names the surface a selected row uses, and
+    the class is emitted from data, so the scanner above cannot see it."""
+    emitters = re.findall(r'\? " on" : ""', SCRIPT)
+    assert len(emitters) >= 5, "the selected-row marker is no longer emitted"
+    assert re.search(r"\.row\.on\s*\{[^}]*var\(--accent-dim\)", STYLE), (
+        "the selected row has no rule on the accent's dim, so the selection is invisible")
+
+
 # -- the stat tiles -------------------------------------------------------
 
 def test_the_stat_tiles_are_cleared_before_a_view_renders():
@@ -215,7 +226,12 @@ def test_the_prefix_never_reaches_the_screen():
     chrome = SCRIPT[SCRIPT.index("function chrome(view)"):]
     chrome = chrome[:chrome.index("\n}")]
     assert "label(h)" in chrome, "the header renders the raw head entry"
-    labelled = SCRIPT[SCRIPT.index("function labelled(cells)"):]
+    # A section that carries its own head renders it through the same
+    # function, or the Signals list would print `r:Fired` above the funnel.
+    sect = SCRIPT[SCRIPT.index("function sect(title, note, own)"):]
+    sect = sect[:sect.index("\n}")]
+    assert "label(h)" in sect, "a section head renders the raw head entry"
+    labelled = SCRIPT[SCRIPT.index("function labelled(cells"):]
     labelled = labelled[:labelled.index("\n}")]
     assert "label(head[i])" in labelled, "the phone label renders the raw entry"
 
