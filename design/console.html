@@ -460,6 +460,10 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   .row .owner{justify-self:start; margin-left:16px}
   .sect{padding:0 12px}
   .foot{height:auto; padding:10px 12px; flex-wrap:wrap; gap:10px 14px}
+  /* The phone approves (docs/28, OX-9). The buttons that decide — approve,
+     reject, mark done, stop, the batch — are sized for a thumb, not a
+     pointer: 26px is a target for a mouse. */
+  .dactions .btn,.actf .btn,.batch .btn{height:40px; padding:0 16px; font-size:13px}
   .detail{grid-column:1}
   .source{display:none}
 }
@@ -1489,6 +1493,21 @@ function toggle(id, key){
 }
 toggle("f-live", "live");
 toggle("f-sig", "onlySig");
+
+/* ── the phone approves ─────────────────────────────────────────────────
+   Below the phone breakpoint the panel sits under the list, so a row tapped
+   at the top of the screen changed something below the fold and the tap
+   looked like nothing (docs/28, OX-9). After a plain tap the panel comes to
+   the thumb. A modified tap is a batch selection and stays where the
+   operator is choosing. The breakpoint is the stylesheet's; a test holds
+   the two to one number. */
+var PHONE = matchMedia("(max-width:820px)");
+function bringPanelToTheThumb(e){
+  if (!PHONE.matches || modified(e)) return;
+  if (!e.target.closest(".row")) return;
+  detail.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+}
+list.addEventListener("click", bringPanelToTheThumb);
 
 /* ── keyboard: j/k move, enter opens, ⌘K palette ───────────────────── */
 function move(step){
