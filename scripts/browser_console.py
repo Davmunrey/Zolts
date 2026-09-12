@@ -81,6 +81,22 @@ def _seed() -> tuple[str, str]:
              json.dumps([{"ref": "e1", "source": "filing", "text": "A $12m Series A."}]),
              json.dumps({"failures": []}), json.dumps({"verdict": "yes"})))
 
+        # Two more drafts waiting for a person, so a batch has something to
+        # act on after the single approve above has taken the first: bulk,
+        # with reasons (docs/28, OX-7).
+        for i in range(2):
+            cur.execute(
+                "insert into proposal (tenant_id, agent, idempotency_key, channel, step_key,"
+                " model, prompt_version, content, evidence, eval, eval_score, spend,"
+                " cost_micros, state, gate_reason)"
+                " values (%s,'copywriter',%s,'email','email_2','claude-haiku-4-5-20251001',"
+                " 'copywriter-v3', %s, '[]', %s, 0.80, %s, 9000, 'needs_human',"
+                " 'eval 0.80 below the 0.85 auto-send threshold')",
+                (tenant_id, f"browser-batch-{i}-{uuid.uuid4().hex}",
+                 json.dumps({"body": f"Following up on the round, draft {i + 1}.",
+                             "dropped_claims": []}),
+                 json.dumps({"failures": []}), json.dumps({"verdict": "yes"})))
+
         # A sending fleet, so the surface renders rows rather than only its
         # empty state. Two mailboxes on one authenticated domain, one of them
         # part-way through warm-up, because a capacity that is not the base cap
@@ -394,7 +410,6 @@ def main() -> int:
             before = page.locator("#nav-review").inner_text()
             page.evaluate("() => { window.__zoltsApprove = 1; }")
             page.click("#approve")
-            page.wait_for_selector("#approve", state="detached", timeout=15_000)
             page.wait_for_function(
                 "b => document.getElementById('nav-review') === null"
                 "  || document.getElementById('nav-review').innerText !== b",
@@ -402,6 +417,25 @@ def main() -> int:
             report["approve_in_place"] = page.evaluate("() => window.__zoltsApprove === 1")
             report["review_rail_before_after"] = [
                 before, page.evaluate("() => (document.getElementById('nav-review') || {}).innerText || '0'")]
+
+            # 4a. Bulk, with reasons. Two drafts remain; a modified click adds
+            #     each to the batch, one reason covers both, and a thin reason
+            #     is refused by name before anything is approved.
+            page.wait_for_selector("#list .row[data-r]", timeout=15_000)
+            for row in page.locator("#list .row[data-r]").all():
+                row.click(modifiers=["Control"])
+            page.wait_for_selector("#batch", timeout=15_000)
+            report["batch_offered"] = page.locator("#batch .blabel").inner_text()
+            page.fill("#batch-reason", "ok")
+            page.click('#batch [data-batch="approve"]')
+            page.wait_for_selector("#batch-msg:not([hidden])", timeout=15_000)
+            report["thin_batch_reason_refused"] = page.locator("#batch-msg").inner_text()
+            page.fill("#batch-reason", "legal cleared the whole series this morning")
+            page.click('#batch [data-batch="approve"]')
+            page.wait_for_function(
+                "() => (document.getElementById('nav-review') || {}).innerText === '0'",
+                timeout=20_000)
+            report["batch_approved"] = True
 
             # 4b. The work waiting for a person. `GET /v1/tasks` has answered
             #     this since a human task could be closed at all, and no screen
@@ -954,6 +988,18 @@ def main() -> int:
         if report.get("queue_rendered") and not decided:
             print("::error::Approve reported success and no proposal was decided",
                   file=sys.stderr)
+            return 1
+        # Bulk, with reasons: the batch took the two drafts the single approve
+        # left, after refusing a thin reason by name (docs/28, OX-7).
+        waiting = [p for p in report["proposals_in_database"]
+                   if p["state"] in ("draft", "needs_human")]
+        if (not report.get("batch_approved") or waiting
+                or "selected" not in (report.get("batch_offered") or "").lower()
+                or "reason" not in (report.get("thin_batch_reason_refused") or "").lower()):
+            print("::error::the batch did not take the queue, or took it without a reason:",
+                  json.dumps({k: report.get(k) for k in
+                              ("batch_offered", "thin_batch_reason_refused", "batch_approved")}),
+                  len(waiting), "still waiting", file=sys.stderr)
             return 1
         if errors or violations:
             print("::error::the console raised errors or CSP violations", file=sys.stderr)

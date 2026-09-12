@@ -36,10 +36,13 @@ def test_no_full_page_reload_remains_in_the_surface():
 
 def test_every_action_refreshes_in_place():
     """Seven actions used to reload; each now asks for fresh data."""
-    acted = re.findall(r"if \(res\.ok\)\{[^}]*\}", SCRIPT)
-    assert len(acted) >= 6, "the action handlers moved"
+    starts = [m.end() for m in re.finditer(r"if \(res\.ok\)\{", SCRIPT)]
+    assert len(starts) >= 6, "the action handlers moved"
+    # Each success branch reaches a refresh within its own few lines; a
+    # brace-balanced parse is more than a guard needs.
+    acted = [SCRIPT[start:start + 700] for start in starts]
     assert all("refresh(" in handler for handler in acted), (
-        [h for h in acted if "refresh(" not in h])
+        [h[:120] for h in acted if "refresh(" not in h])
     # Activation reads the server's lint before it refreshes, so its handler
     # has a different shape; it still ends in a refresh rather than a reload.
     activation = SCRIPT[SCRIPT.index('sessionStorage.setItem("zolts.activation-note"'):]

@@ -558,6 +558,22 @@ MUTATIONS = (
         find='        if request.headers.get("if-none-match") == tag:',
         replace='        if False:',
         tests="tests/test_console_live.py"),
+    Mutation(
+        id="a-stale-row-does-not-stop-the-batch",
+        claim="each row of a batch runs under its own savepoint, so a row that fails "
+              "is a named refusal and the rest proceed",
+        path="runtime/batches.py",
+        find="            with cur.connection.transaction():",
+        replace="            if True:",
+        tests="tests/test_batches.py"),
+    Mutation(
+        id="the-batchs-reason-is-recorded-on-every-row",
+        claim="one reason for the batch is written into every done row's audit entry, "
+              "so which forty and why is a where clause",
+        path="runtime/batches.py",
+        find='                     detail={"reason": reason, "batch": batch_id, "action_id": action_id})',
+        replace='                     detail={"batch": batch_id, "action_id": action_id})',
+        tests="tests/test_batches.py"),
 )
 
 def _dirty() -> bool:
