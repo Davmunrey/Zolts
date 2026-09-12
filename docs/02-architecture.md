@@ -930,6 +930,17 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-074 · First run is walked on the screen, each step read from the rows, and the guide leaves when a programme goes live.**
+`quickstart` is a CLI, and the founder could not find where to configure the product; `docs/28` exists because of that conversation (OX-11). A new tenant now sees five steps under the worklist on Today — the blueprint, a connected CRM, a programme read, a programme activated, the first signal — each with its state in a sentence and, until done, what to do.
+
+| Decision | Why |
+|---|---|
+| **Read, never ticked** | Each step's state comes from the rows it is about: `connection`, `program`, `signal`. A checklist somebody ticks drifts from the product within a week; a state read from the database cannot |
+| **A connection in error is not connected** | The runtime writes `error` on a credential a provider refused. A guide that counted it as connected would tell the operator that the one thing the liveness check is shouting about is fine. A guard relaxes it and requires a test to notice |
+| **Reviewed means activated** | Nothing records that a person read a programme, and a step that ticked itself on a page view would be a step that lies. The review step is done by the act that proves it, and until then it says what reading a draft shows |
+| **It leaves when a programme is live** | What is missing after that is work, and the worklist above ranks work by what it costs. A guide that stays becomes a banner nobody reads. A guard keeps it and requires a test to notice; the browser check reads it on the fresh tenant and finds it gone after the activation |
+| **The console takes no credential** | The CRM step says how to connect — the CLI with the secret on stdin, or a mapping over HTTP — and does not offer a field. A secret pasted into a browser is a secret in a browser's history |
+
 **ADR-073 · Every number defines itself: one registry in the console, read by the tests, carried on the element, opened by hover, tap or Enter.**
 A number without a definition is a number two people read differently in the same meeting (`docs/28`, OX-10). Writing the sentences found a label that lied: the spend tile said *quarter to date* over a sum with no date on it (D-107).
 

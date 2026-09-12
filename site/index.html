@@ -6,7 +6,7 @@
 <meta name="description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2f2f3">
-<meta name="zolts-build" content="cdc8ba3e09ea">
+<meta name="zolts-build" content="480aabb673b1">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zolts — Program Console">
 <meta property="og:description" content="The Zolts operator surface: a dense program list with evidence, per-play P&L and policy trace, where a lift that cannot be resolved is not reported.">
@@ -387,6 +387,7 @@ kbd{font:450 10px/1 var(--mono);color:var(--ink-subtle);background:var(--surface
   /* A row in a batch: a bar on the accent, distinct from the row the panel
      is showing. Both can be true of one row. */
   .row[aria-selected="true"]{box-shadow:inset 3px 0 0 var(--accent)}
+.row.guide .cell.k{font-weight:500}
   .batch{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
   .batch .why{flex:1 1 100%}
   /* A link that leaves the console for a document: the signed report a CFO
@@ -640,7 +641,7 @@ var ICON_UND = '<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.
 
 var R = D.review || [];
 var state = { view: "today", sel: (P[0] || {}).key, rsel: (R[0] || {}).id,
-              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, pv: null, pvFor: null, fsel: null, bsel: {proposals: [], tasks: [], outbox: []}, asel: 0, live: false, onlySig: false, jur: "ES", tuning: false };
+              tsel: null, dsel: null, osel: null, psel: [], basis: null, csel: null, tl: null, pv: null, pvFor: null, fsel: null, bsel: {proposals: [], tasks: [], outbox: []}, asel: 0, gsel: null, live: false, onlySig: false, jur: "ES", tuning: false };
 
 function visible(){
   return P.filter(function(p){
@@ -2049,6 +2050,9 @@ var DEFINITIONS = {
   "Token spend": "Model cost events, all time, from cost_event where the kind is llm.",
   "Touches naming nobody": "Touches sent with no contact on them, from touch; they are left out of the denominator.",
   "Preview": "What activating the programme would do today, by the functions that will run it, with the insert taken out, from account and the programme's spec.",
+  "Where it stands": "This first-run step's state, read from the rows it is about: connection, program, signal.",
+  "State": "Whether this first-run step is done, read from the rows it is about rather than from a box somebody ticked.",
+  "Read from": "The sentence the database gives for this step, from connection, program or signal.",
   "Would enrol now": "Accounts the audience returns right now, by the same functions that enrol, from account.",
   "Held out": "Of the accounts that would enrol, the control arm the holdout assigns, from the programme's spec; never contacted.",
   "Reached": "Of the accounts that would enrol, the treatment arm the holdout assigns, from the programme's spec.",
@@ -2877,9 +2881,13 @@ function renderToday(){
   if (!items.length){
     /* An empty state that says nothing is indistinguishable from a screen
        that failed to load, so it says what the runtime is doing instead. */
+    var G0 = D.firstRun;
+    var guided0 = G0 && G0.show && G0.steps.filter(function(st){ return st.key === state.gsel; })[0];
     list.innerHTML = empty("Nothing needs a person. " + nf(idle.live || 0)
       + " programme(s) are live, " + nf(idle.queued || 0) + " action(s) are queued "
-      + "and " + nf(idle.watching || 0) + " signal(s) are being watched.");
+      + "and " + nf(idle.watching || 0) + " signal(s) are being watched.") + guideRows(G0);
+    wireGuide();
+    if (guided0){ renderGuideDetail(guided0, G0); foot([]); return; }
     detail.innerHTML = block("Nothing waiting", [
       ["Live programmes", nf(idle.live || 0)],
       ["Queued actions", nf(idle.queued || 0)],
@@ -2895,23 +2903,83 @@ function renderToday(){
   }
 
   var TONE = {now: "deny", today: "warn", soon: ""};
+  var G = D.firstRun;
+  var guided = G && G.show && G.steps.filter(function(st){ return st.key === state.gsel; })[0];
   list.innerHTML = items.map(function(it, i){
-    return '<div class="row' + (i === todayIndex(items) ? " on" : "") + '" data-a="'
+    return '<div class="row' + (!guided && i === todayIndex(items) ? " on" : "") + '" data-a="'
       + i + '" role="row" tabindex="0">'
       + labelled([dot(TONE[it.urgency] || ""), cell(it.title, "k"),
                   cell(it.detail, "m"), cell(nf(it.count), "n"),
                   cell(it.urgency, "w m" + (it.urgency === "now" ? " warnt" : ""))])
       + '</div>';
-  }).join("");
+  }).join("") + guideRows(G);
 
-  renderTodayDetail(items[todayIndex(items)]);
+  if (guided) renderGuideDetail(guided, G);
+  else renderTodayDetail(items[todayIndex(items)]);
   list.querySelectorAll(".row[data-a]").forEach(function(el){
     el.addEventListener("click", function(){
-      state.asel = Number(el.dataset.a); renderToday();
+      state.asel = Number(el.dataset.a); state.gsel = null; renderToday();
     });
   });
+  wireGuide();
   foot([[nf(counts.now || 0), "now"], [nf(counts.today || 0), "today"],
         [nf(counts.soon || 0), "soon"]]);
+}
+
+/* ── first run inside the console ──────────────────────────────────────
+   `quickstart` is a CLI, and the founder could not find where to configure
+   the product (docs/28, OX-11). Five steps, each read from the database by
+   `zolts.firstrun` - the blueprint, a connected CRM, a programme read and
+   activated, the first signal - under the worklist, with their own column
+   head, until a programme goes live. Then it leaves: what is missing after
+   that is work, and the worklist above is where work is ranked. */
+var GUIDE_HEAD = ["", "First run", "Where it stands", "r:Step", "w:State"];
+function guideRows(G){
+  if (!G || !G.show) return "";
+  return sect("First run", nf(G.done) + " of " + nf(G.of) + " done", GUIDE_HEAD)
+    + G.steps.map(function(st, i){
+        var next = st.key === G.next;
+        var on = st.key === state.gsel;
+        return '<div class="row guide' + (on ? " on" : "") + '" data-g="' + esc(st.key)
+          + '" id="fr-' + esc(st.key) + '" role="row" tabindex="0">'
+          + labelled([dot(st.done ? "live" : (next ? "warn" : "")),
+                      cell(st.title, "k"), cell(st.status, "m"),
+                      cell(String(i + 1) + " of " + nf(G.of), "n"),
+                      cell(st.done ? "done" : (next ? "next" : "later"),
+                           "w m" + (next ? " warnt" : ""))], GUIDE_HEAD)
+          + '</div>';
+      }).join("");
+}
+function wireGuide(){
+  list.querySelectorAll(".row[data-g]").forEach(function(el){
+    el.addEventListener("click", function(){
+      state.gsel = el.dataset.g; renderToday();
+    });
+  });
+}
+function renderGuideDetail(st, G){
+  var n = G.steps.indexOf(st) + 1;
+  var title = st.view ? ((VIEWS[st.view] || {}).title || st.view) : "";
+  detail.innerHTML = '<div class="dhead">'
+    + '<div class="k">First run · step ' + nf(n) + ' of ' + nf(G.of) + '</div>'
+    + '<h2>' + esc(st.title) + '</h2>'
+    + (st.view
+        ? '<div class="dactions"><button class="btn btn-p" id="goto" data-view="'
+          + esc(st.view) + '">Open ' + esc(title) + '</button></div>' : "")
+    + '</div>'
+    + block("Where it stands", [
+        ["State", st.done ? "done" : "not yet", st.done ? "" : "warnt"],
+        ["Read from", st.status]
+      ])
+    + (st.done ? "" : note("What to do", [["Next.", st.how]]))
+    + note("Why this is here", [
+        ["Read, not ticked.", "Each step's state comes from the rows it is about: "
+         + "connection, program, signal. Nothing here is a box somebody checked."],
+        ["It leaves.", "The guide goes when a programme is live. What is missing "
+         + "after that is work, and the list above ranks work by what it costs."]
+      ]);
+  var go = document.getElementById("goto");
+  if (go) go.addEventListener("click", function(){ show(go.dataset.view); });
 }
 
 function todayIndex(items){

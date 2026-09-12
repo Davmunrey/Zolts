@@ -346,6 +346,14 @@ def main() -> int:
             report["today_order"] = [
                 r.inner_text().split("\n")[0]
                 for r in page.locator("#list .row").all()]
+            # First run inside the console (docs/28, OX-11): a tenant one minute
+            # past signup sees five steps under the worklist, each read from
+            # the database, and the CRM step says it is not connected and how.
+            page.wait_for_selector("#fr-connect", timeout=15_000)
+            report["first_run_steps"] = [
+                r.inner_text() for r in page.locator("#list .row.guide").all()]
+            page.click("#fr-connect")
+            report["first_run_detail"] = page.locator("#detail").inner_text()[:600]
             page.locator("#list .row", has_text="never activated").first.click()
             report["today_detail"] = page.locator("#detail").inner_text()[:400]
             page.click("#goto")
@@ -368,6 +376,13 @@ def main() -> int:
             page.wait_for_selector("#activate", state="detached", timeout=15_000)
             page.wait_for_selector(".dactions .btn-p", timeout=15_000)
             report["after_activate"] = page.locator(".dactions .btn-p").first.inner_text()
+            # The guide leaves when a programme goes live: Today no longer
+            # carries it, and the programme's panel is where it was left.
+            page.click('nav a[data-view="today"]')
+            page.wait_for_selector("#list .row, #list .empty", timeout=15_000)
+            report["first_run_gone"] = page.locator("#list .row.guide").count() == 0
+            page.click('nav a[data-view="programs"]')
+            page.wait_for_selector(".dactions .btn-p", timeout=15_000)
 
             # 3a. The activation answered with a note — this tenant has no
             #     baseline — and the console's reload used to discard it.
@@ -967,6 +982,17 @@ def main() -> int:
         if int(report.get("funnel_count") or 0) < 9:
             print("::error::the funnel hides the signals that never fired:",
                   report.get("funnel_count"), "rows", file=sys.stderr)
+            return 1
+
+        # First run inside the console (docs/28, OX-11): five steps read from
+        # the database on the fresh tenant, gone once a programme is live.
+        steps = report.get("first_run_steps") or []
+        if (len(steps) != 5 or not any("not connected" in s for s in steps)
+                or "zolts connect" not in (report.get("first_run_detail") or "")
+                or not report.get("first_run_gone")):
+            print("::error::the first run is not walked on the screen:",
+                  json.dumps({"steps": steps, "detail": (report.get("first_run_detail") or "")[:200],
+                              "gone": report.get("first_run_gone")}), file=sys.stderr)
             return 1
 
         # The worklist has to name the work and what it costs, not just count

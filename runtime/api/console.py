@@ -13,7 +13,7 @@ whether it is looking at a demo or a tenant.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Sequence
 
 from runtime import fleet, outbox, replyrates, sendingcontrol
 from runtime.repo import enrollments, programs
@@ -826,6 +826,28 @@ def attention_view(*, programs, queue, fleet_health, tasks, spend,
     }
 
 
+def first_run_view(cur, tenant: dict[str, Any],
+                   programs: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """First run inside the console (docs/28, OX-11), from the rows.
+
+    The programme statuses are the views the console already carries, so the
+    guide and the Programs screen cannot disagree about what is live; the
+    connections and the first signal are read here, once, because no other
+    view reads them.
+    """
+    from zolts import firstrun
+
+    cur.execute("select provider, status, last_error from connection order by created_at")
+    connections = [dict(r) for r in cur.fetchall()]
+    cur.execute("select type, observed_at from signal order by observed_at asc limit 1")
+    row = cur.fetchone()
+    first = (row["type"], row["observed_at"].isoformat()) if row else None
+    return firstrun.guide(blueprint=str(tenant.get("blueprint_id") or tenant.get("blueprint") or ""),
+                          connections=connections,
+                          program_statuses=[p.get("status") for p in programs],
+                          first_signal=first)
+
+
 def tasks_view(cur, limit: int = 100) -> dict[str, Any]:
     """The work waiting for a person, and what is late.
 
@@ -998,6 +1020,9 @@ def build(cur, tenant: dict[str, Any]) -> dict[str, Any]:
         "spendView": spend,
         "policyView": policy_view(cur),
         "auditView": audit_view(cur),
+        # First run inside the console (docs/28, OX-11): five steps read from
+        # the rows, shown until a programme goes live.
+        "firstRun": first_run_view(cur, tenant, views),
         "spend": {"llm_usd": round(llm_micros / 1_000_000, 4)},
         # The worklist, built from the views above rather than from queries of
         # its own, so the home screen and the screen it links to cannot
