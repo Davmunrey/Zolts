@@ -637,6 +637,20 @@ MUTATIONS = (
         find='    active = [c for c in connections if c.get("status") == CONNECTED]\n',
         replace='    active = [c for c in connections if c.get("status") in (CONNECTED, "error")]\n',
         tests="tests/test_firstrun.py"),
+    Mutation(
+        id="a-blank-panel-is-refused",
+        claim="a screen side with nothing to show says so; an empty string is not a state",
+        path="design/console.html",
+        find="  if (!p){ detail.innerHTML = noProgrammePanel(); return; }\n",
+        replace='  if (!p){ detail.innerHTML = ""; return; }\n',
+        tests="tests/test_console_states.py"),
+    Mutation(
+        id="an-empty-state-says-what-the-runtime-is-doing",
+        claim="an empty worklist names what is live, queued and watched, not nothing",
+        path="design/console.html",
+        find='    list.innerHTML = empty("Nothing needs a person. " + nf(idle.live || 0)\n',
+        replace='    list.innerHTML = empty("" + nf(idle.live || 0)\n',
+        tests="tests/test_console_states.py"),
 )
 
 def _dirty() -> bool:

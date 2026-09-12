@@ -930,6 +930,16 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-075 · Every empty, loading and error state says what the runtime is doing or what is missing; a blank side is refused.**
+An empty screen that says nothing looks like a screen that failed (`docs/28`, OX-12). Three renderers assigned an empty string to the panel, the Programs list went blank for a tenant whose blueprint ships no starter programme, and five empty panels carried a count of zero and no sentence.
+
+| Decision | Why |
+|---|---|
+| **Every side says something** | A list with nothing in it names what would fill it; a panel with nothing selected says what selecting does. A test refuses any renderer that assigns an empty string to either side, and a guard puts one back |
+| **Rendered, not inspected** | The browser check signs up a tenant under a blueprint that ships no starter programme — nothing exists for it — opens the console as that tenant and renders every rail entry, requiring a sentence on the list and on the panel and no printed missing value. A view added later is rendered the day it exists, because the check walks the rail, and a test holds the rail to the registry |
+| **Loading states say they are still going; error states name the error** | *Running the audience…* and *Reading everything that touched them…* carry the ellipsis; the error states print the error in bold. A test holds the names and the shapes |
+| **The static preview says it is static** | A button that silently does nothing is worse than no button, and a panel that reads live rows says so when it cannot |
+
 **ADR-074 · First run is walked on the screen, each step read from the rows, and the guide leaves when a programme goes live.**
 `quickstart` is a CLI, and the founder could not find where to configure the product; `docs/28` exists because of that conversation (OX-11). A new tenant now sees five steps under the worklist on Today — the blueprint, a connected CRM, a programme read, a programme activated, the first signal — each with its state in a sentence and, until done, what to do.
 

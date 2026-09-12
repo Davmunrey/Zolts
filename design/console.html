@@ -637,6 +637,26 @@ function visible(){
   });
 }
 
+/* ── states that say something ─────────────────────────────────────────
+   An empty screen that says nothing looks like a screen that failed
+   (docs/28, OX-12). Every empty, loading and error state names what the
+   runtime is doing or what is missing. A blank list or a blank panel is
+   refused by a test, and the browser check renders every view with a model
+   that has nothing in it and requires a sentence on both sides. */
+function noProgrammeRows(){
+  return empty(P.length
+    ? "No programme matches the filters. Clear live only and significant only to see every programme."
+    : "No programme yet. Signup publishes a blueprint's starter programme as a draft; a blueprint "
+      + "that ships none leaves this empty until a programme is published.");
+}
+function noProgrammePanel(){
+  return note("No programme selected", [
+    P.length ? ["Nothing matches the filters.", "Clear live only and significant only to see every programme."]
+             : ["No programme yet.", "Signup publishes a blueprint's starter programme as a draft; a blueprint "
+                + "that ships none leaves this empty until one is published with POST /v1/programs."]
+  ]);
+}
+
 /* ── list ──────────────────────────────────────────────────────────── */
 var list = document.getElementById("list");
 function renderList(){
@@ -662,7 +682,7 @@ function renderList(){
     + '<span><b>' + proven.length + '</b> with proven lift</span>'
     + '<span><b>' + nf(enrolled) + '</b> accounts enrolled</span>'
     + '<span style="margin-left:auto"><b>€' + nf(Math.round(spend)) + '</b> spend, all time</span>';
-  list.innerHTML = "";
+  list.innerHTML = rows.length ? "" : noProgrammeRows();
   rows.forEach(function(p, i){
     var d = p.absLift;
     var cls = d == null ? "none" : p.significant ? "up" : d > 0 ? "flat" : "down";
@@ -1334,7 +1354,7 @@ function copyBlock(p){
 
 function renderDetail(){
   var p = P.find(function(x){ return x.key === state.sel; });
-  if (!p){ detail.innerHTML = ""; return; }
+  if (!p){ detail.innerHTML = noProgrammePanel(); return; }
   var has = p.treat != null, d = p.absLift, ok = p.significant;
   var resolvable = has && d != null && p.mde != null;
 
@@ -2145,7 +2165,10 @@ function renderSending(){
 
   if (!F.managed){
     list.innerHTML = empty(F.note || "Sending capacity is not managed here.");
-    detail.innerHTML = block("Sending", [["Managed here", "no"]]);
+    detail.innerHTML = block("Sending", [["Managed here", "no"]])
+      + note("Where capacity lives", [["With the provider.",
+          "The fleet, its warm-up and its daily caps are the provider's; this screen shows "
+          + "them when Zolts manages the mailboxes."]]);
     foot([]);
     return;
   }
@@ -2354,7 +2377,10 @@ function renderProspects(){
   if (!people.length && !accounts.length){
     list.innerHTML = empty("No accounts or contacts yet. They arrive from a CRM sync, "
       + "or from POST /v1/accounts.");
-    detail.innerHTML = block("Prospects", [["Accounts", "0"], ["Contacts", "0"]]);
+    detail.innerHTML = block("Prospects", [["Accounts", "0"], ["Contacts", "0"]])
+      + note("What fills this", [["A CRM sync, or the API.",
+          "Accounts and contacts arrive from the connected CRM or from POST /v1/accounts; "
+          + "a row appears the moment one is written."]]);
     foot([]);
     return;
   }
@@ -2728,7 +2754,10 @@ function renderSignals(){
     list.innerHTML = rows + empty("Nothing detected yet. A live program's trigger is what "
       + "puts a signal on the watch list.");
     detail.innerHTML = funnelBlock(chosen, stages)
-      + block("Time to touch", [["Touches from a signal", "0"]]) + sla;
+      + block("Time to touch", [["Touches from a signal", "0"]]) + sla
+      + note("What puts a signal here", [["A live programme's trigger.",
+          "Its signal types go on the watch list and the runtime checks them; a customer "
+          + "can also POST /v1/signals."]]);
     foot([[nf(earning.length), "signals in the catalogue"], ["0", "detected"]]);
     wire();
     return;
@@ -2974,7 +3003,11 @@ function todayIndex(items){
 }
 
 function renderTodayDetail(it){
-  if (!it) { detail.innerHTML = ""; return; }
+  if (!it){
+    detail.innerHTML = note("Nothing selected", [["Pick a row.",
+      "The panel says what an item is and what leaving it costs."]]);
+    return;
+  }
   var LABEL = {now: "Now", today: "Today", soon: "Soon"};
   detail.innerHTML = '<div class="dhead">'
     + '<div class="k">' + esc(LABEL[it.urgency] || it.urgency) + '</div>'
@@ -3025,7 +3058,10 @@ function renderTasks(){
   if (!tasks.length){
     list.innerHTML = empty("Nothing is waiting for a person. A step on the "
       + "task or voice channel appears here the moment the runtime creates it.");
-    detail.innerHTML = block("Human tasks", [["Open", "0"], ["Past due", "0"]]);
+    detail.innerHTML = block("Human tasks", [["Open", "0"], ["Past due", "0"]])
+      + note("What lands here", [["A step no provider can do.",
+          "A call or a manual step on the task or voice channel becomes a task the moment "
+          + "the runtime creates it, with the deadline its step declares."]]);
     foot([]);
     return;
   }
@@ -3296,8 +3332,9 @@ function renderSpend(){
   var S = D.spendView;
   if (!S){
     document.getElementById("shown").textContent = "0";
-    list.innerHTML = empty("No billing period is open.");
-    detail.innerHTML = "";
+    list.innerHTML = empty("No billing period is open. Nothing is metered, capped or billed until one is.");
+    detail.innerHTML = note("No billing period", [["Nothing is metered.",
+      "A billing period opens when the tenant is provisioned; without one nothing is billed and nothing is capped."]]);
     foot([]);
     return;
   }
@@ -3345,7 +3382,10 @@ function renderPolicy(){
   if (!recent.length){
     list.innerHTML = empty("No policy decision recorded yet. Every send records one, "
       + "allow or deny, with the rule that produced it.");
-    detail.innerHTML = block("Decisions", [["Allowed", "0"], ["Denied", "0"]]);
+    detail.innerHTML = block("Decisions", [["Allowed", "0"], ["Denied", "0"]])
+      + note("What records one", [["Every send.",
+          "The policy gate decides allow or deny before anything leaves and writes the rule "
+          + "that decided; the first decision appears with the first send."]]);
     foot([]);
     return;
   }
@@ -3400,7 +3440,10 @@ function renderAudit(){
   if (!entries.length){
     list.innerHTML = empty("Nothing recorded yet. Issuing a key, publishing a program or "
       + "approving a draft each writes a line here.");
-    detail.innerHTML = block("Audit", [["Entries", "0"]]);
+    detail.innerHTML = block("Audit", [["Entries", "0"]])
+      + note("What writes here", [["Every act by a key.",
+          "Issuing a key, publishing a programme, approving a draft or stopping a domain "
+          + "writes a line naming who and why."]]);
     foot([]);
     return;
   }
@@ -3434,7 +3477,8 @@ function renderAudit(){
     return [b.action, nf(b.count)];
   })) + block("Actors", (A.actors || []).map(function(a){
     return [a, nf(per[a] || 0) + " here"];
-  }));
+  })) + note("Who, not what", [["Every line names its actor.",
+    "An entry is who did it and why, by key; what it did to is on the screen it happened on."]]);
   foot([[nf(entries.length), "entries"], [nf((A.actors || []).length), "actors"],
         [nf((A.byAction || []).length), "kinds"]]);
 }
