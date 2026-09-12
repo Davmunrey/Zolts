@@ -13,7 +13,7 @@ from typing import Any
 
 import jsonschema
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from runtime.api import auth, console, webhooks
 from runtime.api.signin import SIGN_IN_CSP, sign_in_page
@@ -27,7 +27,8 @@ from runtime.connectors import install_default_connectors, providers_for
 from runtime.db import Database
 from runtime.crypto import Keyring  # noqa: F401 - names the threaded key's type
 from runtime.engine import admission, enroll
-from runtime import outbox, preview, replyrates, sendingcontrol, signalfunnel, timeline
+from runtime import (outbox, preview, replyrates, reportsig, sendingcontrol,
+                     signalfunnel, timeline)
 from runtime.repo import (actions, baseline as baseline_repo, enrollments, entities,
                           ledger, mappings, programs, proposals, reports as reports_repo,
                           tasks as tasks_repo)
@@ -290,6 +291,35 @@ def create_app(db: Database, *, install_connectors: bool = True,
         if format == "markdown":
             return PlainTextResponse(row["rendered"], media_type="text/markdown")
         return reports_repo.as_dict(row)
+
+    # -- the report a CFO opens ------------------------------------------
+
+    @app.get(reportsig.KEYS_PATH)
+    def signing_keys() -> dict[str, Any]:
+        """The keys this instance signs exported reports with: the current
+        one and any a previous sealing secret still names. Public keys are
+        public, so this needs no credential (ADR-068).
+        """
+        return reportsig.published_keys(app.state.secret_key)
+
+    @app.get("/v1/reports/{report_id}/export")
+    def export_report(report_id: str, request: Request,
+                      principal: Principal = CurrentPrincipal) -> Any:
+        """One frozen report as a signed document: the figures, the digest,
+        the prose, and a signature over the digest and the prose made with
+        the key published above. Verified anywhere by
+        `scripts/verify_report.py` with the public key and nothing else
+        (docs/28, OX-5).
+        """
+        with db.tenant_tx(principal.tenant_id) as cur:
+            row = reports_repo.get(cur, report_id)
+            if row is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
+            program = programs.get(cur, str(row["program_id"]))
+        keys_url = str(request.base_url).rstrip("/") + reportsig.KEYS_PATH
+        doc = reportsig.export(dict(row), program, app.state.secret_key, keys_url=keys_url)
+        name = f"{program['key']}-{row['period_end'].isoformat()}-incrementality-report.json"
+        return JSONResponse(doc, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     # -- the browser session ---------------------------------------------
 

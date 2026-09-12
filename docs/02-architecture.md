@@ -930,6 +930,19 @@ A blueprint declares `policy.discount_authority` — `ecommerce-dtc` says `{max_
 
 **The call site is the guard, not the helper.** Deleting `person_id` from the send site left the entire suite green, because every test built its touches through the repository function directly. That is D-85 exactly, and it is fixed the same way: one test dispatches through the worker and reads the row back, and an AST bar requires every `record_touch` in the worker to name a person. There is no natural failure to catch this — the symptom is a fourth message in a week, to somebody nobody in this repository will ever be.
 
+**ADR-068 · A frozen report is exported signed, and verified with the instance's public key and nothing else.**
+ADR-043 froze the incrementality report: written once, a sha256 digest over its canonical fields, the rendered document stored verbatim. *Signed* meant the partner signed a letter quoting the digest. What a CFO receives is a document, and a document with a digest proves only that it is consistent with itself — anybody can recompute a digest over figures they changed (`docs/28`, OX-5). The export now carries an Ed25519 signature the instance's key made, `scripts/verify_report.py` checks it with `zolts` alone, and the instance publishes its keys at `/.well-known/zolts-signing-keys.json`.
+
+| Decision | Why |
+|---|---|
+| **The signature covers the digest and the prose, not the body twice** | The digest is already the canonical form's fingerprint, versioned so an older document still rebuilds (D-72); signing it binds the figures. The rendered markdown is not in the canonical form — a template may improve — so its hash is signed beside the digest, and a report whose prose was edited after freezing fails on the second check rather than silently |
+| **The verdict names the check that failed** | Kind, figures, digest, key, signature, in that order, each *ok*, a reason, or *not reached*. A verifier that answers only *invalid* leaves the reader to guess whether a figure moved, the prose was edited or the wrong key was pinned, and each is a different conversation |
+| **The key is derived from the sealing secret, with an override** (decision 58) | One secret to configure, two properties. HKDF with a fixed purpose string, so the signing seed and the AES key are unrelated bytes of one secret. `ZOLTS_REPORT_SIGNING_KEY` overrides it for a deployment that wants the two keys to have different lives |
+| **Rotation follows the sealing keyring** | A previous secret still names a public key, published as *not current*, so an export signed before a rotation verifies against a key the instance still lists. Retiring the secret retires the key, and the holder verifies with the key they pinned when they received the document — which is what pinning is for |
+| **Signed on export, never stored** | Ed25519 is deterministic: the same key over the same digest and prose yields the same bytes every time. A stored signature would need a second table beside a row the serving role cannot update, for nothing |
+| **The document carries its key and the verifier says when it used it** | A document that vouches for its own key proves it was not altered after signing and nothing about who signed it. The verdict names the key's source, and the script prefers a pinned key or the instance's published list |
+| **The verifier imports `zolts` only** | A machine that has never seen the database has no runtime configured, and a test refuses a script that reaches for one |
+
 **ADR-067 · A reply rate is shown with its sample, and withheld under the floor the experiment accepts.**
 Every sequencing tool shows an open rate. None shows a rate with the sample size that makes it believable, and none withholds the rate when the sample cannot carry one (`docs/28`, OX-4). A programme's detail now carries one row per copy step — sent, replied, positive — and `GET /v1/programs/{id}/copy` answers the same rows.
 

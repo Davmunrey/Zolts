@@ -525,6 +525,22 @@ MUTATIONS = (
         find="     order by t.sent_at desc limit 1) last on true",
         replace="     order by t.sent_at asc limit 1) last on true",
         tests="tests/test_reply_rates.py"),
+    Mutation(
+        id="the-figures-are-checked-against-the-digest-they-quote",
+        claim="a report whose figures no longer hash to the digest it quotes is not "
+              "verified, whatever its signature says",
+        path="zolts/reportsig.py",
+        find="    if recomputed != digest:",
+        replace="    if False:",
+        tests="tests/test_report_signing.py"),
+    Mutation(
+        id="the-signature-covers-the-prose",
+        claim="the rendered document is bound by the signature, so prose edited after "
+              "freezing is refused even though the figures stand",
+        path="zolts/reportsig.py",
+        find='    return json.dumps({"digest": digest, "rendered_sha256": rendered_hash(rendered)},',
+        replace='    return json.dumps({"digest": digest, "rendered_sha256": ""},',
+        tests="tests/test_report_signing.py"),
 )
 
 def _dirty() -> bool:

@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1838 | 554 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1862 | 557 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -104,6 +104,8 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 ## Built
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
+
+- **The report a CFO opens.** Every frozen incrementality report exports as a signed document — `GET /v1/reports/{id}/export`, one link per report on the programme's panel beside the full digest — with an Ed25519 signature over the digest and the rendered prose, made with a key the instance publishes at `/.well-known/zolts-signing-keys.json`. `scripts/verify_report.py` verifies it with `zolts` alone, on a machine that has never seen the database, and names the check that failed (ADR-068, decision 58, `docs/28` OX-5).
 
 - **Which copy works.** Reply and positive-reply rates per step on a programme's detail and at `GET /v1/programs/{id}/copy`, with the sample beside the rate and no rate under the floor `zolts.experiment` accepts: a step with fewer positive replies than the floor shows the count and the reason, a step at the floor shows the rate. A reply is credited to the last step sent before it (ADR-067, `docs/28` OX-4).
 
