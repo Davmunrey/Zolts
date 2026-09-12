@@ -9,7 +9,7 @@ What is built, what is next, and what is blocked on a decision rather than on en
 | | Count | Evidence |
 |---|---|---|
 | Epics delivered | 43 | `docs/22`, ADR-001 … ADR-044 |
-| Tests | 1886 | 563 against a real Postgres; CI fails a run that skipped them |
+| Tests | 1894 | 563 against a real Postgres; CI fails a run that skipped them |
 | Priced actions executable | 8 of 8 | `docs/12` vs `zolts/billing.py`, checked by test |
 | Console views | 8, no dead links | ADR-023 |
 | Native CRMs | 3 | HubSpot, Pipedrive, Salesforce — all three read deals |
@@ -105,7 +105,7 @@ Six rows of `docs/11`'s GDPR table had no implementation (D-89, ADR-054). Each i
 
 Delivered and verified against real infrastructure. Grouped by what a buyer would ask about.
 
-- **Bulk, with reasons.** Review, Human tasks and Outbox take a batch: a modified click selects rows, one reason covers them and is recorded on every row with the batch's id, each row runs under its own savepoint so a stale row is a named refusal and the rest proceed, and a thin reason is refused by name before anything happens. `POST /v1/proposals/batch`, `/v1/tasks/batch`, `/v1/outbox/batch` (ADR-070, `docs/28` OX-7).
+- **A palette that reaches everything.** Every screen from the registry, every programme, every contact by name onto their timeline, and every command from ⌘K; the command that did nothing is gone and a test refuses any handler with an empty body. The browser check reaches the Outbox from the keyboard and a contact by name (ADR-071, `docs/28` OX-8).\n\n- **Bulk, with reasons.** Review, Human tasks and Outbox take a batch: a modified click selects rows, one reason covers them and is recorded on every row with the batch's id, each row runs under its own savepoint so a stale row is a named refusal and the rest proceed, and a thin reason is refused by name before anything happens. `POST /v1/proposals/batch`, `/v1/tasks/batch`, `/v1/outbox/batch` (ADR-070, `docs/28` OX-7).
 
 - **Live, no reload.** Every action re-renders in place from a fresh read of `/v1/console`, the console polls it every thirty seconds while its tab is visible and pays a 304 for a model that has not moved, and fresh data never lands on a field the operator is typing in. No full-page reload remains in the surface; a test greps for it, and the browser check approves a draft and sees the rail count fall without a navigation (ADR-069, `docs/28` OX-6).
 

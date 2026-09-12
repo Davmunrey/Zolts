@@ -492,6 +492,22 @@ def main() -> int:
             page.wait_for_selector("#sc-act", timeout=15_000)
             report["after_stop"] = page.locator("#detail").inner_text()[:400]
 
+            # 5a. The palette reaches everything (docs/28, OX-8): the Outbox
+            #     from the keyboard, and a contact by name onto their timeline.
+            page.keyboard.press("Control+K")
+            page.wait_for_selector("#q", timeout=15_000)
+            page.fill("#q", "outbox")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#ob-revive", timeout=15_000)
+            report["palette_reached_outbox"] = page.evaluate(
+                "() => document.querySelector('nav a[aria-current=\"page\"]').dataset.view")
+            page.keyboard.press("Control+K")
+            page.wait_for_selector("#q", timeout=15_000)
+            page.fill("#q", "iker")
+            page.keyboard.press("Enter")
+            page.wait_for_selector("#tl .tlrow", timeout=20_000)
+            report["palette_reached_contact"] = page.locator("#detail h2").first.inner_text()
+
             # 5b. The outbox. The runbook told an operator to requeue a dead
             #     action and supplied a raw SQL update that nulls `last_error`,
             #     destroying the only record of why it died at the moment
@@ -828,6 +844,16 @@ def main() -> int:
             print("::error::the programme detail does not say which copy works, "
                   "or shows a rate the floor refuses:",
                   json.dumps(copy_panel)[:600], file=sys.stderr)
+            return 1
+
+        # The palette reaches everything: the Outbox from the keyboard and a
+        # contact by name, onto their timeline (docs/28, OX-8).
+        if (report.get("palette_reached_outbox") != "outbox"
+                or "Iker" not in (report.get("palette_reached_contact") or "")):
+            print("::error::the palette does not reach a screen or a contact:",
+                  json.dumps({k: report.get(k) for k in
+                              ("palette_reached_outbox", "palette_reached_contact")}),
+                  file=sys.stderr)
             return 1
 
         # Which signals earn their keep. One catalogue signal was seeded with
