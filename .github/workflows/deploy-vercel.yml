@@ -25,12 +25,10 @@ name: deploy-vercel
 # One repository *variable*, ZOLTS_URL, is the production address the smoke
 # opens; until it is set the hourly smoke skips.
 
+# Stopped by the founder: no push trigger and no schedule. Nothing here runs
+# unless it is dispatched by hand from the Actions tab.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: '17 * * * *'    # the deployed smoke, hourly (VER-3)
 
 jobs:
   release:
