@@ -21,6 +21,12 @@ Spoken and chat communication with the founding team may be in any language. Tha
 - Every architectural decision that constrains future work goes in `docs/02-architecture.md` as an ADR.
 - Every open decision goes in `docs/18-decision-register.md` with a default. A decision that is not registered does not exist and will be reopened.
 
+## Change workflow
+
+- **Issue first.** Every pull request resolves a GitHub issue and names it in its body (`Fixes #n`). The issue states the problem and its acceptance criteria. When a request arrives with no issue, open one from the request, quoting it, before the first commit.
+- One independent change per issue; a pull request that fixes two problems links two issues.
+- An issue may cite a decision in `docs/18-decision-register.md`; it never replaces the register entry.
+
 ## Code conventions
 
 - GTM program definitions are declarative YAML validated against `examples/schema/zolts-program.schema.json`.
