@@ -1,0 +1,47 @@
+name: pr-guide
+
+# One comment per pull request that names the next step and who owns it.
+# The decision lives in scripts/pr_guide.py and is tested in tests/test_pr_guide.py.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]
+  pull_request_review:
+    types: [submitted, dismissed]
+  # Refresh when CI finishes. GitHub only runs workflow_run from the default
+  # branch's copy of this file, so this trigger starts working once merged.
+  workflow_run:
+    workflows: [validate]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: pr-guide-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  guide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # Fork pull requests get a read-only token; the guide stays quiet there.
+    if: github.event_name == 'workflow_run' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/pr_guide.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Update the guide comment
+        # A guide that cannot post must not turn a pull request red.
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_GUIDE_SELF: guide
+        run: python3 scripts/pr_guide.py
