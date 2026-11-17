@@ -1,9 +1,11 @@
 """The pr-guide decision: what blocks a pull request, and who moves next."""
 from dataclasses import replace
 
-from scripts.pr_guide import MARKER, State, linked_issues, next_step, pull_numbers, render
+from scripts.pr_guide import (MARKER, State, linked_issues, next_step, pull_numbers, render,
+                               should_request_review)
 
 READY = State(author="agent-bot", owner="owner", draft=False, linked=["#97"], passed=4)
+UPDATE = State(author="dependabot[bot]", owner="owner", draft=False, linked=[], passed=17)
 
 
 def test_a_body_names_its_issues_in_order_without_repeats():
@@ -79,3 +81,48 @@ def test_pull_request_and_workflow_run_events_both_name_their_pull_requests():
     assert pull_numbers({"pull_request": {"number": 7}}) == [7]
     assert pull_numbers({"workflow_run": {"pull_requests": [{"number": 3}, {"number": 5}]}}) == [3, 5]
     assert pull_numbers({"workflow_run": {"pull_requests": []}}) == []
+
+
+# --- Pull requests a bot opened (Davmunrey/Zolts#115) -------------------------
+# On Davmunrey/Trazum#655 the guide asked Dependabot to link an issue. A bot
+# cannot; the step that moves a green update is the owner's approval, which,
+# unlike approving their own pull request, GitHub accepts and records as a review.
+
+def test_a_bot_is_never_asked_to_link_an_issue():
+    step, who = next_step(UPDATE)
+    assert "Fixes #n" not in step and who == "owner"
+
+
+def test_a_green_update_asks_the_owner_to_approve_then_merge():
+    step, who = next_step(UPDATE)
+    assert step.startswith("Approve, then merge") and who == "owner"
+
+
+def test_an_approved_update_is_ready_to_merge():
+    step, who = next_step(replace(UPDATE, approved_by=["owner"]))
+    assert step.startswith("Merge") and who == "owner"
+
+
+def test_what_a_bot_cannot_do_falls_to_the_owner():
+    for state in (replace(UPDATE, failing=["test"]), replace(UPDATE, conflicts=True),
+                  replace(UPDATE, draft=True)):
+        assert next_step(state)[1] == "owner", state
+    assert next_step(replace(UPDATE, pending=["test"])) == ("Wait for CI to finish.", "CI")
+
+
+def test_the_linked_issue_row_says_why_a_bot_needs_none():
+    assert "| Linked issue | ➖ not needed: opened by a bot |" in render(UPDATE)
+
+
+def test_a_green_update_requests_the_owner_s_review_once():
+    assert should_request_review(UPDATE)
+    assert not should_request_review(replace(UPDATE, review_requested=["owner"]))
+    assert not should_request_review(replace(UPDATE, approved_by=["owner"]))
+
+
+def test_no_review_is_requested_before_the_update_is_green_or_for_a_person():
+    for state in (replace(UPDATE, pending=["test"]), replace(UPDATE, failing=["test"]),
+                  replace(UPDATE, conflicts=True), replace(UPDATE, conflicts=None),
+                  replace(UPDATE, draft=True), replace(UPDATE, changes_requested_by=["owner"]),
+                  READY):
+        assert not should_request_review(state), state
