@@ -34,6 +34,12 @@ class State:
     conflicts: bool | None = False      # None: GitHub has not computed it yet
     approved_by: list[str] = field(default_factory=list)
     changes_requested_by: list[str] = field(default_factory=list)
+    review_requested: list[str] = field(default_factory=list)
+
+    @property
+    def bot(self) -> bool:
+        """Opened by an app such as Dependabot, which cannot link an issue or fix its own CI."""
+        return self.author.endswith("[bot]")
 
 
 def linked_issues(body: str | None) -> list[str]:
@@ -47,24 +53,40 @@ def linked_issues(body: str | None) -> list[str]:
 
 def next_step(s: State) -> tuple[str, str]:
     """The one thing that moves this pull request next, and who does it."""
-    if not s.linked:
-        return "Link the issue this resolves: add `Fixes #n` to the description, or open the issue first.", s.author
+    # A bot cannot link an issue or fix its own branch: what it cannot do is the owner's.
+    author = s.owner if s.bot else s.author
+    if not s.linked and not s.bot:
+        return "Link the issue this resolves: add `Fixes #n` to the description, or open the issue first.", author
     if s.conflicts:
-        return "Resolve the conflicts with the base branch: merge the base into this branch.", s.author
+        return "Resolve the conflicts with the base branch: merge the base into this branch.", author
     if s.failing:
-        return f"Fix the failing check{'s' if len(s.failing) > 1 else ''}: {', '.join(f'`{n}`' for n in s.failing)}.", s.author
+        return f"Fix the failing check{'s' if len(s.failing) > 1 else ''}: {', '.join(f'`{n}`' for n in s.failing)}.", author
     if s.pending:
         return "Wait for CI to finish.", "CI"
     if s.draft:
-        return "Mark the pull request ready for review: CI is green.", s.author
+        return "Mark the pull request ready for review: CI is green.", author
     if s.changes_requested_by:
-        return f"Address the changes requested by {', '.join('@' + u for u in s.changes_requested_by)}.", s.author
+        return f"Address the changes requested by {', '.join('@' + u for u in s.changes_requested_by)}.", author
     if s.author == s.owner:
         # GitHub refuses an author's approval of their own pull request.
         return "Read the diff, then merge: green and conflict-free (an author cannot approve their own PR).", s.owner
     if s.owner not in s.approved_by:
+        if s.bot:
+            # Unlike their own pull request, the owner can approve a bot's, and it counts as a review.
+            return "Approve, then merge: a green update from a bot (your approval counts as a code review).", s.owner
         return "Review and approve, or request changes.", s.owner
     return "Merge: approved, green and conflict-free.", s.owner
+
+
+def should_request_review(s: State) -> bool:
+    """Ask the owner for a review once a bot's pull request is green and only their approval is missing.
+
+    A review request notifies the owner and lists the pull request under their review
+    requests, so a green update does not wait on somebody remembering to look.
+    """
+    return (s.bot and not s.draft and not s.failing and not s.pending and s.conflicts is False
+            and not s.changes_requested_by and s.owner not in s.approved_by
+            and s.owner not in s.review_requested)
 
 
 def render(s: State) -> str:
@@ -87,7 +109,8 @@ def render(s: State) -> str:
     else:
         review = f"⏳ waiting on @{s.owner}"
     rows = [
-        ("Linked issue", "✅ " + ", ".join(s.linked) if s.linked else "❌ none"),
+        ("Linked issue", "✅ " + ", ".join(s.linked) if s.linked
+         else "➖ not needed: opened by a bot" if s.bot else "❌ none"),
         ("Draft", "📝 draft" if s.draft else "✅ ready for review"),
         ("CI", ci),
         ("Merge conflicts", merge),
@@ -158,7 +181,8 @@ def gather(repo: str, number: int, owner: str, self_check: str) -> State:
         failing=sorted(set(failing)), pending=sorted(set(pending)), passed=passed,
         conflicts=None if pr.get("mergeable") is None else pr.get("mergeable_state") == "dirty",
         approved_by=sorted(u for u, st in latest.items() if st == "APPROVED"),
-        changes_requested_by=sorted(u for u, st in latest.items() if st == "CHANGES_REQUESTED"))
+        changes_requested_by=sorted(u for u, st in latest.items() if st == "CHANGES_REQUESTED"),
+        review_requested=sorted(r["login"] for r in pr.get("requested_reviewers") or []))
 
 
 def publish(repo: str, number: int, body: str) -> None:
@@ -183,7 +207,10 @@ def main() -> int:
     owner = os.environ.get("PR_GUIDE_OWNER") or repo.split("/")[0]
     self_check = os.environ.get("PR_GUIDE_SELF", "guide")
     for number in pull_numbers(event):
-        publish(repo, number, render(gather(repo, number, owner, self_check)))
+        state = gather(repo, number, owner, self_check)
+        publish(repo, number, render(state))
+        if should_request_review(state):
+            _api("POST", f"/repos/{repo}/pulls/{number}/requested_reviewers", {"reviewers": [owner]})
     return 0
 
 
